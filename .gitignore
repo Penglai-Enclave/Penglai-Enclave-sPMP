@@ -1,0 +1,8 @@
+linux-*.tar.xz
+work/
+/toolchain
+vivado*.jou
+vivado*.log
+.cache.mk
+copy-files/*
+!copy-files/empty
