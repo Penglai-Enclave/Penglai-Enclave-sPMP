@@ -39,7 +39,7 @@ In the penglai-v0.1 directory,
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
 
-Enter the terminal with the user name: root, and passwords: sifive.
+Enter the terminal with the user name: root, and passwords: penglai.
 
 **Insmod the enclave-driver**
 
@@ -47,7 +47,7 @@ Enter the terminal with the user name: root, and passwords: sifive.
 
 And the, you can run a demo, e.g., a prime enclave, using 
 
-`./host prime`
+`./host  prime`
 
 Here, the  `host` is an enclave invoker, which will start an enclave (name from input).
 

@@ -177,10 +177,7 @@ $(sdk): $(vmlinux) force
 	cd -
 	# Copy the compiled files to copy-files
 	cp $(srcdir)/sdk/enclave-driver/penglai.ko $(copy_dir)
-	cp $(srcdir)/sdk/demo/fib/fib $(copy_dir)
 	cp $(srcdir)/sdk/demo/host/host $(copy_dir)
-	cp $(srcdir)/sdk/demo/crypt/crypt $(copy_dir)
-	cp $(srcdir)/sdk/demo/mem/mem $(copy_dir)
 	cp $(srcdir)/sdk/demo/prime/prime $(copy_dir)
 sdk: $(sdk)
 
