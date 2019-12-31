@@ -17,9 +17,9 @@ The version for FPGA and RISC-V board is comming soon.
 
 First, download the all the code:
 
-`git clone https://ipads.se.sjtu.edu.cn:1312/penglai-enclave/penglai-v0.1.git` 
+`git clone https://github.com/Penglai-Enclave/Penglai-Enclave.git` 
 
-Enter the penglai-v0.1 directory, `cd penglai-v0.1` 
+Enter the penglai-enclave directory, `cd Penglai-Enclave` 
 
 And then,
 
@@ -33,7 +33,7 @@ When the building process finished, you are ready to run the penglai demo.
 
 ## Running
 
-In the penglai-v0.1 directory,
+In the penglai-enclave directory,
 
 `./docker_cmd.sh qemu`
 
