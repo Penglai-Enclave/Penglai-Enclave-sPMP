@@ -1,6 +1,6 @@
-# Penglai-Enclave: Scalable Enclave System
+![Penglai logo](docs/images/penglai_logo.jpg)
 
-A scalable enclave system for RISC-V architecture.
+Penglai-Enclave is a scalable enclave system for RISC-V architecture.
 
 ## Quick Start
 
@@ -17,17 +17,17 @@ The version for FPGA and RISC-V board is comming soon.
 
 First, download the all the code:
 
-`git clone https://github.com/Penglai-Enclave/Penglai-Enclave.git` 
+`git clone https://github.com/Penglai-Enclave/Penglai-Enclave.git`
 
-Enter the penglai-enclave directory, `cd Penglai-Enclave` 
+Enter the penglai-enclave directory, `cd Penglai-Enclave`
 
 And then,
 
-`git submodule update --init --recursive` 
+`git submodule update --init --recursive`
 
 Last, build penglai using our Docker image:
 
-`./docker_cmd.sh build` 
+`./docker_cmd.sh build`
 
 When the building process finished, you are ready to run the penglai demo.
 
@@ -45,7 +45,7 @@ Enter the terminal with the user name: root, and passwords: penglai.
 
 `insmod penglai.ko`
 
-And the, you can run a demo, e.g., a prime enclave, using 
+And the, you can run a demo, e.g., a prime enclave, using
 
 `./host  prime`
 
@@ -56,7 +56,7 @@ Here, the  `host` is an enclave invoker, which will start an enclave (name from 
 Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 
 ## Code Structures
- 
+
 - buildroot: The buildroot rootfs for Penglai (from Sifive's Freedom U-sdk)
 - linux: The Untrusted OS kernel (kernel 4.15) for Penglai (from Sifive's Freedom U-sdk)
 - monitor: The secure monitor of Penglai, implementing isolation using PMP/sPMP, based on BBL
