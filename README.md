@@ -2,6 +2,23 @@
 
 Penglai-Enclave is a scalable enclave system for RISC-V architecture.
 
+## RoadMap
+
+| Features                    | Status         | Schedule   |
+|-----------------------------|----------------|------------|
+| Cross-enclave communication | Internal ready | 2020-11-15 |
+| Support OpenSBI-based stack | WIP            | 2020-11-6  |
+| Secure storage              | Internal ready | 2020-11-30 |
+| Support PSA framework       | WIP            | TBD        |
+| Tutorial to use Penglai     | Internal ready | 2020-11-30 |
+| Enclave Fork                | Internal ready | TBD        |
+| Formal verification         | WIP            | TBD        |
+
+Although some features have been implemented in our internal version,
+they still need some works to be ready to be open-sourced.
+
+The schedule field is the **expected** time to release the features.
+
 ## Quick Start
 
 Penglai uses Docker for building and uses submodules to track different componets.
