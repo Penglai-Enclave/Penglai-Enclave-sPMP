@@ -179,6 +179,8 @@ $(sdk): $(vmlinux) force
 	cp $(srcdir)/sdk/enclave-driver/penglai.ko $(copy_dir)
 	cp $(srcdir)/sdk/demo/host/host $(copy_dir)
 	cp $(srcdir)/sdk/demo/prime/prime $(copy_dir)
+	cp $(srcdir)/sdk/demo/caller/caller $(copy_dir)
+	cp $(srcdir)/sdk/demo/server/server $(copy_dir)
 sdk: $(sdk)
 
 .PHONY: qemu
