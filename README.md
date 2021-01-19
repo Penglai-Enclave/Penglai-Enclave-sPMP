@@ -1,23 +1,6 @@
-![Penglai logo](docs/images/penglai_logo.jpg)
+# Penglai Enclave sPMP Version
 
 Penglai-Enclave is a scalable enclave system for RISC-V architecture.
-
-## RoadMap
-
-| Features                    | Status         | Schedule   |
-|-----------------------------|----------------|------------|
-| Cross-enclave communication | Internal ready | 2020-11-15 |
-| Support OpenSBI-based stack | Done           | 2020-11-6  |
-| Secure storage              | Internal ready | 2020-11-30 |
-| Support PSA framework       | WIP            | TBD        |
-| Tutorial to use Penglai     | Internal ready | 2020-11-30 |
-| Enclave Fork                | Internal ready | TBD        |
-| Formal verification         | WIP            | TBD        |
-
-Although some features have been implemented in our internal version,
-they still need some works to be ready to be open-sourced.
-
-The schedule field is the **expected** time to release the features.
 
 ## Info
 
@@ -38,7 +21,7 @@ The version for FPGA and RISC-V board is comming soon.
 
 First, download the all the code:
 
-`git clone https://github.com/Penglai-Enclave/Penglai-Enclave.git`
+`git clone https://github.com/Penglai-Enclave/Penglai-Enclave-sPMP.git`
 
 Enter the penglai-enclave directory, `cd Penglai-Enclave`
 
@@ -95,3 +78,7 @@ Please fell free to post your concerns, ideas, code or anything others to issues
 ## Wiki
 
 Please refer the wiki for more details
+
+## Acknowledgements
+
+The design of Penglai was inspired by Sanctum, Keystone and HexFive, thanks to their great work.
