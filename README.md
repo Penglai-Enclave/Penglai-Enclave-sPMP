@@ -78,3 +78,7 @@ Please fell free to post your concerns, ideas, code or anything others to issues
 ## Wiki
 
 Please refer the wiki for more details
+
+## Acknowledgements
+
+The design of Penglai was inspired by Sanctum, Keystone and HexFive, thanks to their great work.
