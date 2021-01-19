@@ -21,7 +21,7 @@ The version for FPGA and RISC-V board is comming soon.
 
 First, download the all the code:
 
-`git clone https://github.com/Penglai-Enclave/Penglai-Enclave.git`
+`git clone https://github.com/Penglai-Enclave/Penglai-Enclave-sPMP.git`
 
 Enter the penglai-enclave directory, `cd Penglai-Enclave`
 
