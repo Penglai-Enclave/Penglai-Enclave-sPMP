@@ -163,6 +163,8 @@ bbl: $(bbl)
 clean:
 #	rm -rf -- $(linux_wrkdir)/vmlinux
 	rm -rf -- $(pk_wrkdir) $(linux_wrkdir)/vmlinux
+	cd $(srcdir)/sdk && PENGLAI_SDK=$(srcdir)/sdk make clean
+	cd -
 #	rm -rf -- $(wrkdir) $(linux_wrkdir)/vmlinux
 #	rm -rf -- $(wrkdir)
 #	rm -rf -- $(wrkdir) $(toolchain_dest)
