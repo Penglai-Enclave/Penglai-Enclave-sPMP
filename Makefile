@@ -184,6 +184,7 @@ $(sdk): $(vmlinux) force
 	cp $(srcdir)/sdk/demo/caller/caller $(copy_dir)
 	cp $(srcdir)/sdk/demo/server/server $(copy_dir)
 	cp $(srcdir)/sdk/demo/test-caller/test-caller $(copy_dir)
+	cp $(srcdir)/sdk/demo/minimal/minimal $(copy_dir)
 sdk: $(sdk)
 
 .PHONY: qemu

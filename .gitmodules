@@ -13,3 +13,6 @@
 [submodule "riscv-qemu"]
 	path = riscv-qemu
 	url = https://github.com/Penglai-Enclave/penglai-qemu.git
+[submodule "tensorflow"]
+	path = tensorflow
+	url = https://github.com.cnpmjs.org/Moonquakes/tensorflow
