@@ -1,18 +1,18 @@
 [submodule "sdk"]
         path = sdk
-        url = https://github.com.cnpmjs.org/Moonquakes/penglai-sdk.git
+        url = https://github.com/Moonquakes/penglai-sdk.git
 [submodule "buildroot"]
         path = buildroot
-        url = https://github.com.cnpmjs.org/Moonquakes/penglai-buildroot.git
+        url = https://github.com/Moonquakes/penglai-buildroot.git
 [submodule "monitor"]
         path = monitor
-        url = https://github.com.cnpmjs.org/Moonquakes/penglai-monitor.git
+        url = https://github.com/Moonquakes/penglai-monitor.git
 [submodule "linux"]
         path = linux
-        url = https://github.com.cnpmjs.org/Moonquakes/penglai-linux.git
+        url = https://github.com/Moonquakes/penglai-linux.git
 [submodule "riscv-qemu"]
         path = riscv-qemu
-        url = https://github.com.cnpmjs.org/Moonquakes/penglai-qemu.git
+        url = https://github.com/Moonquakes/penglai-qemu.git
 [submodule "tensorflow"]
         path = tensorflow
-        url = https://github.com.cnpmjs.org/Moonquakes/tensorflow.git
+        url = https://github.com/Moonquakes/tensorflow.git
