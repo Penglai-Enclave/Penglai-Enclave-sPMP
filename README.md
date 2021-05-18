@@ -1,6 +1,10 @@
-# Penglai Enclave sPMP Version
+[![License: Mulan](https://img.shields.io/badge/license-Mulan-brightgreen.svg)](https://license.coscl.org.cn/MulanPSL)
 
-Penglai-Enclave is a scalable enclave system for RISC-V architecture.
+
+![Penglai Header](docs/images/penglai_hdr.png)
+
+
+This repo maintains sPMP version of Penglai Enclave.
 
 ## Info
 
