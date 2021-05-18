@@ -4,7 +4,7 @@
 ![Penglai Header](docs/images/penglai_hdr.png)
 
 
-This repo maintains sPMP version of Penglai Enclave.
+This repo maintains Penglai supports for OpenEuler (experimental version).
 
 ## Info
 
