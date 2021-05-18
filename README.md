@@ -10,7 +10,54 @@ This repo maintains Penglai supports for OpenEuler (experimental version).
 
 - OpenSBI-based Penglai is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp) now.
 
-## Quick Start
+## Build
+
+### OpenEuler Kernel
+
+Follow the instructions in openeuler riscv gitee to compile OpenEuler kernel.
+
+For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
+
+	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
+	cd /env
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make ARCH=riscv -j8
+
+### OpenSBI (with Penglai supports)
+
+	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
+	cd /env/opensbi-0.6
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=qemu/virt FW_PAYLOAD=y FW_PAYLOAD_PATH=/env/Image
+
+Note: the /env/Image is the image compiled OpenEuler Kernel Image.
+
+A simpler way:
+
+	./docker_cmd.sh docker
+	#In the docker image
+	./scripts/build_opensbi.sh
+
+## Run OpenEuler with Penglai Supports
+
+	qemu-system-riscv64 -nographic -machine virt \
+	-smp 8 -m 2G \
+	-kernel  /home/dd/devlop/penglai/penglai-openeular/opensbi/opensbi-0.6/build-oe/qemu-virt/platform/qemu/virt/firmware/fw_payload.elf  \
+	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
+	-object rng-random,filename=/dev/urandom,id=rng0 \
+	-device virtio-rng-device,rng=rng0 \
+	-device virtio-blk-device,drive=hd0  \
+	-device virtio-net-device,netdev=usernet \
+	-netdev user,id=usernet,hostfwd=tcp::12055-:22 \
+	-append 'root=/dev/vda1 rw console=ttyS0 systemd.default_timeout_start_sec=600 selinux=0 highres=off mem=4096M earlycon' \
+	-bios none
+
+
+- The test qemu version is 5.2.0.
+- The fw_payload.elf is the opensbi file.
+- The openEuler-preview.riscv64.qcow2 is the disk image for OpenEuler.
+
+
+
+## Quick Start (Old)
 
 Penglai uses Docker for building and uses submodules to track different componets.
 

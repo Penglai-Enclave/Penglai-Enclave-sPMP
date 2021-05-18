@@ -2,6 +2,7 @@
 *.o
 *.a
 *.dep
+*.elf
 
 #Build & install directories
 build/
