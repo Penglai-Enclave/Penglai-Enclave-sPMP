@@ -54,6 +54,7 @@ A simpler way:
 - The test qemu version is 5.2.0.
 - The fw_payload.elf is the opensbi file.
 - The openEuler-preview.riscv64.qcow2 is the disk image for OpenEuler.
+- To login, username is "root", passwd is "openEuler12#$"
 
 
 
