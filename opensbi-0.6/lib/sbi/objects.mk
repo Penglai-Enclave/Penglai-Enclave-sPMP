@@ -33,3 +33,17 @@ libsbi-objs-y += sbi_tlb.o
 libsbi-objs-y += sbi_trap.o
 libsbi-objs-y += sbi_string.o
 libsbi-objs-y += sbi_unpriv.o
+
+## Add by Dong Du
+#  The Penglai related files here
+libsbi-objs-y += sm/enclave.o
+libsbi-objs-y += sm/ipi.o
+libsbi-objs-y += sm/math.o
+libsbi-objs-y += sm/pmp.o
+libsbi-objs-y += sm/sm.o
+libsbi-objs-y += sm/thread.o
+#libsbi-objs-y += sm/platform/spmp/enclave_mm.o
+#libsbi-objs-y += sm/platform/spmp/ipi_handler.o
+libsbi-objs-y += sm/platform/spmp/platform.o
+#libsbi-objs-y += sm/platform/spmp/platform_thread.o
+#libsbi-objs-y += sm/platform/spmp/spmp.o

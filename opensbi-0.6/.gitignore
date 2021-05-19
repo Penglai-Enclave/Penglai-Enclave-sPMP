@@ -3,6 +3,7 @@
 *.a
 *.dep
 *.elf
+*.bin
 
 #Build & install directories
 build/

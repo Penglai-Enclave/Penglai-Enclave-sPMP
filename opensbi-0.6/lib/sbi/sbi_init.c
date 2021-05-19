@@ -124,6 +124,8 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	if (!(scratch->options & SBI_SCRATCH_NO_BOOT_PRINTS))
 		sbi_boot_prints(scratch, hartid);
 
+	sbi_printf("[Penglai] Penglai Enclave Preparing\n");
+
 	sbi_hart_wake_coldboot_harts(scratch, hartid);
 
 	sbi_hart_mark_available(hartid);

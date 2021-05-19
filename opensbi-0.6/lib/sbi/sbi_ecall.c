@@ -12,6 +12,10 @@
 #include <sbi/sbi_error.h>
 #include <sbi/sbi_trap.h>
 
+#include <sbi/sbi_console.h>
+#include <sbi/riscv_asm.h>
+#include <sbi/riscv_encoding.h>
+
 u16 sbi_ecall_version_major(void)
 {
 	return SBI_ECALL_VERSION_MAJOR;
@@ -90,6 +94,14 @@ int sbi_ecall_handler(u32 hartid, ulong mcause, struct sbi_trap_regs *regs,
 	args[4] = regs->a4;
 	args[5] = regs->a5;
 
+	if (extension_id == SBI_EXT_BASE && func_id>80){
+		/* FIXME(DD): hacking, when extension id is base, put regs into last args
+		 * * currently this reg will not be used by any base functions
+		 */
+		args[5] = (unsigned long) regs;
+		regs->mepc += 4;
+	}
+
 	ext = sbi_ecall_find_extension(extension_id);
 	if (ext && ext->handle) {
 		ret = ext->handle(scratch, extension_id, func_id,
@@ -104,6 +116,11 @@ int sbi_ecall_handler(u32 hartid, ulong mcause, struct sbi_trap_regs *regs,
 	if (ret == SBI_ETRAP) {
 		trap.epc = regs->mepc;
 		sbi_trap_redirect(regs, &trap, scratch);
+	} else if (extension_id == SBI_EXT_BASE && func_id>80){
+		regs->a0 = ret;
+		if (!is_0_1_spec)
+			regs->a1 = out_val;
+
 	} else {
 		/* This function should return non-zero value only in case of
 		 * fatal error. However, there is no good way to distinguish

@@ -195,6 +195,7 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 	return 0;
 }
 
+extern int check_in_enclave_world();
 /**
  * Handle trap/interrupt
  *
@@ -290,6 +291,12 @@ void sbi_trap_handler(struct sbi_trap_regs *regs,
 		msg = "page/access fault handler failed";
 		break;
 	default:
+		if (check_in_enclave_world() >=0) {
+			sbi_printf("[Penglai] ecall from enclaves\n");
+			rc = sbi_ecall_handler(hartid, mcause, regs, scratch);
+			msg = "ecall handler failed";
+			break;
+		}
 		/* If the trap came from S or U mode, redirect it there */
 		trap.epc = regs->mepc;
 		trap.cause = mcause;
