@@ -17,8 +17,11 @@ uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size)
   uintptr_t retval = 0;
 
   printm("[Penglai Monitor] %s invoked\r\n",__func__);
+
+  printm("[Penglai Monitor] %s paddr:0x%x, size:0x%x\r\n",__func__, paddr, size);
   retval = mm_init(paddr, size);
 
+  printm("[Penglai Monitor] %s ret:%d \r\n",__func__, retval);
   return retval;
 }
 

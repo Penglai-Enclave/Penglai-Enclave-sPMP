@@ -78,6 +78,7 @@ static int sbi_ecall_base_handler(struct sbi_scratch *scratch,
 		break;
 	case SBI_MM_INIT:
 	  ret = sm_mm_init(args[0], args[1]);
+	  //ret = 0;
 	  break;
 	case SBI_MEMORY_EXTEND:
 	  ret = sm_mm_extend(args[0], args[1]);

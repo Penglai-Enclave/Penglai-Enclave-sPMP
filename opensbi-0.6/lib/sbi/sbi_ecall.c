@@ -98,6 +98,7 @@ int sbi_ecall_handler(u32 hartid, ulong mcause, struct sbi_trap_regs *regs,
 		/* FIXME(DD): hacking, when extension id is base, put regs into last args
 		 * * currently this reg will not be used by any base functions
 		 */
+		sbi_printf("[PenglaiMonitor@%s] begin with mepc: 0x%x\n", __func__, regs->mepc);
 		args[5] = (unsigned long) regs;
 		regs->mepc += 4;
 	}
@@ -134,6 +135,13 @@ int sbi_ecall_handler(u32 hartid, ulong mcause, struct sbi_trap_regs *regs,
 		if (!is_0_1_spec)
 			regs->a1 = out_val;
 	}
+	if (extension_id == SBI_EXT_BASE && func_id>80){
+		/* FIXME(DD): hacking, when extension id is base, put regs into last args
+		 * * currently this reg will not be used by any base functions
+		 */
+		sbi_printf("[PenglaiMonitor@%s] end with mepc: 0x%x\n", __func__, regs->mepc);
+	}
+
 
 	return 0;
 }

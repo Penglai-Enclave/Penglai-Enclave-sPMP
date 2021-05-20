@@ -71,6 +71,7 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
  */
 int retrieve_kernel_access(void* req_paddr, unsigned long size)
 {
+#if 0
   //pmp0 is used for allowing kernel to access enclave memory
   int pmp_idx = 0;
   struct pmp_config_t pmp_config;
@@ -87,11 +88,16 @@ int retrieve_kernel_access(void* req_paddr, unsigned long size)
   clear_pmp_and_sync(pmp_idx);
 
   return 0;
+#else
+  //FIXME(DD): we always allow kernel access the memory now
+  return 0;
+#endif
 }
 
 //grant enclave access to enclave's memory
 int grant_enclave_access(struct enclave_t* enclave)
 {
+#if 0
   int region_idx = 0;
   int pmp_idx = 0;
   struct pmp_config_t pmp_config;
@@ -140,6 +146,10 @@ int grant_enclave_access(struct enclave_t* enclave)
   set_spmp(1, spmp_config);
 
   return 0;
+#else
+  /* FIXME(DD): do nothing on PMP now */
+  return 0;
+#endif
 }
 
 int retrieve_enclave_access(struct enclave_t *enclave)
@@ -162,6 +172,7 @@ int retrieve_enclave_access(struct enclave_t *enclave)
   }
   spinlock_unlock(&pmp_bitmap_lock);
 
+#if 0 //FIXME(DD): disable PMP ops now
   if(region_idx >= N_PMP_REGIONS)
   {
     printm("M mode: Error: retriece_enclave_access\r\n");
@@ -175,6 +186,7 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
   clear_spmp(0);
   clear_spmp(1);
+#endif
 
   return 0;
 }

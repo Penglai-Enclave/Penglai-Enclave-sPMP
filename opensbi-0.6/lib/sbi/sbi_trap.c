@@ -223,6 +223,7 @@ void sbi_trap_handler(struct sbi_trap_regs *regs,
 	ulong mtval = csr_read(CSR_MTVAL), mtval2 = 0, mtinst = 0;
 	struct sbi_trap_info trap, *uptrap;
 
+	//sbi_printf("[PenglaiMonitor@%s] begin with mepc: 0x%x\n", __func__, regs->mepc);
 	if (misa_extension('H')) {
 		mtval2 = csr_read(CSR_MTVAL2);
 		mtinst = csr_read(CSR_MTINST);
@@ -306,6 +307,7 @@ void sbi_trap_handler(struct sbi_trap_regs *regs,
 		rc = sbi_trap_redirect(regs, &trap, scratch);
 		break;
 	};
+	//sbi_printf("[PenglaiMonitor@%s] begin with mepc: 0x%x\n", __func__, regs->mepc);
 
 trap_error:
 	if (rc) {
