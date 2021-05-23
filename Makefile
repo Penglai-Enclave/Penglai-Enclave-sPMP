@@ -163,6 +163,8 @@ bbl: $(bbl)
 clean:
 #	rm -rf -- $(linux_wrkdir)/vmlinux
 	rm -rf -- $(pk_wrkdir) $(linux_wrkdir)/vmlinux
+	cd $(srcdir)/sdk && PENGLAI_SDK=$(srcdir)/sdk make clean
+	cd -
 #	rm -rf -- $(wrkdir) $(linux_wrkdir)/vmlinux
 #	rm -rf -- $(wrkdir)
 #	rm -rf -- $(wrkdir) $(toolchain_dest)
@@ -179,6 +181,9 @@ $(sdk): $(vmlinux) force
 	cp $(srcdir)/sdk/enclave-driver/penglai.ko $(copy_dir)
 	cp $(srcdir)/sdk/demo/host/host $(copy_dir)
 	cp $(srcdir)/sdk/demo/prime/prime $(copy_dir)
+	cp $(srcdir)/sdk/demo/caller/caller $(copy_dir)
+	cp $(srcdir)/sdk/demo/server/server $(copy_dir)
+	cp $(srcdir)/sdk/demo/test-caller/test-caller $(copy_dir)
 sdk: $(sdk)
 
 .PHONY: qemu
