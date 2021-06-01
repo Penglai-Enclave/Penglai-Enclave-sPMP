@@ -9,7 +9,7 @@ Now it can support OpenEuler (experimental version).
 
 ## Info
 
-- OpenSBI-based Penglai is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp) now.
+- OpenSBI-based Penglai for Nuclei devices is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
 
 ## Build
 
@@ -69,8 +69,6 @@ Therefore, the only requirement to build and run penglai-demo is:
 
 - [Docker](https://docs.docker.com): for building/running Penglai
 - Git: for downloading the code
-
-The version for FPGA and RISC-V board is comming soon.
 
 ### Building
 
