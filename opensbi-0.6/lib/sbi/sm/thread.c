@@ -1,6 +1,7 @@
 #include <sm/thread.h>
 //#include <sm/mtrap.h>
-#include <sm/encoding.h>
+#include <sbi/riscv_encoding.h>
+#include <sbi/riscv_asm.h>
 
 void swap_prev_state(struct thread_state_t* thread, uintptr_t* regs)
 {
@@ -22,14 +23,14 @@ void swap_prev_mepc(struct thread_state_t* thread, uintptr_t current_mepc)
 {
   uintptr_t tmp = thread->prev_mepc;
   thread->prev_mepc = current_mepc;
-  write_csr(mepc, tmp);
+  csr_write(CSR_MEPC, tmp);
 }
 
 void swap_prev_stvec(struct thread_state_t* thread, uintptr_t current_stvec)
 {
   uintptr_t tmp = thread->prev_stvec;
   thread->prev_stvec = current_stvec;
-  write_csr(stvec, tmp);
+  csr_write(CSR_STVEC, tmp);
 }
 
 void swap_prev_cache_binding(struct thread_state_t* thread, uintptr_t current_cache_binding)
@@ -43,19 +44,19 @@ void swap_prev_mie(struct thread_state_t* thread, uintptr_t current_mie)
 {
   uintptr_t tmp = thread->prev_mie;
   thread->prev_mie = current_mie;
-  write_csr(mie, tmp);
+  csr_write(CSR_MIE, tmp);
 }
 
 void swap_prev_mideleg(struct thread_state_t* thread, uintptr_t current_mideleg)
 {
   uintptr_t tmp = thread->prev_mideleg;
   thread->prev_mideleg = current_mideleg;
-  write_csr(mideleg, tmp);
+  csr_write(CSR_MIDELEG, tmp);
 }
 
 void swap_prev_medeleg(struct thread_state_t* thread, uintptr_t current_medeleg)
 {
   uintptr_t tmp = thread->prev_medeleg;
   thread->prev_medeleg = current_medeleg;
-  write_csr(medeleg, tmp);
+  csr_write(CSR_MEDELEG, tmp);
 }

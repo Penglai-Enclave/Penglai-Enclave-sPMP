@@ -1,7 +1,7 @@
 #ifndef _VM_H
 #define _VM_H
 
-#include <sm/encoding.h>
+#include <sbi/riscv_encoding.h>
 #include <stdint.h>
 
 #define MEGAPAGE_SIZE ((uintptr_t)(RISCV_PGSIZE << RISCV_PGLEVEL_BITS))

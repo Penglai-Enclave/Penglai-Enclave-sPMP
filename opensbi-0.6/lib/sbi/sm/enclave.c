@@ -2,6 +2,7 @@
 #include <sm/enclave.h>
 #include <sm/sm.h>
 #include <sm/math.h>
+#include <sbi/riscv_encoding.h>
 //#include <string.h>
 #include <sbi/sbi_string.h>
 //#include TARGET_PLATFORM_HEADER
@@ -36,28 +37,28 @@ int copy_word_to_host(unsigned int* ptr, uintptr_t value)
 
 static void enter_enclave_world(int eid)
 {
-  cpus[read_csr(mhartid)].in_enclave = 1;
-  cpus[read_csr(mhartid)].eid = eid;
+  cpus[csr_read(CSR_MHARTID)].in_enclave = ENCLAVE_MODE;
+  cpus[csr_read(CSR_MHARTID)].eid = eid;
 
   platform_enter_enclave_world();
 }
 
 static int get_enclave_id()
 {
-  return cpus[read_csr(mhartid)].eid;
+  return cpus[csr_read(CSR_MHARTID)].eid;
 }
 
 static void exit_enclave_world()
 {
-  cpus[read_csr(mhartid)].in_enclave = 0;
-  cpus[read_csr(mhartid)].eid = -1;
+  cpus[csr_read(CSR_MHARTID)].in_enclave = 0;
+  cpus[csr_read(CSR_MHARTID)].eid = -1;
 
   platform_exit_enclave_world();
 }
 
 int check_in_enclave_world()
 {
-  if(!(cpus[read_csr(mhartid)].in_enclave))
+  if(!(cpus[csr_read(CSR_MHARTID)].in_enclave))
     return -1;
 
   if(platform_check_in_enclave_world() < 0)
@@ -309,15 +310,15 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
   //swap_prev_cache_binding(&enclave -> threads[0], read_csr(0x356));
 
   //disable interrupts
-  swap_prev_mie(&(enclave->thread_context), read_csr(mie));
-  clear_csr(mip, MIP_MTIP);
-  clear_csr(mip, MIP_STIP);
-  clear_csr(mip, MIP_SSIP);
-  clear_csr(mip, MIP_SEIP);
+  swap_prev_mie(&(enclave->thread_context), csr_read(CSR_MIE));
+  csr_read_clear(CSR_MIP, MIP_MTIP);
+  csr_read_clear(CSR_MIP, MIP_STIP);
+  csr_read_clear(CSR_MIP, MIP_SSIP);
+  csr_read_clear(CSR_MIP, MIP_SEIP);
 
   //disable interrupts/exceptions delegation
-  swap_prev_mideleg(&(enclave->thread_context), read_csr(mideleg));
-  swap_prev_medeleg(&(enclave->thread_context), read_csr(medeleg));
+  swap_prev_mideleg(&(enclave->thread_context), csr_read(CSR_MIDELEG));
+  swap_prev_medeleg(&(enclave->thread_context), csr_read(CSR_MEDELEG));
 
   //swap the mepc to transfer control to the enclave
   //swap_prev_mepc(&(enclave->thread_context), read_csr(mepc));
@@ -362,11 +363,11 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
   //swap_prev_cache_binding(&(enclave->thread_context), );
 
   //restore interrupts
-  swap_prev_mie(&(enclave->thread_context), read_csr(mie));
+  swap_prev_mie(&(enclave->thread_context), csr_read(CSR_MIE));
 
   //restore interrupts/exceptions delegation
-  swap_prev_mideleg(&(enclave->thread_context), read_csr(mideleg));
-  swap_prev_medeleg(&(enclave->thread_context), read_csr(medeleg));
+  swap_prev_mideleg(&(enclave->thread_context), csr_read(CSR_MIDELEG));
+  swap_prev_medeleg(&(enclave->thread_context), csr_read(CSR_MEDELEG));
 
   //transfer control back to kernel
   //swap_prev_mepc(&(enclave->thread_context), read_csr(mepc));
@@ -418,7 +419,7 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
   enclave->ocall_arg0 = create_args.ecall_arg1;
   enclave->ocall_arg1 = create_args.ecall_arg2;
   enclave->ocall_syscall_num = create_args.ecall_arg3;
-  enclave->host_ptbr = read_csr(satp);
+  enclave->host_ptbr = csr_read(CSR_SATP);
   enclave->thread_context.encl_ptbr = (create_args.paddr >> (RISCV_PGSHIFT) | SATP_MODE_CHOICE);
   enclave->root_page_table = (unsigned long*)create_args.paddr;
   enclave->state = FRESH;
@@ -429,7 +430,7 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 		  "thread_context.encl_ptbr:0x%lx\n cur_satp:0x%lx\n",
 		  __func__, enclave->paddr, enclave->size, enclave->entry_point,
 		  enclave->untrusted_ptr, enclave->host_ptbr, enclave->root_page_table,
-		  enclave->thread_context.encl_ptbr, read_csr(satp));
+		  enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
 
   copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
   printm("[Penglai@%s] return eid:%d\n",
@@ -462,7 +463,7 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
     goto run_enclave_out;
   }
   printm("M mode: run_enclave: flag: 3\r\n");
-  if(enclave->host_ptbr != read_csr(satp))
+  if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
     printm("M mode: run_enclave: enclave doesn't belong to current host process\r\n");
     retval = -1UL;
@@ -493,7 +494,7 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
   //write_csr(mstatus, mstatus);
 
   //TODO: enable timer interrupt
-  set_csr(mie, MIP_MTIP);
+  csr_read_set(CSR_MIE, MIP_MTIP);
 
   //set default stack
   regs[2] = ENCLAVE_DEFAULT_STACK;
@@ -523,7 +524,7 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 
   spinlock_lock(&enclave_metadata_lock);
 
-  if(enclave->host_ptbr != read_csr(satp))
+  if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
     printm("M mode: stop_enclave: enclave doesn't belong to current host process\r\n");
     retval = -1UL;
@@ -554,7 +555,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 
   spinlock_lock(&enclave_metadata_lock);
 
-  if(enclave->host_ptbr != read_csr(satp))
+  if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
     printm("M mode: resume_from_stop: enclave doesn't belong to current host process\r\n");
     retval = -1UL;
@@ -587,7 +588,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 
   spinlock_lock(&enclave_metadata_lock);
 
-  if(enclave->host_ptbr != read_csr(satp))
+  if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
     printm("M mode: resume_enclave: enclave doesn't belong to current host process\r\n");
     retval = -1UL;

@@ -3,7 +3,7 @@
 #define SPMP_ENABLED
 
 #include <stdint.h>
-#include <sm/encoding.h>
+#include <sbi/riscv_encoding.h>
 
 //number of PMP registers
 #define NSPMP 8

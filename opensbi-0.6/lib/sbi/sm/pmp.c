@@ -39,6 +39,69 @@ void clear_pmp_and_sync(int pmp_idx)
   return;
 }
 
+//TODO Only handle for the __riscv_64
+void set_pmp_reg(int pmp_idx, uintptr_t* pmp_address, uintptr_t* pmp_config)
+{
+  uintptr_t tmp_pmp_address, tmp_pmp_config;
+  tmp_pmp_address = *pmp_address;
+  tmp_pmp_config = *pmp_config;
+  switch(pmp_idx)
+  {
+    case 0:
+      PMP_SET(0, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 1:
+      PMP_SET(1, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 2:
+      PMP_SET(2, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 3:
+      PMP_SET(3, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 4:
+      PMP_SET(4, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 5:
+      PMP_SET(5, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 6:
+      PMP_SET(6, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 7:
+      PMP_SET(7, 0, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 8:
+      PMP_SET(8, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 9:
+      PMP_SET(9, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 10:
+      PMP_SET(10, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 11:
+      PMP_SET(11, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 12:
+      PMP_SET(12, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 13:
+      PMP_SET(13, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 14:
+      PMP_SET(14, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    case 15:
+      PMP_SET(15, 2, tmp_pmp_address, tmp_pmp_config);
+      break;
+    default:
+      break;
+  }
+  *pmp_address = tmp_pmp_address;
+  *pmp_config = tmp_pmp_config;
+}
+
 void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
 {
   uintptr_t pmp_address = 0;
@@ -48,16 +111,16 @@ void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
 
   switch(pmp_cfg_t.mode)
   {
-    case PMP_NAPOT:
+    case PMP_A_NAPOT:
       if(pmp_cfg_t.paddr == 0 && pmp_cfg_t.size == -1UL)
         pmp_address = -1UL;
       else
         pmp_address = (pmp_cfg_t.paddr | ((pmp_cfg_t.size>>1)-1)) >> 2;
       break;
-    case PMP_TOR:
+    case PMP_A_TOR:
       pmp_address = pmp_cfg_t.paddr;
       break;
-    case PMP_NA4:
+    case PMP_A_NA4:
       pmp_address = pmp_cfg_t.paddr;
     case PMP_OFF:
       pmp_address = 0;
@@ -66,16 +129,7 @@ void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
       pmp_address = 0;
       break;
   }
-
-  switch(pmp_idx)
-  {
-#define X(n, g) case n: { PMP_SET(n, g, pmp_address, pmp_config); break; }
-    LIST_OF_PMP_REGS
-#undef X
-
-    default:
-      break;
-  }
+  set_pmp_reg(pmp_idx, &pmp_address, &pmp_config);
 
   return;
 }
@@ -101,20 +155,13 @@ struct pmp_config_t get_pmp(int pmp_idx)
   unsigned long order = 0;
   unsigned long size = 0;
 
-  switch(pmp_idx)
-  {
-#define X(n, g) case n: { PMP_READ(n, g, pmp_address, pmp_config); break; }
-    LIST_OF_PMP_REGS
-#undef X
-    default:
-      break;
-  }
+  set_pmp_reg(pmp_idx, &pmp_address, &pmp_config);
 
   pmp_config >>= (uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG);
   pmp_config &= PMPCFG_BITS;
   switch(pmp_config & PMP_A)
   {
-    case PMP_NAPOT:
+    case PMP_A_NAPOT:
       while(pmp_address & 1)
       {
         order += 1;
@@ -124,10 +171,10 @@ struct pmp_config_t get_pmp(int pmp_idx)
       size = 1 << order;
       pmp_address <<= (order-1);
       break;
-    case PMP_NA4:
+    case PMP_A_NA4:
       size = 4;
       break;
-    case PMP_TOR:
+    case PMP_A_TOR:
       break;
     case PMP_OFF:
       pmp_address = 0;

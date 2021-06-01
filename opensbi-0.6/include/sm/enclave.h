@@ -2,9 +2,10 @@
 #define _ENCLAVE_H
 
 //#include <string.h>
+#include <sbi/riscv_asm.h>
 #include <sm/bits.h>
 #include <sm/vm.h>
-#include <sm/encoding.h>
+#include <sbi/riscv_encoding.h>
 #include <sm/enclave_args.h>
 #include <sm/atomic.h>
 //#include "mtrap.h"
@@ -14,6 +15,8 @@
 
 #define ENCLAVES_PER_METADATA_REGION 256
 #define ENCLAVE_METADATA_REGION_SIZE ((sizeof(struct enclave_t)) * ENCLAVES_PER_METADATA_REGION)
+
+#define ENCLAVE_MODE 1
 
 struct link_mem_t
 {

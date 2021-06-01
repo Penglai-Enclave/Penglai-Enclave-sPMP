@@ -60,7 +60,7 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
   pmp_config.paddr = paddr;
   pmp_config.size = size;
   pmp_config.perm = PMP_R | PMP_W | PMP_X;
-  pmp_config.mode = PMP_NAPOT;
+  pmp_config.mode = PMP_A_NAPOT;
   set_pmp_and_sync(pmp_idx, pmp_config);
 
   return 0;
@@ -261,7 +261,7 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
   pmp_config.paddr = paddr;
   pmp_config.size = size;
   pmp_config.perm = PMP_NO_PERM;
-  pmp_config.mode = PMP_NAPOT;
+  pmp_config.mode = PMP_A_NAPOT;
   set_pmp_and_sync(pmp_idx, pmp_config);
 
   //mark this region is valid and init mm_list

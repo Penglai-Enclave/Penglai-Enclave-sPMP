@@ -145,8 +145,8 @@ uintptr_t sm_resume_enclave(uintptr_t* regs, unsigned long eid)
     case RESUME_FROM_TIMER_IRQ:
       //printm("resume from timer irq\r\n");
       //*HLS()->timecmp = regs[12];
-      clear_csr(mip, MIP_STIP);
-      set_csr(mie, MIP_MTIP);
+      csr_read_clear(CSR_MIP, MIP_STIP);
+      csr_read_set(CSR_MIE, MIP_MTIP);
       retval = resume_enclave(regs, eid);
       break;
     case RESUME_FROM_STOP:

@@ -4,7 +4,7 @@
 #define _RISCV_ATOMIC_H
 
 //#include "config.h"
-#include <sm/encoding.h>
+#include <sbi/riscv_encoding.h>
 
 // Currently, interrupts are always disabled in M-mode.
 #define disable_irqsave() (0)
