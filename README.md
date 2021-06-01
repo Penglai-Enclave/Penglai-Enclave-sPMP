@@ -56,6 +56,8 @@ A simpler way:
 - The openEuler-preview.riscv64.qcow2 is the disk image for OpenEuler.
 - To login, username is "root", passwd is "openEuler12#$"
 
+Note: a script, run_openeuler.sh is provided to execute the above command easily
+
 
 
 ## Quick Start (Old)
