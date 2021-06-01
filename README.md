@@ -4,7 +4,8 @@
 ![Penglai Header](docs/images/penglai_hdr.png)
 
 
-This repo maintains Penglai supports for OpenEuler (experimental version).
+This repo maintains OpenSBI version of Penglai Enclave based on PMP.
+Now it can support OpenEuler (experimental version).
 
 ## Info
 
