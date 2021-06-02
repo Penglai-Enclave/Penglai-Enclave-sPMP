@@ -151,6 +151,22 @@
 #define PMP_ADDR_MASK			_UL(0xFFFFFFFF)
 #endif
 
+/* page table entry (PTE) fields */
+#define PTE_V				_UL(0x001) /* Valid */
+#define PTE_R				_UL(0x002) /* Read */
+#define PTE_W				_UL(0x004) /* Write */
+#define PTE_X				_UL(0x008) /* Execute */
+#define PTE_U				_UL(0x010) /* User */
+#define PTE_G				_UL(0x020) /* Global */
+#define PTE_A				_UL(0x040) /* Accessed */
+#define PTE_D				_UL(0x080) /* Dirty */
+#define PTE_SOFT			_UL(0x300) /* Reserved for Software */
+
+#define PTE_PPN_SHIFT			10
+
+#define PTE_TABLE(PTE)			\
+	(((PTE) & (PTE_V | PTE_R | PTE_W | PTE_X)) == PTE_V)
+
 #if __riscv_xlen == 64
 #define MSTATUS_SD			MSTATUS64_SD
 #define SSTATUS_SD			SSTATUS64_SD
@@ -170,6 +186,9 @@
 #define HGATP_VMID_MASK			HGATP32_VMID_MASK
 #define HGATP_MODE_SHIFT		HGATP32_MODE_SHIFT
 #endif
+
+#define RISCV_PGSHIFT			12
+#define RISCV_PGSIZE			(1 << RISCV_PGSHIFT)
 
 /* ===== User-level CSRs ===== */
 
