@@ -8,3 +8,4 @@ copy-files/*
 !copy-files/empty
 *.qcow2
 *.hex
+*.swp
