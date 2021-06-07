@@ -97,8 +97,6 @@ Here, the  `host` is an enclave invoker, which will start an enclave (name from 
 
 Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 
-## Citation
-
 ## Code Structures
 
 - opensbi-0.9: The Penglai-equipped OpenSBI, version 0.9
