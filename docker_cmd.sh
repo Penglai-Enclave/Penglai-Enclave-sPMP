@@ -18,7 +18,7 @@ function print_usage() {
 # no arguments
 if [ $# == 0 ]; then
 	echo "Default: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build.sh
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
 	exit 0
 fi
 
@@ -30,7 +30,7 @@ fi
 # build penglai
 if [[ $1 == *"build"* ]]; then
 	echo "Build: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build.sh
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
 	exit 0
 fi
 
