@@ -1,7 +1,9 @@
 #ifndef _IPI_H
 #define _IPI_H
 
-#include <sm/atomic.h>
+//#include <sm/atomic.h>
+#include <sbi/riscv_atomic.h>
+#include <sbi/riscv_locks.h>
 
 #define IPI_PMP_SYNC     0x1
 //#include <string.h>

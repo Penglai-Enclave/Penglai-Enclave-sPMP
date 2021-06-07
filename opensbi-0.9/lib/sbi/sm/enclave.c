@@ -5,6 +5,7 @@
 #include <sbi/riscv_encoding.h>
 //#include <string.h>
 #include <sbi/sbi_string.h>
+#include <sbi/riscv_locks.h>
 //#include TARGET_PLATFORM_HEADER
 #include <sm/platform/spmp/platform.h>
 
@@ -162,7 +163,7 @@ static struct enclave_t* alloc_enclave()
   struct enclave_t* enclave = NULL;
   int i, found, eid;
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   //enclave metadata list hasn't be initialized yet
   if(enclave_metadata_head == NULL)
@@ -214,7 +215,7 @@ static struct enclave_t* alloc_enclave()
   }
 
 alloc_eid_out:
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return enclave;
 }
 
@@ -224,7 +225,7 @@ static int free_enclave(int eid)
   struct enclave_t *enclave = NULL;
   int i, found, count, ret_val;
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   found = 0;
   count = 0;
@@ -249,7 +250,7 @@ static int free_enclave(int eid)
     ret_val = -1;
   }
 
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
 
   return ret_val;
 }
@@ -260,7 +261,7 @@ struct enclave_t* get_enclave(int eid)
   struct enclave_t *enclave;
   int i, found, count;
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   found = 0;
   count = 0;
@@ -283,7 +284,7 @@ struct enclave_t* get_enclave(int eid)
     enclave = NULL;
   }
 
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return enclave;
 }
 
@@ -407,7 +408,7 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
   //TODO: check whether enclave memory is out of bound
   //TODO: verify enclave page table layout
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   enclave->paddr = create_args.paddr;
   enclave->size = create_args.size;
@@ -424,7 +425,7 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
   enclave->root_page_table = (unsigned long*)create_args.paddr;
   enclave->state = FRESH;
 
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   printm("[Penglai@%s] paddr:0x%x, size:0x%x, entry:0x%x\n"
 		  "untrusted ptr:0x%x host_ptbr:0x%x, pt:0x%x\n"
 		  "thread_context.encl_ptbr:0x%lx\n cur_satp:0x%lx\n",
@@ -453,7 +454,7 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
     return -1UL;
   }
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   printm("M mode: run_enclave: flag: 2\r\n");
   if(enclave->state != FRESH)
@@ -508,7 +509,7 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
   printm("M mode: run_enclave: flag: 6, stack:0x%lx\r\n", regs[2]);
 
 run_enclave_out:
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return retval;
 }
 
@@ -522,7 +523,7 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
     return -1UL;
   }
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
@@ -539,7 +540,7 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
   enclave->state = STOPPED;
 
 stop_enclave_out:
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return retval;
 }
 
@@ -553,7 +554,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
     return -1UL;
   }
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
@@ -572,7 +573,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
   enclave->state = RUNNABLE;
 
 resume_from_stop_out:
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return retval;
 }
 
@@ -586,7 +587,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
     return -1UL;
   }
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   if(enclave->host_ptbr != csr_read(CSR_SATP))
   {
@@ -628,7 +629,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
   retval = regs[10];
 
 resume_enclave_out:
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return retval;
 }
 
@@ -654,12 +655,12 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
     return -1UL;
   }
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   if(check_enclave_authentication(enclave) < 0)
   {
     printm("M mode: exit_enclave: current enclave's eid is not %d\r\n", eid);
-    spinlock_unlock(&enclave_metadata_lock);
+    spin_unlock(&enclave_metadata_lock);
     return -1UL;
   }
 
@@ -670,7 +671,7 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
   sbi_memset((void*)(enclave->paddr), 0, enclave->size);
   mm_free((void*)(enclave->paddr), enclave->size);
 
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
 
   //free enclave struct
   free_enclave(eid);
@@ -689,7 +690,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
     return -1UL;
   }
 
-  spinlock_lock(&enclave_metadata_lock);
+  spin_lock(&enclave_metadata_lock);
 
   //TODO: check whether this enclave is destroyed
   if(enclave->state == DESTROYED)
@@ -708,6 +709,6 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
   regs[10] = ENCLAVE_TIMER_IRQ;
 
 timer_irq_out:
-  spinlock_unlock(&enclave_metadata_lock);
+  spin_unlock(&enclave_metadata_lock);
   return retval;
 }

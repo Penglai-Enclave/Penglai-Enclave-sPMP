@@ -1,8 +1,10 @@
-#include <sm/atomic.h>
+//#include <sm/atomic.h>
+#include <sbi/riscv_atomic.h>
 #include <sm/sm.h>
 #include <sm/pmp.h>
 #include <sm/enclave.h>
 #include <sm/math.h>
+#include <sbi/sbi_console.h>
 
 static int sm_initialized = 0;
 static spinlock_t sm_init_lock = SPINLOCK_INIT;
@@ -19,7 +21,11 @@ uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size)
   printm("[Penglai Monitor] %s invoked\r\n",__func__);
 
   printm("[Penglai Monitor] %s paddr:0x%x, size:0x%x\r\n",__func__, paddr, size);
+  /*DEBUG: Dump PMP registers here */
+  dump_pmps();
   retval = mm_init(paddr, size);
+  /*DEBUG: Dump PMP registers here */
+  dump_pmps();
 
   printm("[Penglai Monitor] %s ret:%d \r\n",__func__, retval);
   return retval;
@@ -59,6 +65,7 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
     return ENCLAVE_ERROR;
   }
 
+  dump_pmps();
   unsigned long resp_size = 0;
   void* paddr = mm_alloc(mm_alloc_arg_local.req_size, &resp_size);
   if(paddr == NULL)
@@ -66,6 +73,7 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
     printm("M mode: sm_alloc_enclave_mem: no enough memory\r\n");
     return ENCLAVE_NO_MEMORY;
   }
+  dump_pmps();
 
   //grant kernel access to this memory
   if(grant_kernel_access(paddr, resp_size) != 0)

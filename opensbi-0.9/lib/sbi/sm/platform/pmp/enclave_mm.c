@@ -1,6 +1,6 @@
 #include <sm/sm.h>
 #include <sm/enclave.h>
-#include <sm/platform/spmp/enclave_mm.h>
+#include <sm/platform/pmp/enclave_mm.h>
 //#include <sm/atomic.h>
 #include <sbi/riscv_atomic.h>
 #include <sbi/riscv_locks.h>
@@ -45,19 +45,21 @@ static int check_mem_size(uintptr_t paddr, unsigned long size)
   return 0;
 }
 
-/*
- * This function grants kernel access to allocated enclave memory
- * for initializing enclave and configuring page table.
+/**
+ * \brief This function grants kernel (temporaily) access to allocated enclave memory
+ * 	  for initializing enclave and configuring page table.
  */
 int grant_kernel_access(void* req_paddr, unsigned long size)
 {
-  //pmp0 is used for allowing kernel to access enclave memory
-  int pmp_idx = 0;
+  //pmp1 is used for allowing kernel to access enclave memory
+  int pmp_idx = 1;
   struct pmp_config_t pmp_config;
   uintptr_t paddr = (uintptr_t)req_paddr;
 
-  if(check_mem_size(paddr, size) != 0)
+  if(check_mem_size(paddr, size) != 0){
+    sbi_printf("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
     return -1;
+  }
 
   pmp_config.paddr = paddr;
   pmp_config.size = size;
@@ -73,44 +75,40 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
  */
 int retrieve_kernel_access(void* req_paddr, unsigned long size)
 {
-#if 0
-  //pmp0 is used for allowing kernel to access enclave memory
-  int pmp_idx = 0;
+#if 1
+  //pmp1 is used for allowing kernel to access enclave memory
+  int pmp_idx = 1;
   struct pmp_config_t pmp_config;
   uintptr_t paddr = (uintptr_t)req_paddr;
 
   pmp_config = get_pmp(pmp_idx);
 
-  if((pmp_config.mode != PMP_NAPOT) || (pmp_config.paddr != paddr) || (pmp_config.size != size))
+  if((pmp_config.mode != PMP_A_NAPOT) || (pmp_config.paddr != paddr) || (pmp_config.size != size))
   {
     printm("retrieve_kernel_access: error pmp_config\r\n");
     return -1;
   }
 
   clear_pmp_and_sync(pmp_idx);
+#endif
 
   return 0;
-#else
-  //FIXME(DD): we always allow kernel access the memory now
-  return 0;
-#endif
 }
 
 //grant enclave access to enclave's memory
 int grant_enclave_access(struct enclave_t* enclave)
 {
-#if 0
   int region_idx = 0;
   int pmp_idx = 0;
   struct pmp_config_t pmp_config;
-  struct spmp_config_t spmp_config;
+  //struct spmp_config_t spmp_config;
 
   if(check_mem_size(enclave->paddr, enclave->size) < 0)
     return -1;
 
   //set pmp permission, ensure that enclave's paddr and size is pmp legal
   //TODO: support multiple memory regions
-  spinlock_lock(&pmp_bitmap_lock);
+  spin_lock(&pmp_bitmap_lock);
   for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
   {
     if(mm_regions[region_idx].valid && region_contain(
@@ -120,7 +118,7 @@ int grant_enclave_access(struct enclave_t* enclave)
       break;
     }
   }
-  spinlock_unlock(&pmp_bitmap_lock);
+  spin_unlock(&pmp_bitmap_lock);
 
   if(region_idx >= N_PMP_REGIONS)
   {
@@ -132,9 +130,15 @@ int grant_enclave_access(struct enclave_t* enclave)
   pmp_config.paddr = mm_regions[region_idx].paddr;
   pmp_config.size = mm_regions[region_idx].size;
   pmp_config.perm = PMP_R | PMP_W | PMP_X;
-  pmp_config.mode = PMP_NAPOT;
+  pmp_config.mode = PMP_A_NAPOT;
   set_pmp(pmp_idx, pmp_config);
 
+  /*FIXME: we should handle the case that the PMP region contains larger region */
+  if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){
+  	printm("[Penglai Monitor@%s] warning, region != enclave mem\n", __func__);
+  }
+
+#if 0
   spmp_config.paddr = enclave->paddr;
   spmp_config.size = enclave->size;
   spmp_config.perm = SPMP_R | SPMP_W | SPMP_X;
@@ -146,12 +150,9 @@ int grant_enclave_access(struct enclave_t* enclave)
   spmp_config.perm = SPMP_NO_PERM;
   spmp_config.mode = SPMP_NAPOT;
   set_spmp(1, spmp_config);
+#endif
 
   return 0;
-#else
-  /* FIXME(DD): do nothing on PMP now */
-  return 0;
-#endif
 }
 
 int retrieve_enclave_access(struct enclave_t *enclave)

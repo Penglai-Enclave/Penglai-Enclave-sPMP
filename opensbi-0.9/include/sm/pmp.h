@@ -2,12 +2,13 @@
 #define _PMP_H
 
 #include <stdint.h>
-#include "sbi/sbi_types.h"
-#include "sbi/riscv_encoding.h"
-#include "sbi/riscv_asm.h"
+#include <sbi/sbi_types.h>
+#include <sbi/riscv_encoding.h>
+#include <sbi/riscv_asm.h>
+#include <sbi/sbi_hartmask.h>
 
 //number of PMP registers
-#define NPMP 8
+#define NPMP 16
 
 //already defined in machine/encoding.h
 /*
@@ -59,14 +60,26 @@ struct pmp_config_t
   uintptr_t mode;
 };
 
+struct pmp_data_t
+{
+  struct pmp_config_t pmp_config_arg;
+  int pmp_idx_arg;
+  struct sbi_hartmask smask;
+};
+
+#define SBI_PMP_DATA_INIT(__ptr, __pmp_config_arg, __pmp_idx_arg, __src) \
+do { \
+	(__ptr)->pmp_config_arg = (__pmp_config_arg); \
+	(__ptr)->pmp_idx_arg = (__pmp_idx_arg); \
+	SBI_HARTMASK_INIT_EXCEPT(&(__ptr)->smask, (__src)); \
+} while (0)
+
+
 void set_pmp_and_sync(int pmp_idx, struct pmp_config_t);
-
 void clear_pmp_and_sync(int pmp_idx);
-
 void set_pmp(int pmp_idx, struct pmp_config_t);
-
 void clear_pmp(int pmp_idx);
-
 struct pmp_config_t get_pmp(int pmp_idx);
+void dump_pmps(void);
 
 #endif /* _PMP_H */
