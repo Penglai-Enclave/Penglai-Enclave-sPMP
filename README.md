@@ -5,16 +5,36 @@
 ![Penglai Header](docs/images/penglai_hdr.jpg)
 
 
+
+## Introduction
+
+Penglai is a RISC-V TEE system, which is designed to be **secure**, **high-performant**, and **scalable**.
 This repo maintains OpenSBI version of Penglai Enclave based on PMP.
-Now it can support OpenEuler (experimental version).
 
-## Info
+**How to use?**
 
-- OpenSBI-based Penglai for Nuclei devices is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
+Simply replace the OpenSBI used in your system with opensbi-0.9 in the top directory in the repo.
 
-## Build
+You can use our SDK and enclave-driver to build your trusted applications, or even write your own SDKs.
 
-### OpenEuler Kernel
+## Status and Info
+
+- Status: experimental: it's still experimental version now, please refer our TVM version for more features.
+- Hardware requirement: riscv qemu (suggested version: >= 5.2.0) is fine
+- Supported software system: This repo contains resources to run OpenEuler with Penglai TEE.
+- Real devices: Penglai for Nuclei devices is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
+
+## Case: Running OpenEuler with Penglai
+
+### Requirements
+
+Penglai uses Docker for building and uses submodules to track different componets.
+Therefore, the only requirement to build and run penglai-demo is:
+
+- [Docker](https://docs.docker.com): for building/running Penglai
+- Git: for downloading the code
+
+### Build OpenEuler Kernel
 
 Follow the instructions in openeuler riscv gitee to compile OpenEuler kernel.
 
@@ -24,7 +44,7 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 	cd /env
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make ARCH=riscv -j8
 
-### OpenSBI (with Penglai supports)
+### Build OpenSBI (with Penglai supports)
 
 	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
 	cd /env/opensbi-0.6
@@ -38,7 +58,7 @@ A simpler way:
 	#In the docker image
 	./scripts/build_opensbi.sh
 
-## Run OpenEuler with Penglai Supports
+### Run OpenEuler with Penglai Supports
 
 	qemu-system-riscv64 -nographic -machine virt \
 	-smp 8 -m 2G \
@@ -61,43 +81,7 @@ A simpler way:
 Note: a script, run_openeuler.sh is provided to execute the above command easily
 
 
-
-## Quick Start (Old)
-
-Penglai uses Docker for building and uses submodules to track different componets.
-
-Therefore, the only requirement to build and run penglai-demo is:
-
-- [Docker](https://docs.docker.com): for building/running Penglai
-- Git: for downloading the code
-
-### Building
-
-First, download the all the code:
-
-`git clone https://github.com/Penglai-Enclave/Penglai-Enclave-sPMP.git`
-
-Enter the penglai-enclave directory, `cd Penglai-Enclave`
-
-And then,
-
-`git submodule update --init --recursive`
-
-Last, build penglai using our Docker image:
-
-`./docker_cmd.sh build`
-
-When the building process finished, you are ready to run the penglai demo.
-
-## Running
-
-In the penglai-enclave directory,
-
-`./docker_cmd.sh qemu`
-
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
-
-Enter the terminal with the user name: root, and passwords: penglai.
 
 **Insmod the enclave-driver**
 
@@ -113,19 +97,16 @@ Here, the  `host` is an enclave invoker, which will start an enclave (name from 
 
 Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 
+## Citation
+
 ## Code Structures
 
-- buildroot: The buildroot rootfs for Penglai (from Sifive's Freedom U-sdk)
-- linux: The Untrusted OS kernel (kernel 4.15) for Penglai (from Sifive's Freedom U-sdk)
-- monitor: The secure monitor of Penglai, implementing isolation using PMP/sPMP, based on BBL
-- riscv-qemu: The modified qemu (4.1) to support sPMP
+- opensbi-0.9: The Penglai-equipped OpenSBI, version 0.9
+- openeuler-kernel: OpenEuler Kernel
+- riscv-qemu: The modified qemu (4.1) to support sPMP (you can also use the standard qemu)
 - scripts: some scripts to build/run Penglai demo
-- conf: some configuration files to build Penglai
-- copy-files: a temp dir to store files copied into Penglai
 
 ## Code Contributions
-
-If you are developing Penglai, please use pull requests on **target submodule project** (not on the super project).
 
 Please fell free to post your concerns, ideas, code or anything others to issues.
 
@@ -133,6 +114,19 @@ Please fell free to post your concerns, ideas, code or anything others to issues
 
 Please refer the wiki for more details
 
+## Cite
+
+To cite Penglai, please consider using the following bibtex:
+```
+@inproceedings{feng2021penglai,
+  title={Scalable Memory Protection in the PENGLAI Enclave},
+  author={Erhu, Feng and Xu, Lu and Dong, Du and Bicheng, Yang and Xueqiang, Jiang and Yubin, Xia and Binyu, Zang and Haibo, Chen},
+  booktitle={15th $\{$USENIX$\}$ Symposium on Operating Systems Design and Implementation ($\{$OSDI$\}$ 21)},
+  year={2021}
+}
+```
+
 ## Acknowledgements
 
-The design of Penglai was inspired by Sanctum, Keystone and HexFive, thanks to their great work.
+The design of Penglai was inspired by Sanctum, Keystone and HexFive, thanks to their great work!
+
