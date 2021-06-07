@@ -11,14 +11,14 @@ function print_usage() {
 
 	echo -e "\n${RED}OPTIONS${NONE}:
 	${BLUE}build${NONE}: build penglai-demo image
-	${BLUE}run-qemu${NONE}: run penglai-demo image in (modified) qemu 
+	${BLUE}run-qemu${NONE}: run penglai-demo image in (modified) qemu
 	"
 }
 
 # no arguments
 if [ $# == 0 ]; then
 	echo "Default: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build.sh
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
 	exit 0
 fi
 
@@ -27,25 +27,25 @@ if [[ $1 == *"help"* ]]; then
 	exit 0
 fi
 
-# build penglai 
+# build penglai
 if [[ $1 == *"build"* ]]; then
 	echo "Build: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build.sh
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
 	exit 0
 fi
 
-# build penglai 
+# build penglai
 if [[ $1 == *"qemu"* ]]; then
 	echo "Run: run penglai demo image in sPMP-supported Qemu"
 	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/run-qemu.sh
 	exit 0
 fi
 
-# run docker 
+# run docker
 if [[ $1 == *"docker"* ]]; then
 	echo "Run: run docker"
 	#sudo docker run --privileged --cap-add=ALL  -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	exit 0
 fi
 

@@ -1,0 +1,259 @@
+==========================
+IMA Digest Lists Extension
+==========================
+
+INTRODUCTION
+============
+
+Integrity Measurement Architecture (IMA) is a security module that performs
+measurement of files accessed with the execve(), mmap() and open() system
+calls. File measurements can be used for different purposes. They can be
+added in a measurement list and sent to a remote verifier for an integrity
+evaluation. They can be compared to reference values provided by the
+software vendor and access can be denied if there is a mismatch. File
+measurements can also be included in system logs for auditing purposes.
+
+IMA Digest Lists is an extension providing additional functionality for
+the IMA submodules and EVM. Its main task is to load reference values for
+file content and metadata in the kernel memory, and to communicate to IMA
+submodules (measurement and appraisal) or EVM whether the digest of a file
+being accessed is found in the uploaded digest lists.
+
+The IMA-Measure submodule uses the IMA Digest Lists extension to create
+a new measurement list (with a different PCR, for example 11) which
+contains the measurement of uploaded digest lists and unknown files. Since
+the loading of digest lists is sequential, the chosen PCR will have a
+predictable value for the whole boot cycle and can be used for sealing
+policies based on the OS software integrity.
+
+Both the standard and the new measurement list can be generated at the same
+time, allowing for implicit attestation based on the usage of a TPM key
+sealed to the OS, and for explicit attestation when a more precise
+integrity evaluation is necessary.
+
+The IMA-Appraise submodule uses the IMA Digest Lists extension to
+grant/deny access to the files depending on whether the file digest is
+found in the uploaded digest lists, instead of checking security.ima.
+
+EVM uses the IMA Digest Lists extension to check file metadata integrity.
+
+The main advantage of the extension is that reference measurements used for
+the digest comparison can be extracted from already existing sources (for
+example RPM headers). Another benefit is that the overhead compared to file
+signatures is lower as only one signature is verified for all files
+included in the digest list.
+
+
+
+WORKFLOW
+========
+
+The IMA workflow is modified as follows. The added steps are marked as
+[NEW].
+
+  +------------+
+  |  IMA hook  |
+  +------------+
+        |
+   +---------+
+   | collect |
+   +---------+
+        |                                           +---------------------+
++---------------+                       ------------| don't measure [NEW] |
+| digest lookup |                       | yes       +---------------------+
+|     [NEW]     |                 -------------- no +---------------------+
++---------------+           -----/ digest       \---| add to measurement  |
+        |                   |    \ found? [NEW] /   | list (PCR 11) [NEW] |
+        |                   |     --------------    +---------------------+
+  +----------+       +-------------+                +--------------------+
+  |  switch  |-------| IMA-Measure |----------------| add to measurement |
+  | (action) |       +-------------+                | list (PCR 10)      |
+  +----------+                                      +--------------------+
+        |
+        |
+        |       no xattr
++--------------+     ---------------  yes
+| IMA-Appraise |----/ filec created \-------------------------------
++--------------+    \ created [NEW] /                              |
+  xattr |            ---------------                               |
+        |                   | no                                   |
+        |           ------------------  no  --------------  yes  +--------+
+        |          / EVM initialized? \----/ digest       \------| grant  |
+        |          \ [NEW]            /    \ found? [NEW] /      | access |
+        |           ------------------      --------------       +--------+
+        |                   | yes                 | no
+        |                   |                     |              +--------+
+        |           -------------------  no       ---------------| deny   |
+        |          / digest-nometadata \-------------------------| access |
+        |          \ mode? [NEW]       /                         +--------+
+        |           -------------------
+        |               ^   | yes                                +--------+
+        |               |   -------------------------------------| grant  |
+        |               |                                        | access |
+        |               |                                        +--------+
+        |               | yes
+        |           -------------------------  no                +--------+
+        |----------/ security.ima (new type) \-------------------| deny   |
+        |          \ present and valid?      /                   | access |
+        |           -------------------------                    +--------+
+        |                                                            |
+        |           --------------------------  no                   |
+        -----------/ security.ima (cur types) \-----------------------
+                   \ present and valid?       /
+                    --------------------------
+                             | yes                               +--------+
+                             ------------------------------------| grant  |
+                                                                 | access |
+                                                                 +--------+
+
+
++-----+          --------------------------  yes                 +--------+
+| EVM |---------/ security.evm (cur types) \---------------------| grant  |
++-----+         \ present and valid?       /                     | access |
+   |             --------------------------                      +--------+
+   |                         |
+   |                         | no                                +--------+
+   |                         ------------------------------------| deny   |
+   |                                                             | access |
+   |                                                             +--------+
+   |                                                                 |
+   |                                          +-----------+          |
+   |             -------------------------    | calculate |          |
+   -------------/ security.evm (new type) \---| metadata  |          |
+                \ present? [NEW]          /   | digest    |          |
+                 -------------------------    +-----------+          |
+                                                    |                |
+                                              --------------  no     |
+                                             / digest       \---------
+                                             \ found? [NEW] /
+                                              --------------     +--------+
+                                                    | yes        | grant  |
+                                                    |            | access |
+                                                    |            +--------+
+                                                    |                |
+                                             ------------------  yes |
+                                            / digest           \-----|
+                                            \ immutable? [NEW] /     |
+                                             ------------------      |
+                                                    | no             |
+                                               +---------+           |
+                                               | convert |------------
+                                               | to HMAC |
+                                               +---------+
+
+
+After the file digest is calculated, it is searched in the hash table
+containing all digests extracted from the uploaded digest lists. Then, if
+the digest is found, a structure is returned to IMA with information
+associated to that digest. The structure is returned only to the IMA
+submodules that processed the digest lists (i.e. the action returned by
+ima_get_action() was 'measure' or 'appraise').
+
+IMA-Measure behavior depends on whether the digest list PCR has been
+specified in the kernel command line. If the PCR was not specified, the
+submodule behaves as before. If the PCR was specified, IMA-Measure creates
+a new measurement with that PCR, only if the file digest is not found in
+the digest lists. It additionally creates a measurement with the default
+PCR if '+' is added as a prefix to the PCR.
+
+IMA-Appraise behavior depends on whether either the 'digest' or
+'digest-nometadata' appraisal modes have been specified in the kernel
+command line. If they were not specified, IMA-Appraise relies solely on the
+security.ima xattr for verification. If the 'digest' mode was specified,
+verification succeeds if the file digest is found in the digest lists and
+EVM is not initialized, as there is no other way to verify file metadata.
+
+If the 'digest-nometadata' mode was specified, verification succeeds
+regardless of the fact that EVM is initialized or not. However, after a
+write, files for which access was granted without verifying metadata will
+have a new security.ima type, so that they can be identified also after
+reboot. Specifying 'digest-nometadata' is required also to access files
+with the new security.ima type.
+
+EVM determines whether metadata digest should be searched in the digest
+lists depending on the security.evm type. If the new type is set, EVM
+calculates metadata digest and searches it in the digest lists. A structure
+is returned to EVM if the digest is found and the digest lists were
+appraised.
+
+
+
+ARCHITECTURE
+============
+
++-----+                    6) digest lookup
+| EVM |------------------------------------------------
++-----+                                               |
+                                                      |
++--------------+           5) digest lookup           |
+| IMA-Appraise |--------------------------------------|
++--------------+                                     ||
+                                                     ||
++-------------+            4) digest lookup          ||
+| IMA-Measure | -------------------------------------||
++-------------+                                     |||
+                                                    |||
++-------------+   2) parse compact list   +-------------------+
+| IMA (secfs) | ------------------------> | IMA Digests Lists |
++-------------+                           +-------------------+
+   ^                                                 | 3) add digests
+   |                                           +------------+
+   |                                           | hash table |
+   |                                           +------------+
+   |
+   |                                                            kernel space
+---|-------------------------------------------------------------------------
+   |                                                            user space
+   |
+   |
+   |
+   |
+   |
+   |
+   |
+1) echo <digest list path>
+
+The main addition to IMA is a new hash table (similar to that used to check
+for duplicate measurement entries), which contains file content and metadata
+digests extracted from the digest lists.
+
+Digest lists can be uploaded to the kernel by writing their path to
+digest_list_data in the securityfs filesystem. After digest lists are
+uploaded, they are parsed by the kernel and extracted digests are added to
+the hash table.
+
+IMA submodules, Measure and Appraise, search the digest of an accessed file
+in the hash table and perform actions depending on whether the digest was
+found or not. IMA submodules can search digests in the hash table only if
+they also processed the digest lists.
+
+EVM searches the metadata digest of an accessed file in the hash table and
+returns the result to IMA, which perform actions depending on the result.
+EVM can search digests in the hash table if IMA-Appraise processed the
+digest lists.
+
+
+
+CONFIGURATION
+=============
+
+The first step consists in generating digest lists with the
+gen_digest_lists tool included in the digest-list-tools package.
+digest-list-tools can be retrieved at the URL:
+
+https://gitee.com/openeuler/digest-list-tools
+
+gen_digest_lists can generate digest lists from different sources (for
+example: RPM package DB). By default, it saves generated digest lists in
+the /etc/ima/digest_lists directory. digest-list-tools includes also two
+bash scripts setup_ima_digest_lists and setup_digest_lists_demo to simplify
+the digest list generation for the users.
+
+To use digest lists during early boot, it is necessary to regenerate the
+initial ram disk. Digest lists will be added to the ram disk by the new
+dracut/initramfs-tools modules, included in the digest-list-tools package. To
+include file signatures in the initial ram disk, it is necessary to have the
+following patches applied:
+
+https://gitee.com/src-openeuler/cpio/blob/master/add-option-to-add-metadata-in-copy-out-mode.patch
+https://gitee.com/src-openeuler/dracut/blob/master/add-option-to-include-file-metadata-in-initramfs.patch

@@ -1,15 +1,6 @@
 [submodule "sdk"]
 	path = sdk
 	url = https://github.com/Penglai-Enclave/penglai-sdk.git
-[submodule "buildroot"]
-	path = buildroot
-	url = https://github.com/Penglai-Enclave/penglai-buildroot.git
-[submodule "monitor"]
-	path = monitor
-	url = https://github.com/Penglai-Enclave/penglai-monitor.git
-[submodule "linux"]
-	path = linux
-	url = https://github.com/Penglai-Enclave/penglai-linux.git
 [submodule "riscv-qemu"]
 	path = riscv-qemu
 	url = https://github.com/Penglai-Enclave/penglai-qemu.git
