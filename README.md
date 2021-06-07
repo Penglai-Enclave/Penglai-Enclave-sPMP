@@ -1,7 +1,7 @@
 [![License: Mulan](https://img.shields.io/badge/license-Mulan-brightgreen.svg)](https://license.coscl.org.cn/MulanPSL)
 
 
-![Penglai Header](docs/images/penglai_hdr.png)
+![Penglai Header](docs/images/penglai_hdr.jpg)
 
 
 This repo maintains OpenSBI version of Penglai Enclave based on PMP.
