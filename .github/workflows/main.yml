@@ -1,0 +1,14 @@
+on: 
+        push:
+                branches: [openeuler, opensbi]
+        pull_request:
+                branches: [openeuler, opensbi]
+
+jobs:
+        build:
+                runs-on: ubuntu-latest
+                name: build penglai enclave (based on openSBI)
+                steps:
+                        - name: build step
+                          id: build 
+                          uses: Ddnirvana/action-penglai-build@v1
