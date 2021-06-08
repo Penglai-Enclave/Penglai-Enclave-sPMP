@@ -9,6 +9,8 @@ jobs:
                 runs-on: ubuntu-latest
                 name: build penglai enclave (based on openSBI)
                 steps:
+                        - name: Check out code
+                          uses: actions/checkout@v2
                         - name: build step
                           id: build 
                           uses: Ddnirvana/action-penglai-build@v1
