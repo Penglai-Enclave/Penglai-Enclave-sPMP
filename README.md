@@ -1,4 +1,4 @@
-[![Build](https://github.com/Ddnirvana/Penglai-Enclave/actions/workflows/build/badge.svg)](https://github.com/Ddnirvana/Penglai-Enclave/actions)
+[![build](https://github.com/Ddnirvana/Penglai-Enclave/actions/workflows/build.yml/badge.svg)](https://github.com/Ddnirvana/Penglai-Enclave/actions/workflows/build.yml)
 ![Status: Experimental](https://img.shields.io/badge/Version-Experimental-green.svg)
 [![License: Mulan](https://img.shields.io/badge/license-Mulan-brightgreen.svg)](https://license.coscl.org.cn/MulanPSL)
 
