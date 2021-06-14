@@ -7,7 +7,7 @@
 
 //#include TARGET_PLATFORM_HEADER
 #include <sm/print.h>
-#include <sm/platform/spmp/platform.h>
+#include <sm/platform/pmp/platform.h>
 #include <stdint.h>
 #include <sm/enclave_args.h>
 #include <sm/ipi.h>
