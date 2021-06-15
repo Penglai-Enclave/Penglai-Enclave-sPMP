@@ -60,6 +60,17 @@ A simpler way:
 	#In the docker image
 	./scripts/build_opensbi.sh
 
+### Build Penglai SDK
+
+Following the commands:
+
+	./docker_cmd.sh docker
+	# In the docker image
+	cd penglai-enclave-driver
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make ARCH=riscv -j8
+
+It will generate penglai.ko in the penglai-enclave-driver dir.
+
 ### Run OpenEuler with Penglai Supports
 
 	qemu-system-riscv64 -nographic -machine virt \
