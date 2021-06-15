@@ -48,8 +48,9 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 ### Build OpenSBI (with Penglai supports)
 
 	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
-	cd /env/opensbi-0.6
-	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=qemu/virt FW_PAYLOAD=y FW_PAYLOAD_PATH=/env/Image
+	cd /env/opensbi-0.9
+	mkdir -p build-oe/qemu-virt
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/env/Image
 
 Note: the /env/Image is the image compiled OpenEuler Kernel Image.
 
@@ -62,8 +63,8 @@ A simpler way:
 ### Run OpenEuler with Penglai Supports
 
 	qemu-system-riscv64 -nographic -machine virt \
-	-smp 8 -m 2G \
-	-kernel  /home/dd/devlop/penglai/penglai-openeular/opensbi/opensbi-0.6/build-oe/qemu-virt/platform/qemu/virt/firmware/fw_payload.elf  \
+	-smp 4 -m 2G \
+	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
 	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
 	-object rng-random,filename=/dev/urandom,id=rng0 \
 	-device virtio-rng-device,rng=rng0 \
