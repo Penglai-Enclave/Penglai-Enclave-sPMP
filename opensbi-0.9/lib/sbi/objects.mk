@@ -45,12 +45,14 @@ libsbi-objs-y += sbi_pmp.o
 
 ## Add by Dong Du
 #  The Penglai related files here
+libsbi-objs-y += sbi_ecall_penglai.o
 libsbi-objs-y += sm/enclave.o
 libsbi-objs-y += sm/ipi.o
 libsbi-objs-y += sm/math.o
 libsbi-objs-y += sm/pmp.o
 libsbi-objs-y += sm/sm.o
 libsbi-objs-y += sm/thread.o
+libsbi-objs-y += sm/utils.o
 #libsbi-objs-y += sm/platform/spmp/enclave_mm.o
 #libsbi-objs-y += sm/platform/spmp/ipi_handler.o
 libsbi-objs-y += sm/platform/pmp/platform.o

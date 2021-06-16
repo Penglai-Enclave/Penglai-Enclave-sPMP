@@ -8,6 +8,7 @@
 #include <sbi/riscv_locks.h>
 //#include TARGET_PLATFORM_HEADER
 #include <sm/platform/spmp/platform.h>
+#include <sm/utils.h>
 
 static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
 
@@ -424,6 +425,10 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
   enclave->thread_context.encl_ptbr = (create_args.paddr >> (RISCV_PGSHIFT) | SATP_MODE_CHOICE);
   enclave->root_page_table = (unsigned long*)create_args.paddr;
   enclave->state = FRESH;
+
+  //Dump the PT here, for degbu
+  sbi_printf("[Penglai@%s], Dump PT for created enclave\n", __func__);
+  dump_pt(enclave->root_page_table, 1);
 
   spin_unlock(&enclave_metadata_lock);
   printm("[Penglai@%s] paddr:0x%x, size:0x%x, entry:0x%x\n"
