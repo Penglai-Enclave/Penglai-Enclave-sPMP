@@ -253,18 +253,30 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		rc  = sbi_misaligned_store_handler(mtval, mtval2, mtinst, regs);
 		msg = "misaligned store handler failed";
 		break;
+	case CAUSE_USER_ECALL:
+		//The only case for USER_ECALL is issued by Penglai Enclave now
+		if (check_in_enclave_world() <0) {
+			sbi_printf("[Penglai] Error, user ecall not in enclaves\n");
+			rc = -1;
+			break;
+		} else {// continue to sbi_ecall_handler
+			sbi_printf("[Penglai] ecall from enclaves\n");
+		}
 	case CAUSE_SUPERVISOR_ECALL:
 	case CAUSE_MACHINE_ECALL:
 		rc  = sbi_ecall_handler(regs);
 		msg = "ecall handler failed";
 		break;
 	default:
+#if 0 /* The following code is deprecated as we use USER_ECALL to trap enclave calls now */
 		if (check_in_enclave_world() >=0) {
-			sbi_printf("[Penglai] ecall from enclaves\n");
+			sbi_printf("[Penglai] ecall from enclaves, mcause:%d, mepc:0x%x, a6:0x%x, a7:0x%x\n",
+					mcause, regs->mepc, regs->a6, regs->a7);
 			rc = sbi_ecall_handler(regs);
 			msg = "ecall handler failed";
 			break;
 		}
+#endif
 		/* If the trap came from S or U mode, redirect it there */
 		trap.epc = regs->mepc;
 		trap.cause = mcause;
