@@ -13,7 +13,7 @@
 static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
 
 //spinlock
-static spinlock_t enclave_metadata_lock = SPINLOCK_INIT;
+static spinlock_t enclave_metadata_lock = SPIN_LOCK_INITIALIZER;
 
 //enclave metadata
 struct link_mem_t* enclave_metadata_head = NULL;
