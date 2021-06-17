@@ -1,5 +1,4 @@
 #include <sm/pmp.h>
-#include <sm/ipi.h>
 #include <stddef.h>
 #include <sbi/sbi_pmp.h>
 #include <sbi/sbi_console.h>

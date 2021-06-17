@@ -1,4 +1,3 @@
-//#include "spmp.c"
 #include "enclave_mm.c"
 #include "platform_thread.c"
 

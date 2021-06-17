@@ -10,8 +10,6 @@
 #include <sm/platform/pmp/platform.h>
 #include <stdint.h>
 #include <sm/enclave_args.h>
-#include <sm/ipi.h>
-
 
 /*
  * Note: the hard-coded SM base and size depends on the M-mode firmware,
