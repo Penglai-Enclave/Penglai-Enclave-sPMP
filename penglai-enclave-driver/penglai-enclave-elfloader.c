@@ -108,7 +108,7 @@ int penglai_enclave_loadelf(enclave_mem_t*enclave_mem, void* __user elf_ptr, uns
       printk("KERNEL MODULE: penglai enclave load program failed\n");
       return -1;
     }
-    printk("[Penglai Driver@%s] elf_prog_addr:0x%x elf_prog_size:0x%lx, infile_addr:0x%lx", __func__,
+    printk("[Penglai Driver@%s] elf_prog_addr:0x%lx elf_prog_size:0x%x, infile_addr:0x%lx", __func__,
 		    elf_prog_addr, elf_prog_size, elf_prog_infile_addr);
     elf_prog_ptr += sizeof(struct elf_phdr);
   }
@@ -137,8 +137,8 @@ int penglai_enclave_eapp_preprare(enclave_mem_t* enclave_mem,  void* __user elf_
 int map_untrusted_mem(enclave_mem_t* enclave_mem, vaddr_t vaddr, paddr_t paddr, unsigned long size)
 {
   vaddr_t addr = vaddr;
-  for (addr; addr < vaddr + size; addr+=RISCV_PGSIZE)
-  {
+
+  for (; addr < vaddr + size; addr+=RISCV_PGSIZE) {
     map_va2pa(enclave_mem, vaddr, paddr, ENCLAVE_UNTRUSTED_PAGE);
     paddr += RISCV_PGSIZE;
   }
