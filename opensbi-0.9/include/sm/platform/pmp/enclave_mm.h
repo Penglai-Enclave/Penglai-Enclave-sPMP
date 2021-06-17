@@ -7,8 +7,8 @@
 
 #define N_PMP_REGIONS (NPMP - 3)
 
-#define REGION_TO_PMP(region_idx) (region_idx + 1)
-#define PMP_TO_REGION(pmp_idx) (pmp_idx - 1)
+#define REGION_TO_PMP(region_idx) (region_idx + 2) //from the 3rd to the N-1 regions
+#define PMP_TO_REGION(pmp_idx) (pmp_idx - 2)
 
 /*
  * Layout of free memory chunk

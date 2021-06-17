@@ -11,8 +11,9 @@
 /*
  * Only NPMP-3 enclave regions are supported.
  * The last PMP is used to allow kernel to access memory.
- * The second to last PMP is used to protect security monitor from kernel.
- * The first PMP is used to allow kernel to configure enclave's page table.
+ * The 1st PMP is used to protect security monitor from kernel.
+ * The 2nd PMP is used to allow kernel to configure enclave's page table.
+ * Othres, (NPMP-3) PMPs are for enclaves, i.e., secure memory
  *
  * TODO: this array can be removed as we can get
  * existing enclave regions via pmp registers
@@ -22,6 +23,9 @@ static unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
 
+/*
+ * Check the validness of the paddr and size
+ * */
 static int check_mem_size(uintptr_t paddr, unsigned long size)
 {
   if((size == 0) || (size & (size - 1)))
@@ -44,6 +48,14 @@ static int check_mem_size(uintptr_t paddr, unsigned long size)
 
   return 0;
 }
+
+/*
+ * TODO: we should protect kernel temporal region with lock
+ * 	 A possible malicious case:
+ * 	 	kernel@Hart-0: acquire memory region, set to PMP-1
+ * 	 	kernel@Hart-1: acquire memory region, set to PMP-1 <- this will overlap the prior region
+ * 	 	kernel@Hart-0: release memory region <- dangerous behavior now
+ * */
 
 /**
  * \brief This function grants kernel (temporaily) access to allocated enclave memory
@@ -75,7 +87,6 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
  */
 int retrieve_kernel_access(void* req_paddr, unsigned long size)
 {
-#if 1
   //pmp1 is used for allowing kernel to access enclave memory
   int pmp_idx = 1;
   struct pmp_config_t pmp_config;
@@ -85,12 +96,11 @@ int retrieve_kernel_access(void* req_paddr, unsigned long size)
 
   if((pmp_config.mode != PMP_A_NAPOT) || (pmp_config.paddr != paddr) || (pmp_config.size != size))
   {
-    printm("retrieve_kernel_access: error pmp_config\r\n");
+    sbi_printf("retrieve_kernel_access: error pmp_config\r\n");
     return -1;
   }
 
   clear_pmp_and_sync(pmp_idx);
-#endif
 
   return 0;
 }
@@ -127,15 +137,27 @@ int grant_enclave_access(struct enclave_t* enclave)
   }
 
   pmp_idx = REGION_TO_PMP(region_idx);
+#if 0
   pmp_config.paddr = mm_regions[region_idx].paddr;
   pmp_config.size = mm_regions[region_idx].size;
+#else
+  //this enclave memory region could be less than the mm_region size
+  pmp_config.paddr = enclave->paddr;
+  pmp_config.size = enclave->size;
+#endif
   pmp_config.perm = PMP_R | PMP_W | PMP_X;
   pmp_config.mode = PMP_A_NAPOT;
+
+  /* Note: here we only set the PMP regions in local Hart*/
   set_pmp(pmp_idx, pmp_config);
 
   /*FIXME: we should handle the case that the PMP region contains larger region */
   if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){
   	printm("[Penglai Monitor@%s] warning, region != enclave mem\n", __func__);
+  	printm("[Penglai Monitor@%s] region: paddr(0x%lx) size(0x%lx)\n",
+			__func__, pmp_config.paddr, pmp_config.size);
+  	printm("[Penglai Monitor@%s] enclave mem: paddr(0x%lx) size(0x%lx)\n",
+			__func__, enclave->paddr, enclave->size);
   }
 
 #if 0
@@ -158,10 +180,8 @@ int grant_enclave_access(struct enclave_t* enclave)
 int retrieve_enclave_access(struct enclave_t *enclave)
 {
   int region_idx = 0;
-#if 0
   int pmp_idx = 0;
-  struct pmp_config_t pmp_config;
-#endif
+  //struct pmp_config_t pmp_config;
 
   //set pmp permission, ensure that enclave's paddr and size is pmp legal
   //TODO: support multiple memory regions
@@ -177,20 +197,20 @@ int retrieve_enclave_access(struct enclave_t *enclave)
   }
   spin_unlock(&pmp_bitmap_lock);
 
-#if 0 //FIXME(DD): disable PMP ops now
   if(region_idx >= N_PMP_REGIONS)
   {
-    printm("M mode: Error: retriece_enclave_access\r\n");
+    sbi_printf("M mode: Error: retriece_enclave_access\r\n");
     return -1;
   }
 
   pmp_idx = REGION_TO_PMP(region_idx);
+#if 0
   pmp_config = get_pmp(pmp_idx);
   pmp_config.perm = PMP_NO_PERM;
   set_pmp(pmp_idx, pmp_config);
-
-  clear_spmp(0);
-  clear_spmp(1);
+#else
+  // we can simply clear the PMP to retrieve the permission
+  clear_pmp(pmp_idx);
 #endif
 
   return 0;
@@ -205,7 +225,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
   //check whether the new region overlaps with security monitor
   if(region_overlap(sm_base, sm_size, paddr, size))
   {
-    printm("pmp memory overlaps with security monitor!\r\n");
+    sbi_printf("pmp memory overlaps with security monitor!\r\n");
     return -1;
   }
 
@@ -216,7 +236,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
         && region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
           paddr, size))
     {
-      printm("pmp memory overlaps with existing pmp memory!\r\n");
+      sbi_printf("pmp memory overlaps with existing pmp memory!\r\n");
       return -1;
     }
   }
@@ -252,6 +272,7 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
     pmp_idx = REGION_TO_PMP(region_idx);
     if(!(pmp_bitmap & (1<<pmp_idx)))
     {
+      //FIXME: we already have mm_regions[x].valid, why pmp_bitmap again
       pmp_bitmap |= (1 << pmp_idx);
       break;
     }
@@ -346,7 +367,7 @@ static struct mm_list_t* alloc_one_region(int region_idx, int order)
 {
   if(!mm_regions[region_idx].valid || !mm_regions[region_idx].mm_list_head)
   {
-    printm("M mode: alloc_one_region: m_regions[%d] is invalid/NULL\r\n", region_idx);
+    sbi_printf("M mode: alloc_one_region: m_regions[%d] is invalid/NULL\r\n", region_idx);
     return NULL;
   }
 
@@ -650,7 +671,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
   }
   if(region_idx >= N_PMP_REGIONS)
   {
-    printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
+    sbi_printf("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
     ret_val = -1;
     goto mm_free_out;
   }
@@ -686,7 +707,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
   ret_val = insert_mm_region(region_idx, mm_region, 1);
   if(ret_val < 0)
   {
-    printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
+    sbi_printf("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
   }
 
   //printm("after mm_free\r\n");
