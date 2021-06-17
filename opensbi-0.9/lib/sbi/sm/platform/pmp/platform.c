@@ -1,6 +1,5 @@
 //#include "spmp.c"
 #include "enclave_mm.c"
-#include "ipi_handler.c"
 #include "platform_thread.c"
 
 #include <sm/print.h>
