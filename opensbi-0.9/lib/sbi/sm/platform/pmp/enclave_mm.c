@@ -19,7 +19,7 @@
  */
 static struct mm_region_t mm_regions[N_PMP_REGIONS];
 static unsigned long pmp_bitmap = 0;
-static spinlock_t pmp_bitmap_lock = SPINLOCK_INIT;
+static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
 
 static int check_mem_size(uintptr_t paddr, unsigned long size)
@@ -38,7 +38,7 @@ static int check_mem_size(uintptr_t paddr, unsigned long size)
 
   if(paddr & (size - 1))
   {
-    printm("pmp size should be %d aligned!\r\n", size);
+    printm("pmp size should be %ld aligned!\r\n", size);
     return -1;
   }
 
@@ -158,8 +158,10 @@ int grant_enclave_access(struct enclave_t* enclave)
 int retrieve_enclave_access(struct enclave_t *enclave)
 {
   int region_idx = 0;
+#if 0
   int pmp_idx = 0;
   struct pmp_config_t pmp_config;
+#endif
 
   //set pmp permission, ensure that enclave's paddr and size is pmp legal
   //TODO: support multiple memory regions
@@ -546,13 +548,16 @@ void print_buddy_system()
   printm("struct mm_list_t size is 0x%lx\r\n", sizeof(struct mm_list_t));
   while(mm_list_head)
   {
-    printm("mm_list_head addr is 0x%lx, order is %d\r\n", mm_list_head, mm_list_head->order);
-    printm("mm_list_head prev is 0x%lx, next is 0x%lx, mm_list is 0x%lx\r\n", mm_list_head->prev_list_head, mm_list_head->next_list_head, mm_list_head->mm_list);
+    printm("mm_list_head addr is 0x%ln, order is %d\r\n", (long int *)mm_list_head, mm_list_head->order);
+    printm("mm_list_head prev is 0x%ln, next is 0x%ln, mm_list is 0x%ln\r\n",
+		    (long int *)mm_list_head->prev_list_head,
+		    (long int *)mm_list_head->next_list_head,
+		    (long int*)mm_list_head->mm_list);
     struct mm_list_t *mm_region = mm_list_head->mm_list;
     while(mm_region)
     {
-      printm("  mm_region addr is 0x%lx, order is %d\r\n", mm_region, mm_region->order);
-      printm("  mm_region prev is 0x%lx, next is 0x%lx\r\n", mm_region->prev_mm, mm_region->next_mm);
+      printm("  mm_region addr is 0x%ln, order is %d\r\n", (long int *)mm_region, mm_region->order);
+      printm("  mm_region prev is 0x%ln, next is 0x%ln\r\n", (long int*)mm_region->prev_mm, (long int*)mm_region->next_mm);
       mm_region = mm_region->next_mm;
     }
     mm_list_head = mm_list_head->next_list_head;
@@ -645,7 +650,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
   }
   if(region_idx >= N_PMP_REGIONS)
   {
-    printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %d)\r\n", paddr, order);
+    printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
     ret_val = -1;
     goto mm_free_out;
   }
@@ -661,7 +666,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
       unsigned long region_size = 1 << mm_region->order;
       if(region_overlap(paddr, size, region_paddr, region_size))
       {
-        printm("mm_free: memory(addr 0x%lx order %d) overlap with free memory(addr 0x%lx order %d)\r\n", paddr, order, region_paddr, mm_region->order);
+        printm("mm_free: memory(addr 0x%lx order %ld) overlap with free memory(addr 0x%lx order %d)\r\n", paddr, order, region_paddr, mm_region->order);
         ret_val = -1;
         break;
       }
@@ -681,7 +686,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
   ret_val = insert_mm_region(region_idx, mm_region, 1);
   if(ret_val < 0)
   {
-    printm("mm_free: failed to insert mm(addr 0x%lx, order %d)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
+    printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
   }
 
   //printm("after mm_free\r\n");

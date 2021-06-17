@@ -194,7 +194,7 @@ void get_pmp_reg(int pmp_idx, uintptr_t* pmp_address, uintptr_t* pmp_config)
 void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
 {
   uintptr_t pmp_address = 0;
-  uintptr_t old_config = 0;
+  //uintptr_t old_config = 0;
 #define PMP_CONFIG_OFFSET(pmp_idx) ((uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG))
   uintptr_t pmp_config = ((pmp_cfg_t.mode & PMP_A) | (pmp_cfg_t.perm & (PMP_R|PMP_W|PMP_X)))
     << PMP_CONFIG_OFFSET(pmp_idx);
@@ -301,7 +301,7 @@ void dump_pmps(void)
   int i;
   for (i=0; i<16; i++){
 	struct pmp_config_t pmp = get_pmp(i);
-	sbi_printf("[Debug:SM@%s] pmp_%d: mode(0x%x) perm(0x%x) paddr(0x%x) size(0x%x)\n",
+	sbi_printf("[Debug:SM@%s] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
 			__func__, i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
   }
 }

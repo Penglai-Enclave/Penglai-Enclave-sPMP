@@ -35,9 +35,13 @@ void swap_prev_stvec(struct thread_state_t* thread, uintptr_t current_stvec)
 
 void swap_prev_cache_binding(struct thread_state_t* thread, uintptr_t current_cache_binding)
 {
+  //TODO
+#if 0
   uintptr_t tmp = thread->prev_cache_binding;
   thread->prev_cache_binding = current_cache_binding;
-  //TODO
+#else
+  //Not implemented now
+#endif
 }
 
 void swap_prev_mie(struct thread_state_t* thread, uintptr_t current_mie)

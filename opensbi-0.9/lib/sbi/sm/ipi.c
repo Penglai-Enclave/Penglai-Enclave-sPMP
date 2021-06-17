@@ -6,7 +6,7 @@
 //remember to acquire ipi_mail_lock before using this data struct
 struct ipi_mail_t ipi_mail = {0,};
 
-spinlock_t ipi_mail_lock = SPINLOCK_INIT;
+spinlock_t ipi_mail_lock = SPIN_LOCK_INITIALIZER;
 
 //remember to acquire ipi_mail_lock before using this function
 void send_and_sync_ipi_mail(uintptr_t dest_hart)
