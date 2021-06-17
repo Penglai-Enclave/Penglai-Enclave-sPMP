@@ -3,6 +3,8 @@
 
 void handle_ipi_mail()
 {
+	//This function is not used in OpenSBI now
+#if 0
   char* mail_data = ipi_mail.data;
   int pmp_idx = 0;
   struct pmp_config_t pmp_config;
@@ -18,4 +20,5 @@ void handle_ipi_mail()
     default:
         break;
   }
+#endif
 }

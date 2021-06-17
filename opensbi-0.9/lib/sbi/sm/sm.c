@@ -6,8 +6,8 @@
 #include <sm/math.h>
 #include <sbi/sbi_console.h>
 
-static int sm_initialized = 0;
-static spinlock_t sm_init_lock = SPINLOCK_INIT;
+//static int sm_initialized = 0;
+//static spinlock_t sm_init_lock = SPINLOCK_INIT;
 
 void sm_init()
 {
@@ -20,14 +20,14 @@ uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size)
 
   printm("[Penglai Monitor] %s invoked\r\n",__func__);
 
-  printm("[Penglai Monitor] %s paddr:0x%x, size:0x%x\r\n",__func__, paddr, size);
+  printm("[Penglai Monitor] %s paddr:0x%lx, size:0x%lx\r\n",__func__, paddr, size);
   /*DEBUG: Dump PMP registers here */
   dump_pmps();
   retval = mm_init(paddr, size);
   /*DEBUG: Dump PMP registers here */
   dump_pmps();
 
-  printm("[Penglai Monitor] %s ret:%d \r\n",__func__, retval);
+  printm("[Penglai Monitor] %s ret:%ld \r\n",__func__, retval);
   return retval;
 }
 
@@ -38,7 +38,7 @@ uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size)
 
   retval = mm_init(paddr, size);
 
-  printm("[Penglai Monitor] %s return:%d\r\n",__func__, retval);
+  printm("[Penglai Monitor] %s return:%ld\r\n",__func__, retval);
   return retval;
 }
 
@@ -90,7 +90,7 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
       &mm_alloc_arg_local,
       sizeof(struct mm_alloc_arg_t));
 
-  printm("[Penglai Monitor] %s return:%d\r\n",__func__, retval);
+  printm("[Penglai Monitor] %s return:%ld\r\n",__func__, retval);
 
   return ENCLAVE_SUCCESS;
 }
@@ -118,18 +118,18 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
   retval = create_enclave(enclave_sbi_param_local);
 
 
-  printm("[Penglai Monitor] %s created return value:%d \r\n",__func__, retval);
+  printm("[Penglai Monitor] %s created return value:%ld \r\n",__func__, retval);
   return retval;
 }
 
 uintptr_t sm_run_enclave(uintptr_t* regs, unsigned long eid)
 {
   uintptr_t retval;
-  printm("[Penglai Monitor] %s invoked, eid:%d\r\n",__func__, eid);
+  printm("[Penglai Monitor] %s invoked, eid:%ld\r\n",__func__, eid);
 
   retval = run_enclave(regs, (unsigned int)eid);
 
-  printm("[Penglai Monitor] %s return: %d\r\n",__func__, retval);
+  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, retval);
 
   return retval;
 }
@@ -175,7 +175,7 @@ uintptr_t sm_exit_enclave(uintptr_t* regs, unsigned long retval)
 
   ret = exit_enclave(regs, retval);
 
-  printm("[Penglai Monitor] %s return: %d\r\n",__func__, ret);
+  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, ret);
 
   return ret;
 }
