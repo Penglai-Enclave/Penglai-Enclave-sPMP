@@ -1,3 +1,9 @@
+##
+## Author: Dong Du
+## Description:
+## 	The file now assumes the kernel located in ../openeuler-kernel,
+##	if you would like to use your own one, please change the path
+
 obj-m += penglai.o
 penglai-objs := penglai-enclave-driver.o \
 	penglai-enclave-elfloader.o \

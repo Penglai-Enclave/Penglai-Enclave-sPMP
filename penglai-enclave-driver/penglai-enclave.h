@@ -61,21 +61,21 @@
 /*Abstract for enclave */
 typedef struct penglai_enclave
 {
-  /* Allocated by secure monitor */
-  unsigned int eid;
-  untrusted_mem_t* untrusted_mem;
-  enclave_mem_t* enclave_mem;
-  unsigned long ocall_func_id;
-  unsigned long ocall_arg0;
-  unsigned long ocall_arg1;
-  unsigned long ocall_syscall_num;
+	/* Allocated by secure monitor */
+	unsigned int eid;
+	untrusted_mem_t* untrusted_mem;
+	enclave_mem_t* enclave_mem;
+	unsigned long ocall_func_id;
+	unsigned long ocall_arg0;
+	unsigned long ocall_arg1;
+	unsigned long ocall_syscall_num;
 } enclave_t;
 
 typedef struct require_sec_memory
 {
-  unsigned long size;
-  unsigned long paddr;
-  unsigned long resp_size;
+	unsigned long size;
+	unsigned long paddr;
+	unsigned long resp_size;
 } require_sec_memory_t;
 
 enclave_t* create_enclave(int total_pages);
