@@ -371,11 +371,14 @@ static void __noreturn init_warmboot(struct sbi_scratch *scratch, u32 hartid)
 	if (rc)
 		sbi_hart_hang();
 
-#if 0 /*FIXME(DD): handle this */
+	/*
+	 * Note (DD):
+	 * 	In our case, the PMP set by domain will be erased, as penglai
+	 * 	will take control of PMP
+	 * */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc)
 		sbi_hart_hang();
-#endif
 
 	rc = sbi_platform_final_init(plat, FALSE);
 	if (rc)
