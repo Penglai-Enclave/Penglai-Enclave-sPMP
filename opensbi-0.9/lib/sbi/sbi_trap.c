@@ -20,6 +20,8 @@
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
 
+#include <sm/sm.h>
+
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
 				      ulong mtinst, struct sbi_trap_regs *regs)
@@ -194,7 +196,6 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 	return 0;
 }
 
-extern int check_in_enclave_world();
 /**
  * Handle trap/interrupt
  *
@@ -260,7 +261,7 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 			rc = -1;
 			break;
 		} else {// continue to sbi_ecall_handler
-			sbi_printf("[Penglai] ecall from enclaves\n");
+			//sbi_printf("[Penglai] ecall from enclaves\n");
 		}
 	case CAUSE_SUPERVISOR_ECALL:
 	case CAUSE_MACHINE_ECALL:
@@ -268,15 +269,6 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		msg = "ecall handler failed";
 		break;
 	default:
-#if 0 /* The following code is deprecated as we use USER_ECALL to trap enclave calls now */
-		if (check_in_enclave_world() >=0) {
-			sbi_printf("[Penglai] ecall from enclaves, mcause:%d, mepc:0x%x, a6:0x%x, a7:0x%x\n",
-					mcause, regs->mepc, regs->a6, regs->a7);
-			rc = sbi_ecall_handler(regs);
-			msg = "ecall handler failed";
-			break;
-		}
-#endif
 		/* If the trap came from S or U mode, redirect it there */
 		trap.epc = regs->mepc;
 		trap.cause = mcause;
