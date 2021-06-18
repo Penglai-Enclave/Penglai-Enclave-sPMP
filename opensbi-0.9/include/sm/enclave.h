@@ -1,14 +1,11 @@
 #ifndef _ENCLAVE_H
 #define _ENCLAVE_H
 
-//#include <string.h>
 #include <sbi/riscv_asm.h>
 #include <sm/vm.h>
 #include <sbi/riscv_encoding.h>
 #include <sm/enclave_args.h>
-//#include <sm/atomic.h>
 #include <sbi/riscv_atomic.h>
-//#include "mtrap.h"
 #include <sm/thread.h>
 #include <stdint.h>
 #include <stddef.h>
