@@ -11,7 +11,7 @@
 #include <sbi/sbi_version.h>
 #include <sbi/riscv_asm.h>
 #include <sbi/sbi_console.h>
-#include "sm/sm.h"
+#include <sm/sm.h>
 
 
 static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,

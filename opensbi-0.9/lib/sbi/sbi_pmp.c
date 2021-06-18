@@ -1,4 +1,4 @@
-#include "sbi/sbi_pmp.h"
+#include <sbi/sbi_pmp.h>
 #include <sbi/riscv_asm.h>
 #include <sbi/riscv_atomic.h>
 #include <sbi/riscv_barrier.h>
