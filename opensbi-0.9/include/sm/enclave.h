@@ -3,7 +3,6 @@
 
 //#include <string.h>
 #include <sbi/riscv_asm.h>
-#include <sm/bits.h>
 #include <sm/vm.h>
 #include <sbi/riscv_encoding.h>
 #include <sm/enclave_args.h>
