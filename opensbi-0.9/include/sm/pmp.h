@@ -10,20 +10,6 @@
 //number of PMP registers
 #define NPMP 16
 
-//already defined in machine/encoding.h
-/*
-//R/W/X/A/L field in PMP configuration registers
-#define PMP_R     0x01
-#define PMP_W     0x02
-#define PMP_X     0x04
-#define PMP_A     0x18
-#define PMP_L     0x80
-
-//encoding of A field in PMP configuration registers
-#define PMP_TOR   0x08
-#define PMP_NA4   0x10
-#define PMP_NAPOT 0x18
-*/
 #define PMP_OFF   0x00
 #define PMP_NO_PERM  0
 

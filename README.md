@@ -25,6 +25,10 @@ You can use our SDK and enclave-driver to build your trusted applications, or ev
 - Supported software system: This repo contains resources to run OpenEuler with Penglai TEE.
 - Real devices: Penglai for Nuclei devices is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
 
+You can turn to BBL-version by switching to the master branch.
+
+You can refer our [Penglai-TVM](https://github.com/Penglai-Enclave/Penglai-Enclave-TVM) for more advanced features, including inter-enclave communication, secure storage, shadow fork, and others.
+
 ## Case: Running OpenEuler with Penglai
 
 ### Requirements

@@ -1,2 +1,0 @@
-#!/bin/sh
-exec "${REALGCC:-riscv64-unknown-linux-gnu-gcc}" "$@" -specs "/usr/local/musl/lib/musl-gcc.specs"
