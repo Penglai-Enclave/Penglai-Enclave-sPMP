@@ -309,11 +309,6 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 	switch_to_enclave_ptbr(&(enclave->thread_context), enclave->thread_context.encl_ptbr);
 	sbi_printf("[Penglai Monitor@%s] switch ptbr:0x%lx\n", __func__, enclave->thread_context.encl_ptbr);
 
-#if 0
-	//save host trap vector
-	swap_prev_stvec(&(enclave->thread_context), csr_read(CSR_STVEC));
-#endif
-
 	/*
 	 * save host cache binding
 	 * only workable when the hardware supports the feature
@@ -365,11 +360,6 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 
 	//restore host's ptbr
 	switch_to_host_ptbr(&(enclave->thread_context), enclave->host_ptbr);
-
-#if 0
-	//restore host stvec
-	swap_prev_stvec(&(enclave->thread_context), csr_read(CSR_STVEC));
-#endif
 
 	//TODO: restore host cache binding
 	//swap_prev_cache_binding(&(enclave->thread_context), );
