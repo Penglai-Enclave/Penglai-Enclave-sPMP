@@ -330,17 +330,15 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 	swap_prev_mideleg(&(enclave->thread_context), csr_read(CSR_MIDELEG));
 	swap_prev_medeleg(&(enclave->thread_context), csr_read(CSR_MEDELEG));
 
-#if 0
 	// swap the mepc to transfer control to the enclave
 	// This will be overwriten by the entry-address in the case of run_enclave
 	//swap_prev_mepc(&(enclave->thread_context), csr_read(CSR_MEPC));
 	swap_prev_mepc(&(enclave->thread_context), host_regs[32]);
 
 	//set mstatus to transfer control to u mode
-	uintptr_t mstatus = csr_read(CSR_MSTATUS);
+	uintptr_t mstatus = host_regs[33]; //In OpenSBI, we use regs to change mstatus
 	mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_U);
-	csr_write(CSR_MSTATUS, mstatus);
-#endif
+	host_regs[33] = mstatus;
 
 	//mark that cpu is in enclave world now
 	enter_enclave_world(enclave->eid);
@@ -453,7 +451,6 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 {
 	struct enclave_t* enclave;
 	uintptr_t retval = 0;
-	uintptr_t mstatus;
 
 	enclave = get_enclave(eid);
 	if (!enclave)
@@ -484,15 +481,10 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 		goto run_enclave_out;
 	}
 
-	swap_prev_mepc(&(enclave->thread_context), regs[32]);
+	//swap_prev_mepc(&(enclave->thread_context), regs[32]);
 
 	//set return address to enclave
 	regs[32] = (uintptr_t)(enclave->entry_point); //In OpenSBI, we use regs to change mepc
-
-	//set mstatus to transfer control to u mode
-	mstatus = regs[33]; //In OpenSBI, we use regs to change mstatus
-	mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_U);
-	regs[33] = mstatus;
 
 	//TODO: enable timer interrupt
 	csr_read_set(CSR_MIE, MIP_MTIP);
