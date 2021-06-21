@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define ENCLAVES_PER_METADATA_REGION 256
+#define ENCLAVES_PER_METADATA_REGION 128
 #define ENCLAVE_METADATA_REGION_SIZE ((sizeof(struct enclave_t)) * ENCLAVES_PER_METADATA_REGION)
 
 #define ENCLAVE_MODE 1
