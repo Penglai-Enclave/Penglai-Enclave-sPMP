@@ -254,7 +254,7 @@ static int free_enclave(int eid)
 	//haven't alloc this eid
 	if(!found)
 	{
-		printm("M mode: free_enclave: haven't alloc this eid\r\n");
+		printm("[Penglai Monitor@%s] haven't alloc this eid\r\n");
 		ret_val = -1;
 	}
 
@@ -288,7 +288,7 @@ struct enclave_t* get_enclave(int eid)
 	//haven't alloc this eid
 	if(!found)
 	{
-		printm("M mode: get_enclave: haven't alloc this enclave\r\n");
+		printm("[Penglai Monitor@%s]  haven't alloc this enclave\r\n");
 		enclave = NULL;
 	}
 
@@ -455,7 +455,7 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 	enclave = get_enclave(eid);
 	if (!enclave)
 	{
-		printm("M mode: run_enclave: wrong enclave id\r\n");
+		printm("[Penglai Monitor@%s] wrong enclave id\r\n", __func__);
 		return -1UL;
 	}
 
@@ -463,20 +463,20 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 
 	if (enclave->state != FRESH)
 	{
-		printm("M mode: run_enclave: enclave is not initialized or already used\r\n");
+		printm("[Penglai Monitor@%s] enclave is not initialized or already used\r\n", __func__);
 		retval = -1UL;
 		goto run_enclave_out;
 	}
 	if (enclave->host_ptbr != csr_read(CSR_SATP))
 	{
-		printm("M mode: run_enclave: enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
 		retval = -1UL;
 		goto run_enclave_out;
 	}
 
 	if (swap_from_host_to_enclave(regs, enclave) < 0)
 	{
-		printm("M mode: run_enclave: enclave can not be run\r\n");
+		printm("[Penglai Monitor@%s] enclave can not be run\r\n", __func__);
 		retval = -1UL;
 		goto run_enclave_out;
 	}
@@ -510,7 +510,7 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 	struct enclave_t *enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("M mode: stop_enclave: wrong enclave id%d\r\n", eid);
+		printm("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
 		return -1UL;
 	}
 
@@ -518,13 +518,13 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
-		printm("M mode: stop_enclave: enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
 	if(enclave->state <= FRESH)
 	{
-		printm("M mode: stop_enclave: enclave%d hasn't begin running at all\r\n", eid);
+		printm("[Penglai Monitor@%s] enclave%d hasn't begin running at all\r\n", __func__, eid);
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
@@ -539,24 +539,24 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 {
 	uintptr_t retval = 0;
 	struct enclave_t* enclave = get_enclave(eid);
-	if(!enclave)
+
+	if (!enclave)
 	{
-		printm("M mode: resume_from_stop: wrong enclave id%d\r\n", eid);
+		printm("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
 		return -1UL;
 	}
 
 	spin_lock(&enclave_metadata_lock);
-
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
-		printm("M mode: resume_from_stop: enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
 		retval = -1UL;
 		goto resume_from_stop_out;
 	}
 
 	if(enclave->state != STOPPED)
 	{
-		printm("M mode: resume_from_stop: enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n");
 		retval = -1UL;
 		goto resume_from_stop_out;
 	}
@@ -574,7 +574,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 	struct enclave_t* enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("M mode: resume_enclave: wrong enclave id%d\r\n", eid);
+		printm("[Penglai Monitor@%s]  wrong enclave id%d\r\n", eid);
 		return -1UL;
 	}
 
@@ -582,7 +582,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
-		printm("M mode: resume_enclave: enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n");
 		retval = -1UL;
 		goto resume_enclave_out;
 	}
@@ -600,14 +600,14 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->state != RUNNABLE)
 	{
-		printm("M mode: resume_enclave: enclave%d is not runnable\r\n", eid);
+		printm("[Penglai Monitor@%s]  enclave%d is not runnable\r\n", eid);
 		retval = -1UL;
 		goto resume_enclave_out;
 	}
 
 	if(swap_from_host_to_enclave(regs, enclave) < 0)
 	{
-		printm("M mode: resume_enclave: enclave can not be run\r\n");
+		printm("[Penglai Monitor@%s]  enclave can not be run\r\n");
 		retval = -1UL;
 		goto resume_enclave_out;
 	}
@@ -626,14 +626,14 @@ resume_enclave_out:
 
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 {
-	printm("M mode: exit_enclave: retval of enclave is %lx\r\n", retval);
+	printm("[Penglai Monitor@%s]  retval of enclave is %lx\r\n", retval);
 
 	struct enclave_t *enclave;
 	int eid;
 
 	if(check_in_enclave_world() < 0)
 	{
-		printm("M mode: exit_enclave: cpu is not in enclave world now\r\n");
+		printm("[Penglai Monitor@%s]  cpu is not in enclave world now\r\n");
 		return -1;
 	}
 
@@ -641,7 +641,7 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("M mode: exit_enclave: didn't find eid%d 's corresponding enclave\r\n", eid);
+		printm("[Penglai Monitor@%s]  didn't find eid%d 's corresponding enclave\r\n", eid);
 		return -1UL;
 	}
 
@@ -649,7 +649,7 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 
 	if(check_enclave_authentication(enclave) < 0)
 	{
-		printm("M mode: exit_enclave: current enclave's eid is not %d\r\n", eid);
+		printm("[Penglai Monitor@%s]  current enclave's eid is not %d\r\n", eid);
 		spin_unlock(&enclave_metadata_lock);
 		return -1UL;
 	}
@@ -676,7 +676,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	struct enclave_t *enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("M mode: something is wrong with enclave%d\r\n", eid);
+		printm("[Penglai Monitor@%s]  something is wrong with enclave%d\r\n", eid);
 		return -1UL;
 	}
 
@@ -690,7 +690,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 
 	if(enclave->state != RUNNING && enclave->state != STOPPED)
 	{
-		printm("M mode: smething is wrong with enclave%d\r\n", eid);
+		printm("[Penglai Monitor@%s]  smething is wrong with enclave%d\r\n", eid);
 		retval = -1;
 		goto timer_irq_out;
 	}
