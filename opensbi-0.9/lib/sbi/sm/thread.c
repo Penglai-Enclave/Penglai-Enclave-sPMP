@@ -33,14 +33,15 @@ void swap_prev_stvec(struct thread_state_t* thread, uintptr_t current_stvec)
   csr_write(CSR_STVEC, tmp);
 }
 
+/*
+ * Cache line binding is only workable
+ * when the hardware supports penglai's on-demand cacheline locking
+ * */
 void swap_prev_cache_binding(struct thread_state_t* thread, uintptr_t current_cache_binding)
 {
-  //TODO
 #if 0
   uintptr_t tmp = thread->prev_cache_binding;
   thread->prev_cache_binding = current_cache_binding;
-#else
-  //Not implemented now
 #endif
 }
 
