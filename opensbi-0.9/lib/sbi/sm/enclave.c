@@ -254,7 +254,7 @@ static int free_enclave(int eid)
 	//haven't alloc this eid
 	if(!found)
 	{
-		printm("[Penglai Monitor@%s] haven't alloc this eid\r\n");
+		printm("[Penglai Monitor@%s] haven't alloc this eid\r\n", __func__);
 		ret_val = -1;
 	}
 
@@ -288,7 +288,7 @@ struct enclave_t* get_enclave(int eid)
 	//haven't alloc this eid
 	if(!found)
 	{
-		printm("[Penglai Monitor@%s]  haven't alloc this enclave\r\n");
+		printm("[Penglai Monitor@%s]  haven't alloc this enclave\r\n", __func__);
 		enclave = NULL;
 	}
 
@@ -556,7 +556,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->state != STOPPED)
 	{
-		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
 		retval = -1UL;
 		goto resume_from_stop_out;
 	}
@@ -574,7 +574,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 	struct enclave_t* enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("[Penglai Monitor@%s]  wrong enclave id%d\r\n", eid);
+		printm("[Penglai Monitor@%s]  wrong enclave id%d\r\n", __func__, eid);
 		return -1UL;
 	}
 
@@ -582,32 +582,27 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
-		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n");
+		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
 		retval = -1UL;
 		goto resume_enclave_out;
 	}
 
-	//TODO: check whether enclave is stopped or destroyed
 	if(enclave->state == STOPPED)
 	{
 		retval = ENCLAVE_TIMER_IRQ;
 		goto resume_enclave_out;
 	}
-	if(enclave->state == DESTROYED)
-	{
-		//TODO
-	}
 
 	if(enclave->state != RUNNABLE)
 	{
-		printm("[Penglai Monitor@%s]  enclave%d is not runnable\r\n", eid);
+		printm("[Penglai Monitor@%s]  enclave%d is not runnable\r\n", __func__, eid);
 		retval = -1UL;
 		goto resume_enclave_out;
 	}
 
 	if(swap_from_host_to_enclave(regs, enclave) < 0)
 	{
-		printm("[Penglai Monitor@%s]  enclave can not be run\r\n");
+		printm("[Penglai Monitor@%s]  enclave can not be run\r\n", __func__);
 		retval = -1UL;
 		goto resume_enclave_out;
 	}
@@ -626,22 +621,22 @@ resume_enclave_out:
 
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 {
-	printm("[Penglai Monitor@%s]  retval of enclave is %lx\r\n", retval);
 
 	struct enclave_t *enclave;
 	int eid;
 
 	if(check_in_enclave_world() < 0)
 	{
-		printm("[Penglai Monitor@%s]  cpu is not in enclave world now\r\n");
+		printm("[Penglai Monitor@%s] cpu is not in enclave world now\r\n", __func__);
 		return -1;
 	}
+	printm("[Penglai Monitor@%s] retval of enclave is %lx\r\n", __func__, retval);
 
 	eid = get_enclave_id();
 	enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("[Penglai Monitor@%s]  didn't find eid%d 's corresponding enclave\r\n", eid);
+		printm("[Penglai Monitor@%s] didn't find eid%d 's corresponding enclave\r\n", __func__, eid);
 		return -1UL;
 	}
 
@@ -649,7 +644,7 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 
 	if(check_enclave_authentication(enclave) < 0)
 	{
-		printm("[Penglai Monitor@%s]  current enclave's eid is not %d\r\n", eid);
+		printm("[Penglai Monitor@%s] current enclave's eid is not %d\r\n", __func__, eid);
 		spin_unlock(&enclave_metadata_lock);
 		return -1UL;
 	}
@@ -676,7 +671,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	struct enclave_t *enclave = get_enclave(eid);
 	if(!enclave)
 	{
-		printm("[Penglai Monitor@%s]  something is wrong with enclave%d\r\n", eid);
+		printm("[Penglai Monitor@%s]  something is wrong with enclave%d\r\n", __func__, eid);
 		return -1UL;
 	}
 
@@ -690,7 +685,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 
 	if(enclave->state != RUNNING && enclave->state != STOPPED)
 	{
-		printm("[Penglai Monitor@%s]  smething is wrong with enclave%d\r\n", eid);
+		printm("[Penglai Monitor@%s]  smething is wrong with enclave%d\r\n", __func__, eid);
 		retval = -1;
 		goto timer_irq_out;
 	}
