@@ -137,9 +137,11 @@ uintptr_t sm_run_enclave(uintptr_t* regs, unsigned long eid)
 uintptr_t sm_stop_enclave(uintptr_t* regs, unsigned long eid)
 {
   uintptr_t retval;
+  printm("[Penglai Monitor] %s invoked, eid:%ld\r\n",__func__, eid);
 
   retval = stop_enclave(regs, (unsigned int)eid);
 
+  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, retval);
   return retval;
 }
 
@@ -150,6 +152,7 @@ uintptr_t sm_resume_enclave(uintptr_t* regs, unsigned long eid)
 
   switch(resume_func_id)
   {
+#if 0
     case RESUME_FROM_TIMER_IRQ:
       //printm("resume from timer irq\r\n");
       //*HLS()->timecmp = regs[12];
@@ -157,6 +160,7 @@ uintptr_t sm_resume_enclave(uintptr_t* regs, unsigned long eid)
       csr_read_set(CSR_MIE, MIP_MTIP);
       retval = resume_enclave(regs, eid);
       break;
+#endif
     case RESUME_FROM_STOP:
       //printm("resume from stop\r\n");
       retval = resume_from_stop(regs, eid);

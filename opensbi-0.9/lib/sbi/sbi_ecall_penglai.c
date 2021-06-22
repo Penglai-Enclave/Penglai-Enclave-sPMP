@@ -44,8 +44,7 @@ static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,
 			ret = sm_exit_enclave((uintptr_t *)regs, regs->a0);
 			break;
 		case SBI_STOP_ENCLAVE:
-			ret = -1;
-			sbi_printf("[Penglai@Monitor] stop interface not supported yet\n");
+			ret = sm_stop_enclave((uintptr_t *)regs, regs->a0);
 			break;
 		case SBI_RESUME_ENCLAVE:
 			ret = -1;

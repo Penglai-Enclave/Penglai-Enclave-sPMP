@@ -9,6 +9,7 @@
 //#include TARGET_PLATFORM_HEADER
 #include <sm/platform/spmp/platform.h>
 #include <sm/utils.h>
+#include <sbi/sbi_timer.h>
 
 static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
 
@@ -528,6 +529,8 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
+
+	/* The real-stop happen when the enclave traps into the monitor */
 	enclave->state = STOPPED;
 
 stop_enclave_out:
@@ -664,12 +667,21 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	return 0;
 }
 
+/*
+ * Timer handler for penglai enclaves
+ * In normal case, an enclave will pin a HART and run until it finished.
+ * The exception case is timer interrupt, which will trap into monitor to
+ * check current enclave states.
+ *
+ * If current enclave states is not Running or Runnable, it will be stoped/destroyed
+ *
+ * */
 uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 {
 	uintptr_t retval = 0;
 	unsigned int eid = get_enclave_id();
 	struct enclave_t *enclave = get_enclave(eid);
-	if(!enclave)
+	if (!enclave)
 	{
 		printm("[Penglai Monitor@%s]  something is wrong with enclave%d\r\n", __func__, eid);
 		return -1UL;
@@ -677,23 +689,25 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 
 	spin_lock(&enclave_metadata_lock);
 
-	//TODO: check whether this enclave is destroyed
-	if(enclave->state == DESTROYED)
-	{
-		//TODO
-	}
-
-	if(enclave->state != RUNNING && enclave->state != STOPPED)
+	//if(enclave->state != RUNNING && enclave->state != STOPPED)
+	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
 	{
 		printm("[Penglai Monitor@%s]  smething is wrong with enclave%d\r\n", __func__, eid);
 		retval = -1;
+		//goto timer_irq_out;
+	}else{
 		goto timer_irq_out;
 	}
 	swap_from_enclave_to_host(regs, enclave);
-	enclave->state = RUNNABLE;
+	//swap_from_enclave_to_host(regs, enclave);
+	//enclave->state = RUNNABLE;
 	regs[10] = ENCLAVE_TIMER_IRQ;
 
 timer_irq_out:
 	spin_unlock(&enclave_metadata_lock);
+
+	//sbi_printf("[Penglai Monitor@%s]\n", __func__);
+	/*ret set timer now*/
+	sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
 	return retval;
 }
