@@ -15,6 +15,9 @@
 
 #define ENCLAVE_MODE 1
 
+// define the time slice for an enclave
+#define ENCLAVE_TIME_CREDITS 100000
+
 struct link_mem_t
 {
   unsigned long mem_size;

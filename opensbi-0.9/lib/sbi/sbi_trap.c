@@ -230,6 +230,9 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		switch (mcause) {
 		case IRQ_M_TIMER:
 			sbi_timer_process();
+			if (check_in_enclave_world() >=0) { //handle timer for enclaves
+				sm_do_timer_irq( (uintptr_t *)regs, mcause, regs->mepc);
+			}
 			break;
 		case IRQ_M_SOFT:
 			sbi_ipi_process();
