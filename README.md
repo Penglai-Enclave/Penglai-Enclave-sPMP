@@ -125,9 +125,9 @@ Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 
 Please fell free to post your concerns, ideas, code or anything others to issues.
 
-## Wiki
+## Document and Tutorial
 
-Please refer the wiki for more details
+Please refer our readthedocs page for [documents](https://penglai-doc.readthedocs.io/).
 
 ## Cite
 
