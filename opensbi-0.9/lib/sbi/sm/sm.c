@@ -181,6 +181,21 @@ uintptr_t sm_exit_enclave(uintptr_t* regs, unsigned long retval)
   return ret;
 }
 
+/**
+ * \brief This transitional function is used to destroy the enclave.
+ *
+ * \param regs The host reg.
+ * \param enclave_eid The enclave id.
+ */
+uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id)
+{
+  uintptr_t ret = 0;
+
+  ret = destroy_enclave(regs, enclave_id);
+
+  return ret;
+}
+
 uintptr_t sm_do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 {
   uintptr_t ret;

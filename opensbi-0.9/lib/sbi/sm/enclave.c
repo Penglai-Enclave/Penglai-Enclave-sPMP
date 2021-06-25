@@ -538,6 +538,40 @@ stop_enclave_out:
 	return retval;
 }
 
+uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
+{
+	uintptr_t retval = 0;
+	struct enclave_t *enclave = get_enclave(eid);
+	if(!enclave)
+	{
+		printm("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
+		return -1UL;
+	}
+
+	spin_lock(&enclave_metadata_lock);
+
+	if (enclave->host_ptbr != csr_read(CSR_SATP))
+	{
+		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
+		retval = -1UL;
+		goto out;
+	}
+
+	if (enclave->state < FRESH)
+	{
+		printm("[Penglai Monitor@%s] enclave%d hasn't created\r\n", __func__, eid);
+		retval = -1UL;
+		goto out;
+	}
+
+	/* The real-destroy happen when the enclave traps into the monitor */
+	enclave->state = DESTROYED;
+
+out:
+	spin_unlock(&enclave_metadata_lock);
+	return retval;
+}
+
 uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 {
 	uintptr_t retval = 0;
@@ -692,14 +726,18 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	//if(enclave->state != RUNNING && enclave->state != STOPPED)
 	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
 	{
-		printm("[Penglai Monitor@%s]  smething is wrong with enclave%d\r\n", __func__, eid);
+		printm("[Penglai Monitor@%s]  Enclave(%d) is not runnable\r\n", __func__, eid);
 		retval = -1;
 		//goto timer_irq_out;
 	}else{
 		goto timer_irq_out;
 	}
+	/* Now, the enclave should be stopped or destroyed */
 	swap_from_enclave_to_host(regs, enclave);
-	//swap_from_enclave_to_host(regs, enclave);
+
+	if (enclave->state == DESTROYED) {
+		//TODO, clean the resources used for the enclave
+	}
 	//enclave->state = RUNNABLE;
 	regs[10] = ENCLAVE_TIMER_IRQ;
 
