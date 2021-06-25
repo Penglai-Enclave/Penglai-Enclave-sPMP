@@ -42,7 +42,6 @@ uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size)
   return retval;
 }
 
-//TODO: delete this function
 uintptr_t sm_debug_print(uintptr_t* regs, uintptr_t arg0)
 {
   print_buddy_system();
@@ -114,9 +113,7 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
     return -1UL;
   }
 
-  //TODO: not finished yet
   retval = create_enclave(enclave_sbi_param_local);
-
 
   printm("[Penglai Monitor] %s created return value:%ld \r\n",__func__, retval);
   return retval;
