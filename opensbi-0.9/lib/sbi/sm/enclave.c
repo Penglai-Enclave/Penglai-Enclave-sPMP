@@ -523,9 +523,17 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
+
 	if(enclave->state <= FRESH)
 	{
 		printm("[Penglai Monitor@%s] enclave%d hasn't begin running at all\r\n", __func__, eid);
+		retval = -1UL;
+		goto stop_enclave_out;
+	}
+
+	if(enclave->state == STOPPED || enclave-> state == DESTROYED)
+	{
+		printm("[Penglai Monitor@%s] enclave%d already stopped/destroyed\r\n", __func__, eid);
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
@@ -565,10 +573,10 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 	}
 
 	/*
-	 * If the enclave is stopped, it will never goto the timer trap handler,
+	 * If the enclave is stopped or fresh, it will never goto the timer trap handler,
 	 * we should destroy the enclave immediately
 	 * */
-	if (enclave->state == STOPPED) {
+	if (enclave->state == STOPPED || enclave->state == FRESH) {
 		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 		mm_free((void*)(enclave->paddr), enclave->size);
 
