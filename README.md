@@ -45,6 +45,7 @@ Follow the instructions in openeuler riscv gitee to compile OpenEuler kernel.
 
 For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
 
+	cd TOP_DIR/openeuler-kernel
 	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
 	cd /env
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make ARCH=riscv -j8
