@@ -564,9 +564,24 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 		goto out;
 	}
 
+	/*
+	 * If the enclave is stopped, it will never goto the timer trap handler,
+	 * we should destroy the enclave immediately
+	 * */
+	if (enclave->state == STOPPED) {
+		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+		mm_free((void*)(enclave->paddr), enclave->size);
+
+		spin_unlock(&enclave_metadata_lock);
+
+		//free enclave struct
+		retval = free_enclave(eid); //the enclave state will be set INVALID here
+		return retval;
+	}
+	//FIXME: what if the enclave->state is RUNNABLE now?
+
 	/* The real-destroy happen when the enclave traps into the monitor */
 	enclave->state = DESTROYED;
-
 out:
 	spin_unlock(&enclave_metadata_lock);
 	return retval;
@@ -730,20 +745,30 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 		retval = -1;
 		//goto timer_irq_out;
 	}else{
-		goto timer_irq_out;
+		goto out;
 	}
 	/* Now, the enclave should be stopped or destroyed */
 	swap_from_enclave_to_host(regs, enclave);
 
 	if (enclave->state == DESTROYED) {
-		//TODO, clean the resources used for the enclave
+		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+		mm_free((void*)(enclave->paddr), enclave->size);
+
+		spin_unlock(&enclave_metadata_lock);
+
+		//free enclave struct
+		retval = free_enclave(eid); //the enclave state will be set INVALID here
+		goto timer_irq_out;
 	}
 	//enclave->state = RUNNABLE;
+
+	//FIXME: should we set differetn result code for timer, stopped, and destroyed?
 	regs[10] = ENCLAVE_TIMER_IRQ;
 
-timer_irq_out:
+out:
 	spin_unlock(&enclave_metadata_lock);
 
+timer_irq_out:
 	//sbi_printf("[Penglai Monitor@%s]\n", __func__);
 	/*ret set timer now*/
 	sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
