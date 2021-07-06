@@ -20,7 +20,7 @@
 
 #define MAX_HARTS 8
 
-//SBI_CALL NUMBERS
+//Host SBI numbers
 #define SBI_MM_INIT            100
 #define SBI_CREATE_ENCLAVE      99
 #define SBI_ATTEST_ENCLAVE      98
@@ -32,8 +32,10 @@
 #define SBI_MEMORY_EXTEND       92
 #define SBI_MEMORY_RECLAIM      91
 #define SBI_ENCLAVE_OCALL       90
-#define SBI_EXIT_ENCLAVE        89
 #define SBI_DEBUG_PRINT         88
+
+//Enclave SBI numbers
+#define SBI_EXIT_ENCLAVE        99
 
 //Error code of SBI_ALLOC_ENCLAVE_MEM
 #define ENCLAVE_NO_MEMORY       -2
