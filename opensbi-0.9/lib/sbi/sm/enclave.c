@@ -3,11 +3,9 @@
 #include <sm/sm.h>
 #include <sm/math.h>
 #include <sbi/riscv_encoding.h>
-//#include <string.h>
 #include <sbi/sbi_string.h>
 #include <sbi/riscv_locks.h>
-//#include TARGET_PLATFORM_HEADER
-#include <sm/platform/spmp/platform.h>
+#include <sm/platform/pmp/platform.h>
 #include <sm/utils.h>
 #include <sbi/sbi_timer.h>
 
