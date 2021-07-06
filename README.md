@@ -45,6 +45,7 @@ Follow the instructions in openeuler riscv gitee to compile OpenEuler kernel.
 
 For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
 
+	cd TOP_DIR/openeuler-kernel
 	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
 	cd /env
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make ARCH=riscv -j8
@@ -77,6 +78,8 @@ It will generate penglai.ko in the penglai-enclave-driver dir.
 
 ### Run OpenEuler with Penglai Supports
 
+You should download the disk image of openEuler (i.e., openEuler-preview.riscv64.qcow2) from [here](https://repo.openeuler.org/openEuler-preview/RISC-V/Image/)
+
 	qemu-system-riscv64 -nographic -machine virt \
 	-smp 4 -m 2G \
 	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
@@ -92,7 +95,7 @@ It will generate penglai.ko in the penglai-enclave-driver dir.
 
 - The test qemu version is 5.2.0.
 - The fw_payload.elf is the opensbi file.
-- The openEuler-preview.riscv64.qcow2 is the disk image for OpenEuler.
+- The openEuler-preview.riscv64.qcow2 is the disk image for OpenEuler (You can download from https://repo.openeuler.org/openEuler-preview/RISC-V/Image/).
 - To login, username is "root", passwd is "openEuler12#$"
 
 Note: a script, run_openeuler.sh is provided to execute the above command easily

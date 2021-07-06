@@ -65,7 +65,7 @@ uintptr_t sm_stop_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
 uintptr_t sm_resume_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
-uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id, uintptr_t destroy_flag);
+uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
 uintptr_t sm_enclave_ocall(uintptr_t *regs, uintptr_t ocall_func_id, uintptr_t arg);
 

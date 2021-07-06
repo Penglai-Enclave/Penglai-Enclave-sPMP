@@ -199,7 +199,16 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	if(region_idx >= N_PMP_REGIONS)
 	{
-		sbi_printf("M mode: Error: retriece_enclave_access\r\n");
+		sbi_printf("M mode: Error: %s\r\n", __func__);
+		/* For Debug */
+		for (region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx) {
+			sbi_printf("[Monitor Debug@%s] mm_region[%d], valid(%d), paddr(0x%lx) size(0x%lx)\n",
+					__func__, region_idx, mm_regions[region_idx].valid, mm_regions[region_idx].paddr,
+					mm_regions[region_idx].size);
+		}
+		sbi_printf("[Monitor Debug@%s] enclave paddr(0x%lx) size(0x%lx)\n",
+				__func__, enclave->paddr, enclave->size);
+
 		return -1;
 	}
 
@@ -596,8 +605,8 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 	//TODO: reduce lock granularity
 	spin_lock(&pmp_bitmap_lock);
 
-	//printm("before mm_alloc, req_order = %d\r\n", ilog2(req_size - 1) + 1);
-	//print_buddy_system();
+//	printm("before mm_alloc, req_order = %d\r\n", ilog2(req_size - 1) + 1);
+//	print_buddy_system();
 
 	unsigned long order = ilog2(req_size-1) + 1;
 	for(int region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)

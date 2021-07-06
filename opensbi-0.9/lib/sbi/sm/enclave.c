@@ -308,7 +308,7 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 
 	//different platforms have differnt ptbr switch methods
 	switch_to_enclave_ptbr(&(enclave->thread_context), enclave->thread_context.encl_ptbr);
-	sbi_printf("[Penglai Monitor@%s] switch ptbr:0x%lx\n", __func__, enclave->thread_context.encl_ptbr);
+	//sbi_printf("[Penglai Monitor@%s] switch ptbr:0x%lx\n", __func__, enclave->thread_context.encl_ptbr);
 
 	/*
 	 * save host cache binding
@@ -335,9 +335,9 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 	// This will be overwriten by the entry-address in the case of run_enclave
 	//swap_prev_mepc(&(enclave->thread_context), csr_read(CSR_MEPC));
 	swap_prev_mepc(&(enclave->thread_context), host_regs[32]);
+	host_regs[32] = csr_read(CSR_MEPC); //update the new value to host_regs
 
 	//set return address to enclave
-	host_regs[32] = (uintptr_t)(enclave->entry_point); //In OpenSBI, we use regs to change mepc
 
 	//set mstatus to transfer control to u mode
 	uintptr_t mstatus = host_regs[33]; //In OpenSBI, we use regs to change mstatus
@@ -375,8 +375,9 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 
 	//transfer control back to kernel
 	//swap_prev_mepc(&(enclave->thread_context), read_csr(mepc));
-	regs[32] = (uintptr_t)(enclave->thread_context.prev_mepc); //In OpenSBI, we use regs to change mepc
+	//regs[32] = (uintptr_t)(enclave->thread_context.prev_mepc); //In OpenSBI, we use regs to change mepc
 	swap_prev_mepc(&(enclave->thread_context), regs[32]);
+	regs[32] = csr_read(CSR_MEPC); //update the new value to host_regs
 
 	//restore mstatus
 #if 0
@@ -486,6 +487,7 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 	}
 
 	//swap_prev_mepc(&(enclave->thread_context), regs[32]);
+	regs[32] = (uintptr_t)(enclave->entry_point); //In OpenSBI, we use regs to change mepc
 
 	//TODO: enable timer interrupt
 	csr_read_set(CSR_MIE, MIP_MTIP);
@@ -523,9 +525,17 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
+
 	if(enclave->state <= FRESH)
 	{
 		printm("[Penglai Monitor@%s] enclave%d hasn't begin running at all\r\n", __func__, eid);
+		retval = -1UL;
+		goto stop_enclave_out;
+	}
+
+	if(enclave->state == STOPPED || enclave-> state == DESTROYED)
+	{
+		printm("[Penglai Monitor@%s] enclave%d already stopped/destroyed\r\n", __func__, eid);
 		retval = -1UL;
 		goto stop_enclave_out;
 	}
@@ -534,6 +544,57 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 	enclave->state = STOPPED;
 
 stop_enclave_out:
+	spin_unlock(&enclave_metadata_lock);
+	return retval;
+}
+
+uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
+{
+	uintptr_t retval = 0;
+	struct enclave_t *enclave = get_enclave(eid);
+	if(!enclave)
+	{
+		printm("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
+		return -1UL;
+	}
+
+	spin_lock(&enclave_metadata_lock);
+
+	if (enclave->host_ptbr != csr_read(CSR_SATP))
+	{
+		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process"
+				"enclave->host_ptbr:0x%lx, csr_satp:0x%lx\r\n", __func__, enclave->host_ptbr, csr_read(CSR_SATP));
+		retval = -1UL;
+		goto out;
+	}
+
+	if (enclave->state < FRESH)
+	{
+		printm("[Penglai Monitor@%s] enclave%d hasn't created\r\n", __func__, eid);
+		retval = -1UL;
+		goto out;
+	}
+
+	/*
+	 * If the enclave is stopped or fresh, it will never goto the timer trap handler,
+	 * we should destroy the enclave immediately
+	 * */
+	//if (enclave->state == STOPPED || enclave->state == FRESH) {
+	if (enclave->state == FRESH) {
+		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+		mm_free((void*)(enclave->paddr), enclave->size);
+
+		spin_unlock(&enclave_metadata_lock);
+
+		//free enclave struct
+		retval = free_enclave(eid); //the enclave state will be set INVALID here
+		return retval;
+	}
+	//FIXME: what if the enclave->state is RUNNABLE now?
+
+	/* The real-destroy happen when the enclave traps into the monitor */
+	enclave->state = DESTROYED;
+out:
 	spin_unlock(&enclave_metadata_lock);
 	return retval;
 }
@@ -596,6 +657,17 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 		goto resume_enclave_out;
 	}
 
+	if (enclave->state == DESTROYED) {
+		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+		mm_free((void*)(enclave->paddr), enclave->size);
+
+		spin_unlock(&enclave_metadata_lock);
+
+		//free enclave struct
+		free_enclave(eid); //the enclave state will be set INVALID here
+		return ENCLAVE_SUCCESS; //this will break the infinite loop in the enclave-driver
+	}
+
 	if(enclave->state != RUNNABLE)
 	{
 		printm("[Penglai Monitor@%s]  enclave%d is not runnable\r\n", __func__, eid);
@@ -616,6 +688,9 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 	//set retval to be regs[10] here to succuessfully restore context
 	//TODO: retval should be set to indicate success or fail when resume from ocall
 	retval = regs[10];
+
+	//enable timer interrupt
+	csr_read_set(CSR_MIE, MIP_MTIP);
 
 resume_enclave_out:
 	spin_unlock(&enclave_metadata_lock);
@@ -692,22 +767,39 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	//if(enclave->state != RUNNING && enclave->state != STOPPED)
 	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
 	{
-		printm("[Penglai Monitor@%s]  smething is wrong with enclave%d\r\n", __func__, eid);
+		printm("[Penglai Monitor@%s]  Enclave(%d) is not runnable\r\n", __func__, eid);
 		retval = -1;
 		//goto timer_irq_out;
-	}else{
-		goto timer_irq_out;
 	}
-	swap_from_enclave_to_host(regs, enclave);
-	//swap_from_enclave_to_host(regs, enclave);
-	//enclave->state = RUNNABLE;
-	regs[10] = ENCLAVE_TIMER_IRQ;
 
-timer_irq_out:
+	swap_from_enclave_to_host(regs, enclave);
+
+	if (enclave->state == DESTROYED) {
+		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+		mm_free((void*)(enclave->paddr), enclave->size);
+
+		spin_unlock(&enclave_metadata_lock);
+
+		//free enclave struct
+		retval = free_enclave(eid); //the enclave state will be set INVALID here
+
+		//regs[10] = ENCLAVE_SUCCESS; //this means we will not run any more
+		retval = ENCLAVE_SUCCESS; //this means we will not run any more
+		goto timer_irq_out;
+	}else if (enclave->state == RUNNING) {
+		enclave->state = RUNNABLE;
+
+		retval = ENCLAVE_TIMER_IRQ;
+	}else { // The case for STOPPED
+		retval = ENCLAVE_TIMER_IRQ;
+	}
+
+//out:
 	spin_unlock(&enclave_metadata_lock);
 
+timer_irq_out:
 	//sbi_printf("[Penglai Monitor@%s]\n", __func__);
 	/*ret set timer now*/
-	sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
+//	sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
 	return retval;
 }
