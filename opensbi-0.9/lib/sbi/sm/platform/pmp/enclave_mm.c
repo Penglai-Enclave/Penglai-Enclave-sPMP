@@ -30,19 +30,19 @@ static int check_mem_size(uintptr_t paddr, unsigned long size)
 {
 	if((size == 0) || (size & (size - 1)))
 	{
-		printm("pmp size should be 2^power!\r\n");
+		printm_err("pmp size should be 2^power!\r\n");
 		return -1;
 	}
 
 	if(size < RISCV_PGSIZE)
 	{
-		printm("pmp size should be no less than one page!\r\n");
+		printm_err("pmp size should be no less than one page!\r\n");
 		return -1;
 	}
 
 	if(paddr & (size - 1))
 	{
-		printm("pmp size should be %ld aligned!\r\n", size);
+		printm_err("pmp size should be %ld aligned!\r\n", size);
 		return -1;
 	}
 
@@ -96,7 +96,7 @@ int retrieve_kernel_access(void* req_paddr, unsigned long size)
 
 	if((pmp_config.mode != PMP_A_NAPOT) || (pmp_config.paddr != paddr) || (pmp_config.size != size))
 	{
-		printm("retrieve_kernel_access: error pmp_config\r\n");
+		printm_err("retrieve_kernel_access: error pmp_config\r\n");
 		return -1;
 	}
 
@@ -132,7 +132,7 @@ int grant_enclave_access(struct enclave_t* enclave)
 
 	if(region_idx >= N_PMP_REGIONS)
 	{
-		printm("M mode: grant_enclave_access: can not find exact mm_region\r\n");
+		printm_err("M mode: grant_enclave_access: can not find exact mm_region\r\n");
 		return -1;
 	}
 
@@ -160,20 +160,6 @@ int grant_enclave_access(struct enclave_t* enclave)
 				__func__, enclave->paddr, enclave->size);
 	}
 
-#if 0
-	spmp_config.paddr = enclave->paddr;
-	spmp_config.size = enclave->size;
-	spmp_config.perm = SPMP_R | SPMP_W | SPMP_X;
-	spmp_config.mode = SPMP_NAPOT;
-	set_spmp(0, spmp_config);
-
-	spmp_config.paddr = mm_regions[region_idx].paddr;
-	spmp_config.size = mm_regions[region_idx].size;
-	spmp_config.perm = SPMP_NO_PERM;
-	spmp_config.mode = SPMP_NAPOT;
-	set_spmp(1, spmp_config);
-#endif
-
 	return 0;
 }
 
@@ -199,7 +185,7 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	if(region_idx >= N_PMP_REGIONS)
 	{
-		printm("M mode: Error: %s\r\n", __func__);
+		printm_err("M mode: Error: %s\r\n", __func__);
 		/* For Debug */
 		for (region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx) {
 			printm("[Monitor Debug@%s] mm_region[%d], valid(%d), paddr(0x%lx) size(0x%lx)\n",
@@ -213,14 +199,9 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 	}
 
 	pmp_idx = REGION_TO_PMP(region_idx);
-#if 0
-	pmp_config = get_pmp(pmp_idx);
-	pmp_config.perm = PMP_NO_PERM;
-	set_pmp(pmp_idx, pmp_config);
-#else
+
 	// we can simply clear the PMP to retrieve the permission
 	clear_pmp(pmp_idx);
-#endif
 
 	return 0;
 }
@@ -234,7 +215,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
 	//check whether the new region overlaps with security monitor
 	if(region_overlap(sm_base, sm_size, paddr, size))
 	{
-		printm("pmp memory overlaps with security monitor!\r\n");
+		printm_err("pmp memory overlaps with security monitor!\r\n");
 		return -1;
 	}
 
@@ -245,7 +226,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
 				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
 					paddr, size))
 		{
-			printm("pmp memory overlaps with existing pmp memory!\r\n");
+			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
 			return -1;
 		}
 	}
@@ -605,8 +586,7 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 	//TODO: reduce lock granularity
 	spin_lock(&pmp_bitmap_lock);
 
-//	printm("before mm_alloc, req_order = %d\r\n", ilog2(req_size - 1) + 1);
-//	print_buddy_system();
+	//print_buddy_system();
 
 	unsigned long order = ilog2(req_size-1) + 1;
 	for(int region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
@@ -636,7 +616,6 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 		break;
 	}
 
-	//printm("after mm_alloc\r\n");
 	//print_buddy_system();
 
 	spin_unlock(&pmp_bitmap_lock);
@@ -668,7 +647,6 @@ int mm_free(void* req_paddr, unsigned long free_size)
 
 	spin_lock(&pmp_bitmap_lock);
 
-	//printm("before mm_free, addr to free is 0x%lx, order is %d\r\n", paddr, order);
 	//print_buddy_system();
 
 	for(region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)

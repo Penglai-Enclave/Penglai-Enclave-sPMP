@@ -9,4 +9,7 @@
 #define printm(...)
 #endif
 
+//For report error messages, always enabled
+#define printm_err(...) sbi_printf(__VA_ARGS__)
+
 #endif
