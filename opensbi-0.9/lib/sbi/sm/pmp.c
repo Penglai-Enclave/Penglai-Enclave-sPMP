@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <sbi/sbi_pmp.h>
 #include <sbi/sbi_console.h>
+#include <sm/sm.h>
 
 /**
  * \brief Set pmp and sync all harts.
@@ -279,7 +280,8 @@ void dump_pmps(void)
 	int i;
 	for (i=0; i<16; i++){
 		struct pmp_config_t pmp = get_pmp(i);
-		sbi_printf("[Debug:SM@%s] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
+		(void)pmp; //to ignore the unused variable warnings
+		printm("[Debug:SM@%s] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
 				__func__, i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
 	}
 }

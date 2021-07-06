@@ -180,7 +180,7 @@ static struct enclave_t* alloc_enclave()
 		enclave_metadata_head = init_mem_link(ENCLAVE_METADATA_REGION_SIZE, sizeof(struct enclave_t));
 		if(!enclave_metadata_head)
 		{
-			sbi_printf("[Penglai Monitor@%s] don't have enough mem\r\n", __func__);
+			printm("[Penglai Monitor@%s] don't have enough mem\r\n", __func__);
 			goto alloc_eid_out;
 		}
 		enclave_metadata_tail = enclave_metadata_head;
@@ -213,7 +213,7 @@ static struct enclave_t* alloc_enclave()
 		next = add_link_mem(&enclave_metadata_tail);
 		if(next == NULL)
 		{
-			sbi_printf("[Penglai Monitor@%s] don't have enough mem\r\n", __func__);
+			printm("[Penglai Monitor@%s] don't have enough mem\r\n", __func__);
 			enclave = NULL;
 			goto alloc_eid_out;
 		}
@@ -308,7 +308,6 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 
 	//different platforms have differnt ptbr switch methods
 	switch_to_enclave_ptbr(&(enclave->thread_context), enclave->thread_context.encl_ptbr);
-	//sbi_printf("[Penglai Monitor@%s] switch ptbr:0x%lx\n", __func__, enclave->thread_context.encl_ptbr);
 
 	/*
 	 * save host cache binding
@@ -405,7 +404,7 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	enclave = alloc_enclave();
 	if(!enclave)
 	{
-		sbi_printf("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
+		printm("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
 		return -1UL;
 	}
 
@@ -431,22 +430,20 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 
 	//Dump the PT here, for debug
 #if 0
-	sbi_printf("[Penglai@%s], Dump PT for created enclave\n", __func__);
+	printm("[Penglai@%s], Dump PT for created enclave\n", __func__);
 	dump_pt(enclave->root_page_table, 1);
 #endif
 
 	spin_unlock(&enclave_metadata_lock);
-#if 1
-	sbi_printf("[Penglai@%s] paddr:0x%lx, size:0x%lx, entry:0x%lx\n"
+	printm("[Penglai@%s] paddr:0x%lx, size:0x%lx, entry:0x%lx\n"
 			"untrusted ptr:0x%lx host_ptbr:0x%lx, pt:0x%ln\n"
 			"thread_context.encl_ptbr:0x%lx\n cur_satp:0x%lx\n",
 			__func__, enclave->paddr, enclave->size, enclave->entry_point,
 			enclave->untrusted_ptr, enclave->host_ptbr, enclave->root_page_table,
 			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
-#endif
 
 	copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
-	sbi_printf("[Penglai Monitor@%s] return eid:%d\n",
+	printm("[Penglai Monitor@%s] return eid:%d\n",
 			__func__, enclave->eid);
 
 	return 0;
@@ -626,6 +623,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 	}
 
 	enclave->state = RUNNABLE;
+	printm("[Penglai Monitor@%s] encalve-%d turns to runnable now!\n", __func__, eid);
 
 resume_from_stop_out:
 	spin_unlock(&enclave_metadata_lock);
@@ -798,7 +796,6 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	spin_unlock(&enclave_metadata_lock);
 
 timer_irq_out:
-	//sbi_printf("[Penglai Monitor@%s]\n", __func__);
 	/*ret set timer now*/
 //	sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
 	return retval;

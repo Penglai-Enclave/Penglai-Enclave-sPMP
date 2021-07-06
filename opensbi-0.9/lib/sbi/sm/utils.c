@@ -6,6 +6,7 @@
 #include <sbi/riscv_locks.h>
 #include <sbi/sbi_console.h>
 #include <sm/utils.h>
+#include <sm/sm.h>
 
 /*
  * Go through and dump a page table, used for debug
@@ -23,8 +24,8 @@ void dump_pt(unsigned long *page_table, int level)
 		if (!(l1_pt[l1] & PTE_V)) //this entry is not valid
 			continue;
 
-		for (i=0; i<level; i++) sbi_printf("\t"); //space before entries
-		sbi_printf("%d: 0x%lx, perm: 0x%lx\n",l1, l1_pt[l1], l1_pt[l1] & (PTE_R | PTE_W | PTE_X));
+		for (i=0; i<level; i++) printm("\t"); //space before entries
+		printm("%d: 0x%lx, perm: 0x%lx\n",l1, l1_pt[l1], l1_pt[l1] & (PTE_R | PTE_W | PTE_X));
 		if (!PTE_TABLE(l1_pt[l1])) // not page table page
 			continue;
 

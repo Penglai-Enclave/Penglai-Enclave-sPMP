@@ -69,7 +69,7 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
 	uintptr_t paddr = (uintptr_t)req_paddr;
 
 	if(check_mem_size(paddr, size) != 0){
-		sbi_printf("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
+		printm("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
 		return -1;
 	}
 
@@ -96,7 +96,7 @@ int retrieve_kernel_access(void* req_paddr, unsigned long size)
 
 	if((pmp_config.mode != PMP_A_NAPOT) || (pmp_config.paddr != paddr) || (pmp_config.size != size))
 	{
-		sbi_printf("retrieve_kernel_access: error pmp_config\r\n");
+		printm("retrieve_kernel_access: error pmp_config\r\n");
 		return -1;
 	}
 
@@ -199,14 +199,14 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	if(region_idx >= N_PMP_REGIONS)
 	{
-		sbi_printf("M mode: Error: %s\r\n", __func__);
+		printm("M mode: Error: %s\r\n", __func__);
 		/* For Debug */
 		for (region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx) {
-			sbi_printf("[Monitor Debug@%s] mm_region[%d], valid(%d), paddr(0x%lx) size(0x%lx)\n",
+			printm("[Monitor Debug@%s] mm_region[%d], valid(%d), paddr(0x%lx) size(0x%lx)\n",
 					__func__, region_idx, mm_regions[region_idx].valid, mm_regions[region_idx].paddr,
 					mm_regions[region_idx].size);
 		}
-		sbi_printf("[Monitor Debug@%s] enclave paddr(0x%lx) size(0x%lx)\n",
+		printm("[Monitor Debug@%s] enclave paddr(0x%lx) size(0x%lx)\n",
 				__func__, enclave->paddr, enclave->size);
 
 		return -1;
@@ -234,7 +234,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
 	//check whether the new region overlaps with security monitor
 	if(region_overlap(sm_base, sm_size, paddr, size))
 	{
-		sbi_printf("pmp memory overlaps with security monitor!\r\n");
+		printm("pmp memory overlaps with security monitor!\r\n");
 		return -1;
 	}
 
@@ -245,7 +245,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
 				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
 					paddr, size))
 		{
-			sbi_printf("pmp memory overlaps with existing pmp memory!\r\n");
+			printm("pmp memory overlaps with existing pmp memory!\r\n");
 			return -1;
 		}
 	}
@@ -376,7 +376,7 @@ static struct mm_list_t* alloc_one_region(int region_idx, int order)
 {
 	if(!mm_regions[region_idx].valid || !mm_regions[region_idx].mm_list_head)
 	{
-		sbi_printf("M mode: alloc_one_region: m_regions[%d] is invalid/NULL\r\n", region_idx);
+		printm("M mode: alloc_one_region: m_regions[%d] is invalid/NULL\r\n", region_idx);
 		return NULL;
 	}
 
@@ -680,7 +680,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	}
 	if(region_idx >= N_PMP_REGIONS)
 	{
-		sbi_printf("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
+		printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
 		ret_val = -1;
 		goto mm_free_out;
 	}
@@ -716,7 +716,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	ret_val = insert_mm_region(region_idx, mm_region, 1);
 	if(ret_val < 0)
 	{
-		sbi_printf("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
+		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
 	}
 
 	//printm("after mm_free\r\n");
