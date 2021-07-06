@@ -1,10 +1,21 @@
 #include "penglai-enclave-ioctl.h"
 #include "syscall.h"
 
-//TODO: improve concurrency
-//now we just acqure a big clock before allocating enclave mem, and release the lock
+//now we just acqure a big lock before allocating enclave mem, and release the lock
 //after initializing mem and returning it back to sm
-DEFINE_SPINLOCK(enclave_create_lock);
+DEFINE_SPINLOCK(enclave_big_lock);
+
+void acquire_big_lock(const char * str)
+{
+	spin_lock(&enclave_big_lock);
+	printk("[PENGLAI Driver@%s] %s get lock\n", __func__, str);
+}
+
+void release_big_lock(const char * str)
+{
+	spin_unlock(&enclave_big_lock);
+	printk("[PENGLAI Driver@%s] %s release lock\n", __func__, str);
+}
 
 unsigned int total_enclave_page(int elf_size, int stack_size)
 {
@@ -79,7 +90,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		return -1;
 	}
 
-	spin_lock(&enclave_create_lock);
+	acquire_big_lock(__func__);
 
 	enclave = create_enclave(total_pages);
 	if(!enclave)
@@ -133,32 +144,49 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	enclave_param->eid = enclave_idr_alloc(enclave);
 
-	spin_unlock(&enclave_create_lock);
+	enclave->is_running = 0; //clear the flag
+
+	release_big_lock(__func__);
 
 	return ret.value;
 
 destroy_enclave:
 
-	spin_unlock(&enclave_create_lock);
-
-	if(enclave)
+	if(enclave){
 		destroy_enclave(enclave);
+	}
+	release_big_lock(__func__);
 
 	return -EFAULT;
 }
 
 int penglai_enclave_destroy(struct file * filep, unsigned long args)
 {
+	struct sbiret ret = {0};
 	struct penglai_enclave_user_param * enclave_param = (struct penglai_enclave_user_param*) args;
 	unsigned long eid = enclave_param ->eid;
 	enclave_t * enclave;
-	int ret =0;
+	int retval = 0;
 
+	acquire_big_lock(__func__);
 	enclave = get_enclave_by_id(eid);
-	destroy_enclave(enclave);
-	enclave_idr_remove(eid);
 
-	return ret;
+	if (!enclave)
+		goto out;
+
+	ret = SBI_CALL_1(SBI_SM_DESTROY_ENCLAVE, enclave->eid);
+	retval = ret.value;
+	//TODO: checking ret error info
+
+	// In the case the enclave is not start running,
+	// we should directly destroy the enclave
+	if (!enclave->is_running){
+		destroy_enclave(enclave);
+		enclave_idr_remove(eid);
+	} //otherwise, the run interfaces will destroy the enclave
+out:
+	release_big_lock(__func__);
+	return retval;
 }
 
 int handle_memory_extend(enclave_t * enclave)
@@ -218,27 +246,48 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 {
 	struct penglai_enclave_user_param *enclave_param = (struct penglai_enclave_user_param*) args;
 	unsigned long eid = enclave_param ->eid;
+	unsigned int enclave_eid; //this eid is not equal to eid
 	enclave_t * enclave;
 	//unsigned long ocall_func_id;
 	struct sbiret ret = {0};
+	int retval = 0;
+
+	printk("[Penglai Driver@%s] begin\n", __func__);
+	acquire_big_lock(__func__);
 
 	enclave = get_enclave_by_id(eid);
 	if(!enclave)
 	{
 		printk("KERNEL MODULE: enclave is not exist \n");
-		return -EINVAL;
+		retval = -EINVAL;
+		goto out;
 	}
 
-	ret = SBI_CALL_1(SBI_SM_RUN_ENCLAVE, enclave->eid);
-	/*
-FIXME: handler the ocall from enclave;
-*/
+	enclave_eid = enclave->eid;
+
+	enclave->is_running = 1; //set the flag
+
+	release_big_lock(__func__);
+
+
+	printk("[Penglai Driver@%s] goto infinite run loop\n", __func__);
+	// In the (infinite loop), we do not need to acquire the lock
+	// The monitor is responsible to check the authentication
+	// It will only exit when either:
+	// 	1. the enclave is finished and invoke exit_enclave
+	// 	2. destroy_enclave is invoked
+	//
+	// Note: stop_enclave will not leave the loop, but will not run
+	// 	 the enclave (as resume_from_timer_irq will check status of an enclave)
+	ret = SBI_CALL_1(SBI_SM_RUN_ENCLAVE, enclave_eid);
 	while(ret.value == ENCLAVE_TIMER_IRQ)
 	{
-		schedule();
-		ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_TIMER_IRQ, get_cycles64() + DEFAULT_CLOCK_DELAY);
+		//schedule();
+		yield();
+		ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave_eid, RESUME_FROM_TIMER_IRQ, get_cycles64() + DEFAULT_CLOCK_DELAY);
 	}
 
+	acquire_big_lock(__func__);
 	//if(ret < 0)
 	if(ret.error)
 	{
@@ -253,12 +302,17 @@ FIXME: handler the ocall from enclave;
 
 	destroy_enclave(enclave);
 	enclave_idr_remove(eid);
-	return ret.value;
+	retval = ret.value;
+
+out:
+	release_big_lock(__func__);
+	return retval;
 
 destroy_enclave:
-
 	destroy_enclave(enclave);
 	enclave_idr_remove(eid);
+
+	release_big_lock(__func__);
 
 	return -EFAULT;
 }

@@ -61,14 +61,14 @@
 /*Abstract for enclave */
 typedef struct penglai_enclave
 {
-	/* Allocated by secure monitor */
-	unsigned int eid;
+	unsigned int eid;	/* Allocated by secure monitor */
 	untrusted_mem_t* untrusted_mem;
 	enclave_mem_t* enclave_mem;
 	unsigned long ocall_func_id;
 	unsigned long ocall_arg0;
 	unsigned long ocall_arg1;
 	unsigned long ocall_syscall_num;
+	int is_running; // A flag to indicate whether the enclave is in the running loop
 } enclave_t;
 
 typedef struct require_sec_memory

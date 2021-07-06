@@ -79,7 +79,7 @@ enclave_t* create_enclave(int total_pages)
 			goto free_enclave;
 		}
 
-		ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), 1 << order);
+		ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), 4096 * (1 << order) );
 		if(ret.error)
 		{
 			printk("KERNEL MODULE: sbi call extend memory is failed\n");
@@ -119,6 +119,9 @@ free_enclave:
 	return NULL;
 }
 
+/*
+ * This function should be called with enclave_big_lock acquired
+ * */
 int destroy_enclave(enclave_t* enclave)
 {
 	enclave_mem_t* enclave_mem;
@@ -130,8 +133,6 @@ int destroy_enclave(enclave_t* enclave)
 	enclave_mem = enclave->enclave_mem;
 	untrusted_mem = enclave->untrusted_mem;
 	enclave_mem_destroy(enclave_mem);
-
-	//TODO: destroy the untrusted mem
 
 	kfree(enclave_mem);
 	kfree(untrusted_mem);
