@@ -67,7 +67,7 @@ A simpler way:
 
 ### Build Penglai SDK
 
-Following the commands:
+Following the commands to build enclave driver:
 
 	./docker_cmd.sh docker
 	# In the docker image
@@ -75,6 +75,13 @@ Following the commands:
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make ARCH=riscv -j8
 
 It will generate penglai.ko in the penglai-enclave-driver dir.
+
+Following the commnads to build user-level sdk and demos:
+
+	./docker_cmd.sh docker
+	# In the docker image
+	cd sdk
+	PENGLAI_SDK=$(pwd) make -j8
 
 ### Run OpenEuler with Penglai Supports
 
