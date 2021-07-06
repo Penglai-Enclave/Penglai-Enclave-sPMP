@@ -111,7 +111,6 @@ int grant_enclave_access(struct enclave_t* enclave)
 	int region_idx = 0;
 	int pmp_idx = 0;
 	struct pmp_config_t pmp_config;
-	//struct spmp_config_t spmp_config;
 
 	if(check_mem_size(enclave->paddr, enclave->size) < 0)
 		return -1;
