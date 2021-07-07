@@ -14,7 +14,7 @@
 #include <sm/sm.h>
 
 
-static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,
+static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long funcid,
 		const struct sbi_trap_regs *regs, unsigned long *out_val,
 		struct sbi_trap_info *out_trap)
 {
@@ -40,9 +40,6 @@ static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,
 		case SBI_RUN_ENCLAVE:
 			ret = sm_run_enclave((uintptr_t *)regs, regs->a0);
 			break;
-		case SBI_EXIT_ENCLAVE:
-			ret = sm_exit_enclave((uintptr_t *)regs, regs->a0);
-			break;
 		case SBI_STOP_ENCLAVE:
 			ret = sm_stop_enclave((uintptr_t *)regs, regs->a0);
 			break;
@@ -56,18 +53,8 @@ static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,
 			ret = -1;
 			sbi_printf("[Penglai@Monitor] attest interface not supported yet\n");
 			break;
-#if 0
-		case SBI_SET_PTE:
-		case SBI_SM_INIT:
-		case SBI_SM_PT_AREA_SEPARATION:
-		case SBI_SM_MAP_PTE:
-		case SBI_CREATE_SERVER_ENCLAVE:
-			ret = -1;
-			sbi_printf("[Penglai@Monitor] Invoke TVM interfaces, not supported yet\n");
-			break;
-#endif
 		default:
-			sbi_printf("[Penglai@Monitor] interface not supported yet\n");
+			sbi_printf("[Penglai@Monitor] host interface(funcid:%ld) not supported yet\n", funcid);
 			ret = SBI_ENOTSUPP;
 	}
 	//((struct sbi_trap_regs *)regs)->mepc = csr_read(CSR_MEPC);
@@ -79,11 +66,33 @@ static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,
 struct sbi_ecall_extension ecall_penglai_host = {
 	.extid_start = SBI_EXT_PENGLAI_HOST,
 	.extid_end = SBI_EXT_PENGLAI_HOST,
-	.handle = sbi_ecall_penglai_handler,
+	.handle = sbi_ecall_penglai_host_handler,
 };
+
+static int sbi_ecall_penglai_enclave_handler(unsigned long extid, unsigned long funcid,
+		const struct sbi_trap_regs *regs, unsigned long *out_val,
+		struct sbi_trap_info *out_trap)
+{
+	uintptr_t ret = 0;
+
+	//csr_write(CSR_MEPC, regs->mepc + 4);
+	((struct sbi_trap_regs *)regs)->mepc += 4;
+
+	switch (funcid) {
+		// The following is the Penglai's Handler
+		case SBI_EXIT_ENCLAVE:
+			ret = sm_exit_enclave((uintptr_t *)regs, regs->a0);
+			break;
+		default:
+			sbi_printf("[Penglai@Monitor] enclave interface(funcid:%ld) not supported yet\n", funcid);
+			ret = SBI_ENOTSUPP;
+	}
+	*out_val = ret;
+	return ret;
+}
 
 struct sbi_ecall_extension ecall_penglai_enclave = {
 	.extid_start = SBI_EXT_PENGLAI_ENCLAVE,
 	.extid_end = SBI_EXT_PENGLAI_ENCLAVE,
-	.handle = sbi_ecall_penglai_handler,
+	.handle = sbi_ecall_penglai_enclave_handler,
 };

@@ -60,7 +60,7 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
       sizeof(struct mm_alloc_arg_t));
   if(retval != 0)
   {
-    printm("M mode: sm_alloc_enclave_mem: unknown error happended when copy from host\r\n");
+    printm_err("M mode: sm_alloc_enclave_mem: unknown error happended when copy from host\r\n");
     return ENCLAVE_ERROR;
   }
 
@@ -77,7 +77,7 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
   //grant kernel access to this memory
   if(grant_kernel_access(paddr, resp_size) != 0)
   {
-    printm("M mode: ERROR: faile to grant kernel access to pa 0x%lx, size 0x%lx\r\n", (unsigned long) paddr, resp_size);
+    printm_err("M mode: ERROR: faile to grant kernel access to pa 0x%lx, size 0x%lx\r\n", (unsigned long) paddr, resp_size);
     mm_free(paddr, resp_size);
     return ENCLAVE_ERROR;
   }
@@ -150,14 +150,9 @@ uintptr_t sm_resume_enclave(uintptr_t* regs, unsigned long eid)
   switch(resume_func_id)
   {
     case RESUME_FROM_TIMER_IRQ:
-      //printm("resume from timer irq\r\n");
-      //*HLS()->timecmp = regs[12];
-      //csr_read_clear(CSR_MIP, MIP_STIP);
-      //csr_read_set(CSR_MIE, MIP_MTIP);
       retval = resume_enclave(regs, eid);
       break;
     case RESUME_FROM_STOP:
-      //printm("resume from stop\r\n");
       retval = resume_from_stop(regs, eid);
       break;
     default:
