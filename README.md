@@ -38,6 +38,7 @@ Therefore, the only requirement to build and run penglai-demo is:
 
 - [Docker](https://docs.docker.com): for building/running Penglai
 - Git: for downloading the code
+- Qemu for RISC-V (RV64): suggested version >= 5.2.0. You can download the qemu [here](https://www.qemu.org/) and follow the [instructions](https://wiki.qemu.org/Documentation/Platforms/RISCV) to build and install qemu.
 
 ### Build OpenEuler Kernel
 
