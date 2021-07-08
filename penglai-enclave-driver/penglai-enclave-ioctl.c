@@ -320,18 +320,25 @@ destroy_enclave:
 int penglai_enclave_attest(struct file * filep, unsigned long args)
 {
 	struct penglai_enclave_ioctl_attest_enclave * enclave_param = (struct penglai_enclave_ioctl_attest_enclave*) args;
-	unsigned long eid = enclave_param ->eid;
+	unsigned long eid = enclave_param->eid;
 	enclave_t * enclave;
 	struct sbiret ret = {0};
+	int retval;
 
+	acquire_big_lock(__func__);
 	enclave = get_enclave_by_id(eid);
 	if (!enclave)
 	{
 		printk("KERNEL MODULE: enclave is not exist \n");
-		return -EINVAL;
+		retval = -EINVAL;
+		goto out;
 	}
 
 	ret = SBI_CALL_3(SBI_SM_ATTEST_ENCLAVE, enclave->eid, __pa(&(enclave_param->report)), enclave_param->nonce);
+	retval = ret.value;
+
+out:
+	release_big_lock(__func__);
 	return ret.value;
 }
 
@@ -341,27 +348,34 @@ long penglai_enclave_stop(struct file* filep, unsigned long args)
 	unsigned long eid = enclave_param ->eid;
 	enclave_t * enclave;
 	struct sbiret ret = {0};
+	int retval;
 
+	acquire_big_lock(__func__);
 	enclave = get_enclave_by_id(eid);
 	if (!enclave)
 	{
 		printk("KERNEL MODULE: enclave is not exist \n");
-		return -EINVAL;
+		retval = -EINVAL;
+		goto out;
 	}
 	ret = SBI_CALL_1(SBI_SM_STOP_ENCLAVE, enclave->eid);
-	//if (ret < 0)
 	if (ret.error)
 	{
 		printk("KERNEL MODULE: sbi call stop enclave is failed \n");
 		//goto destroy_enclave;
 	}
+	retval = ret.value;
 
-	return ret.value;
+out:
+	release_big_lock(__func__);
+	return retval;
 
+#if 0
 	//destroy_enclave:
 	destroy_enclave(enclave);
 	enclave_idr_remove(eid);
 	return -EFAULT;
+#endif
 }
 
 int penglai_enclave_resume(struct file * filep, unsigned long args)
@@ -370,27 +384,33 @@ int penglai_enclave_resume(struct file * filep, unsigned long args)
 	unsigned long eid = enclave_param ->eid;
 	enclave_t * enclave;
 	struct sbiret ret = {0};
+	int retval;
 
+	acquire_big_lock(__func__);
 	enclave = get_enclave_by_id(eid);
 	if (!enclave)
 	{
 		printk("KERNEL MODULE: enclave is not exist \n");
-		return -EINVAL;
+		retval = -EINVAL;
+		goto out;
 	}
 	ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_STOP);
-	//if (ret < 0)
 	if (ret.error)
 	{
 		printk("KERNEL MODULE: sbi call resume enclave is failed \n");
-		goto destroy_enclave;
 	}
+	retval = ret.value;
 
-	return ret.value;
+out:
+	release_big_lock(__func__);
+	return retval;
 
+#if 0
 destroy_enclave:
 	destroy_enclave(enclave);
 	enclave_idr_remove(eid);
 	return -EFAULT;
+#endif
 }
 
 long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long args)
