@@ -2,6 +2,9 @@
 DEFINE_IDR(idr_enclave);
 DEFINE_SPINLOCK(idr_enclave_lock);
 
+/*
+ * ACK (DD): the idr_alloc function is learned from keystone :)
+ * */
 unsigned int enclave_idr_alloc(enclave_t* enclave)
 {
 	unsigned int ueid;
