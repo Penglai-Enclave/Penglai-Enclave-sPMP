@@ -22,14 +22,14 @@ You can use our SDK and enclave-driver to build your trusted applications, or ev
 
 - Status: experimental: it's still experimental version now, please refer our TVM version for more features.
 - Hardware requirement: riscv qemu (suggested version: >= 5.2.0) is fine
-- Supported software system: This repo contains resources to run OpenEuler with Penglai TEE.
+- Supported software system: This repo contains resources to run openEuler with Penglai TEE.
 - Real devices: Penglai for Nuclei devices is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
 
 You can turn to BBL-version by switching to the master branch.
 
 You can refer our [Penglai-TVM](https://github.com/Penglai-Enclave/Penglai-Enclave-TVM) for more advanced features, including inter-enclave communication, secure storage, shadow fork, and others.
 
-## Case: Running OpenEuler with Penglai
+## Case: Running openEuler with Penglai
 
 ### Requirements
 
@@ -40,9 +40,9 @@ Therefore, the only requirement to build and run penglai-demo is:
 - Git: for downloading the code
 - Qemu for RISC-V (RV64): suggested version >= 5.2.0. You can download the qemu [here](https://www.qemu.org/) and follow the [instructions](https://wiki.qemu.org/Documentation/Platforms/RISCV) to build and install qemu.
 
-### Build OpenEuler Kernel
+### Build openEuler Kernel
 
-Follow the instructions in openeuler riscv gitee to compile OpenEuler kernel.
+Follow the instructions in openeuler riscv gitee to compile openEuler kernel.
 
 For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
 
@@ -58,7 +58,7 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 	mkdir -p build-oe/qemu-virt
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/env/Image
 
-Note: the /env/Image is the image compiled OpenEuler Kernel Image.
+Note: the /env/Image is the image compiled openEuler Kernel Image.
 
 A simpler way:
 
@@ -79,12 +79,15 @@ It will generate penglai.ko in the penglai-enclave-driver dir.
 
 Following the commnads to build user-level sdk and demos:
 
+	# Fetch the sdk submodule
+	git submodule update --init --recursive
+
 	./docker_cmd.sh docker
 	# In the docker image
 	cd sdk
 	PENGLAI_SDK=$(pwd) make -j8
 
-### Run OpenEuler with Penglai Supports
+### Run openEuler with Penglai Supports
 
 You should download the disk image of openEuler (i.e., openEuler-preview.riscv64.qcow2) from [here](https://repo.openeuler.org/openEuler-preview/RISC-V/Image/)
 
@@ -103,7 +106,7 @@ You should download the disk image of openEuler (i.e., openEuler-preview.riscv64
 
 - The test qemu version is 5.2.0.
 - The fw_payload.elf is the opensbi file.
-- The openEuler-preview.riscv64.qcow2 is the disk image for OpenEuler (You can download from https://repo.openeuler.org/openEuler-preview/RISC-V/Image/).
+- The openEuler-preview.riscv64.qcow2 is the disk image for openEuler (You can download from https://repo.openeuler.org/openEuler-preview/RISC-V/Image/).
 - To login, username is "root", passwd is "openEuler12#$"
 
 Note: a script, run_openeuler.sh is provided to execute the above command easily
@@ -128,7 +131,7 @@ Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 ## Code Structures
 
 - opensbi-0.9: The Penglai-equipped OpenSBI, version 0.9
-- openeuler-kernel: OpenEuler Kernel
+- openeuler-kernel: openEuler Kernel
 - riscv-qemu: The modified qemu (4.1) to support sPMP (you can also use the standard qemu)
 - scripts: some scripts to build/run Penglai demo
 
