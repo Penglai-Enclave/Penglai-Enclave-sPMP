@@ -79,6 +79,9 @@ It will generate penglai.ko in the penglai-enclave-driver dir.
 
 Following the commnads to build user-level sdk and demos:
 
+	# Fetch the sdk submodule
+	git submodule update --init --recursive
+
 	./docker_cmd.sh docker
 	# In the docker image
 	cd sdk
