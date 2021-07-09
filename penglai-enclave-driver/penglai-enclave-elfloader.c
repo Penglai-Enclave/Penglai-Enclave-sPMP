@@ -139,7 +139,7 @@ int map_untrusted_mem(enclave_mem_t* enclave_mem, vaddr_t vaddr, paddr_t paddr, 
 	vaddr_t addr = vaddr;
 
 	for (; addr < vaddr + size; addr+=RISCV_PGSIZE) {
-		map_va2pa(enclave_mem, vaddr, paddr, ENCLAVE_UNTRUSTED_PAGE);
+		map_va2pa(enclave_mem, addr, paddr, ENCLAVE_UNTRUSTED_PAGE);
 		paddr += RISCV_PGSIZE;
 	}
 	return 0;
