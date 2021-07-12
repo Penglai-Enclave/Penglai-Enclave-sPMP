@@ -1,0 +1,13 @@
+*.ko
+*.mod.o
+*.mod.c
+*.mod
+*.symvers
+*.order
+*.o
+.cache.mk
+*.cmd
+.tmp_versions/
+*.elf
+*.dump
+tags

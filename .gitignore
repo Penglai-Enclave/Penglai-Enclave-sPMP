@@ -6,3 +6,6 @@ vivado*.log
 .cache.mk
 copy-files/*
 !copy-files/empty
+*.qcow2
+*.hex
+*.swp

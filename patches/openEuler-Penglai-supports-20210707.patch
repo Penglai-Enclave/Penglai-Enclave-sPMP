@@ -1,0 +1,3504 @@
+From 7a05ac220aa0f9e8afd7389be5ac0160ff6b1511 Mon Sep 17 00:00:00 2001
+From: Dong Du <dd_nirvana@sjtu.edu.cn>
+Date: Wed, 7 Jul 2021 10:08:53 +0800
+Subject: [PATCH] Penglai supports
+
+Signed-off-by: Dong Du <dd_nirvana@sjtu.edu.cn>
+---
+ include/sbi/riscv_encoding.h              |  19 +
+ include/sbi/sbi_ecall.h                   |   2 +
+ include/sbi/sbi_ecall_interface.h         |   4 +
+ include/sbi/sbi_pmp.h                     |  10 +
+ include/sm/enclave.h                      |  98 +++
+ include/sm/enclave_args.h                 |  31 +
+ include/sm/math.h                         |  78 +++
+ include/sm/platform/pmp/enclave_mm.h      |  67 ++
+ include/sm/platform/pmp/platform.h        |   9 +
+ include/sm/platform/pmp/platform_thread.h |  13 +
+ include/sm/pmp.h                          |  71 ++
+ include/sm/print.h                        |  15 +
+ include/sm/sm.h                           |  80 +++
+ include/sm/thread.h                       |  86 +++
+ include/sm/utils.h                        |  10 +
+ include/sm/vm.h                           |  21 +
+ lib/sbi/objects.mk                        |  11 +
+ lib/sbi/sbi_ecall.c                       |  12 +
+ lib/sbi/sbi_ecall_penglai.c               |  98 +++
+ lib/sbi/sbi_hart.c                        |   4 +
+ lib/sbi/sbi_init.c                        |  30 +-
+ lib/sbi/sbi_pmp.c                         | 123 ++++
+ lib/sbi/sbi_trap.c                        |  14 +
+ lib/sbi/sm/.gitignore                     |   1 +
+ lib/sbi/sm/enclave.c                      | 796 ++++++++++++++++++++++
+ lib/sbi/sm/platform/README.md             |   9 +
+ lib/sbi/sm/platform/pmp/enclave_mm.c      | 705 +++++++++++++++++++
+ lib/sbi/sm/platform/pmp/platform.c        |  34 +
+ lib/sbi/sm/platform/pmp/platform_thread.c |  31 +
+ lib/sbi/sm/pmp.c                          | 287 ++++++++
+ lib/sbi/sm/sm.ac                          |   3 +
+ lib/sbi/sm/sm.c                           | 204 ++++++
+ lib/sbi/sm/sm.mk.in                       |  25 +
+ lib/sbi/sm/thread.c                       |  67 ++
+ lib/sbi/sm/utils.c                        |  40 ++
+ 35 files changed, 3106 insertions(+), 2 deletions(-)
+ create mode 100644 include/sbi/sbi_pmp.h
+ create mode 100644 include/sm/enclave.h
+ create mode 100644 include/sm/enclave_args.h
+ create mode 100644 include/sm/math.h
+ create mode 100644 include/sm/platform/pmp/enclave_mm.h
+ create mode 100644 include/sm/platform/pmp/platform.h
+ create mode 100644 include/sm/platform/pmp/platform_thread.h
+ create mode 100644 include/sm/pmp.h
+ create mode 100644 include/sm/print.h
+ create mode 100644 include/sm/sm.h
+ create mode 100644 include/sm/thread.h
+ create mode 100644 include/sm/utils.h
+ create mode 100644 include/sm/vm.h
+ create mode 100644 lib/sbi/sbi_ecall_penglai.c
+ create mode 100644 lib/sbi/sbi_pmp.c
+ create mode 100644 lib/sbi/sm/.gitignore
+ create mode 100644 lib/sbi/sm/enclave.c
+ create mode 100644 lib/sbi/sm/platform/README.md
+ create mode 100644 lib/sbi/sm/platform/pmp/enclave_mm.c
+ create mode 100644 lib/sbi/sm/platform/pmp/platform.c
+ create mode 100644 lib/sbi/sm/platform/pmp/platform_thread.c
+ create mode 100644 lib/sbi/sm/pmp.c
+ create mode 100644 lib/sbi/sm/sm.ac
+ create mode 100644 lib/sbi/sm/sm.c
+ create mode 100644 lib/sbi/sm/sm.mk.in
+ create mode 100644 lib/sbi/sm/thread.c
+ create mode 100644 lib/sbi/sm/utils.c
+
+diff --git a/include/sbi/riscv_encoding.h b/include/sbi/riscv_encoding.h
+index e1d0b46..a1cebd7 100644
+--- a/include/sbi/riscv_encoding.h
++++ b/include/sbi/riscv_encoding.h
+@@ -151,6 +151,22 @@
+ #define PMP_ADDR_MASK			_UL(0xFFFFFFFF)
+ #endif
+ 
++/* page table entry (PTE) fields */
++#define PTE_V				_UL(0x001) /* Valid */
++#define PTE_R				_UL(0x002) /* Read */
++#define PTE_W				_UL(0x004) /* Write */
++#define PTE_X				_UL(0x008) /* Execute */
++#define PTE_U				_UL(0x010) /* User */
++#define PTE_G				_UL(0x020) /* Global */
++#define PTE_A				_UL(0x040) /* Accessed */
++#define PTE_D				_UL(0x080) /* Dirty */
++#define PTE_SOFT			_UL(0x300) /* Reserved for Software */
++
++#define PTE_PPN_SHIFT			10
++
++#define PTE_TABLE(PTE)			\
++	(((PTE) & (PTE_V | PTE_R | PTE_W | PTE_X)) == PTE_V)
++
+ #if __riscv_xlen == 64
+ #define MSTATUS_SD			MSTATUS64_SD
+ #define SSTATUS_SD			SSTATUS64_SD
+@@ -171,6 +187,9 @@
+ #define HGATP_MODE_SHIFT		HGATP32_MODE_SHIFT
+ #endif
+ 
++#define RISCV_PGSHIFT			12
++#define RISCV_PGSIZE			(1 << RISCV_PGSHIFT)
++
+ /* ===== User-level CSRs ===== */
+ 
+ /* User Trap Setup (N-extension) */
+diff --git a/include/sbi/sbi_ecall.h b/include/sbi/sbi_ecall.h
+index d357085..b77d252 100644
+--- a/include/sbi/sbi_ecall.h
++++ b/include/sbi/sbi_ecall.h
+@@ -39,6 +39,8 @@ extern struct sbi_ecall_extension ecall_ipi;
+ extern struct sbi_ecall_extension ecall_vendor;
+ extern struct sbi_ecall_extension ecall_hsm;
+ extern struct sbi_ecall_extension ecall_srst;
++extern struct sbi_ecall_extension ecall_penglai_host;
++extern struct sbi_ecall_extension ecall_penglai_enclave;
+ 
+ u16 sbi_ecall_version_major(void);
+ 
+diff --git a/include/sbi/sbi_ecall_interface.h b/include/sbi/sbi_ecall_interface.h
+index 002c6f9..0bec030 100644
+--- a/include/sbi/sbi_ecall_interface.h
++++ b/include/sbi/sbi_ecall_interface.h
+@@ -29,6 +29,10 @@
+ #define SBI_EXT_HSM				0x48534D
+ #define SBI_EXT_SRST				0x53525354
+ 
++//Penglai
++#define SBI_EXT_PENGLAI_HOST            0x100100
++#define SBI_EXT_PENGLAI_ENCLAVE     0x100101
++
+ /* SBI function IDs for BASE extension*/
+ #define SBI_EXT_BASE_GET_SPEC_VERSION		0x0
+ #define SBI_EXT_BASE_GET_IMP_ID			0x1
+diff --git a/include/sbi/sbi_pmp.h b/include/sbi/sbi_pmp.h
+new file mode 100644
+index 0000000..c6ef1fc
+--- /dev/null
++++ b/include/sbi/sbi_pmp.h
+@@ -0,0 +1,10 @@
++#ifndef __SBI_PMP_H__
++#define __SBI_PMP_H__
++
++#include <sm/pmp.h>
++#include <sbi/sbi_types.h>
++#include <sbi/sbi_hartmask.h>
++struct sbi_scratch;
++int sbi_pmp_init(struct sbi_scratch *scratch, bool cold_boot);
++int sbi_send_pmp(ulong hmask, ulong hbase, struct pmp_data_t* pmp_data);
++#endif
+diff --git a/include/sm/enclave.h b/include/sm/enclave.h
+new file mode 100644
+index 0000000..377ca2e
+--- /dev/null
++++ b/include/sm/enclave.h
+@@ -0,0 +1,98 @@
++#ifndef _ENCLAVE_H
++#define _ENCLAVE_H
++
++#include <sbi/riscv_asm.h>
++#include <sm/vm.h>
++#include <sbi/riscv_encoding.h>
++#include <sm/enclave_args.h>
++#include <sbi/riscv_atomic.h>
++#include <sm/thread.h>
++#include <stdint.h>
++#include <stddef.h>
++
++#define ENCLAVES_PER_METADATA_REGION 128
++#define ENCLAVE_METADATA_REGION_SIZE ((sizeof(struct enclave_t)) * ENCLAVES_PER_METADATA_REGION)
++
++#define ENCLAVE_MODE 1
++
++// define the time slice for an enclave
++#define ENCLAVE_TIME_CREDITS 100000
++
++struct link_mem_t
++{
++  unsigned long mem_size;
++  unsigned long slab_size;
++  unsigned long slab_num;
++  char* addr;
++  struct link_mem_t* next_link_mem;
++};
++
++typedef enum
++{
++  DESTROYED = -1,
++  INVALID = 0,
++  FRESH = 1,
++  RUNNABLE,
++  RUNNING,
++  STOPPED,
++} enclave_state_t;
++
++/*
++ * enclave memory [paddr, paddr + size]
++ * free_mem @ unused memory address in enclave mem
++ */
++struct enclave_t
++{
++  unsigned int eid;
++  enclave_state_t state;
++
++  //memory region of enclave
++  unsigned long paddr;
++  unsigned long size;
++
++  //address of left available memory in memory region
++  unsigned long free_mem;
++
++  //TODO: dynamically allocated memory
++  unsigned long* enclave_mem_metadata_page;
++
++  //root page table of enclave
++  unsigned long* root_page_table;
++  //root page table register for host
++  unsigned long host_ptbr;
++  //entry point of enclave
++  unsigned long entry_point;
++
++  unsigned long* ocall_func_id;
++  unsigned long* ocall_arg0;
++  unsigned long* ocall_arg1;
++  unsigned long* ocall_syscall_num;
++
++  //shared memory with host
++  unsigned long untrusted_ptr;
++  unsigned long untrusted_size;
++
++  //enclave thread context
++  //TODO: support multiple threads
++  struct thread_state_t thread_context;
++};
++
++struct cpu_state_t
++{
++  int in_enclave;
++  int eid;
++};
++
++uintptr_t copy_from_host(void* dest, void* src, size_t size);
++uintptr_t copy_to_host(void* dest, void* src, size_t size);
++
++uintptr_t create_enclave(struct enclave_sbi_param_t create_args);
++uintptr_t run_enclave(uintptr_t* regs, unsigned int eid);
++uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid);
++uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid);
++uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid);
++uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid);
++uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval);
++uintptr_t do_timer_irq(uintptr_t* regs, uintptr_t mcause, uintptr_t mepc);
++
++#endif /* _ENCLAVE_H */
+diff --git a/include/sm/enclave_args.h b/include/sm/enclave_args.h
+new file mode 100644
+index 0000000..6516f70
+--- /dev/null
++++ b/include/sm/enclave_args.h
+@@ -0,0 +1,31 @@
++#ifndef _ENCLAVE_ARGS_H
++#define _ENCLAVE_ARGS_H
++#include "thread.h"
++
++struct mm_alloc_arg_t
++{
++  unsigned long req_size;
++  uintptr_t resp_addr;
++  unsigned long resp_size;
++};
++
++/*
++ * enclave memory [paddr, paddr + size]
++ * free_mem @ unused memory address in enclave mem
++ */
++struct enclave_sbi_param_t
++{
++  unsigned int *eid_ptr;
++  unsigned long paddr;
++  unsigned long size;
++  unsigned long entry_point;
++  unsigned long untrusted_ptr;
++  unsigned long untrusted_size;
++  unsigned long free_mem;
++  unsigned long *ecall_arg0;
++  unsigned long *ecall_arg1;
++  unsigned long *ecall_arg2;
++  unsigned long *ecall_arg3;
++};
++
++#endif /* _ENCLAVE_ARGS_H */
+diff --git a/include/sm/math.h b/include/sm/math.h
+new file mode 100644
+index 0000000..7a665b2
+--- /dev/null
++++ b/include/sm/math.h
+@@ -0,0 +1,78 @@
++#ifndef _MATH_H
++#define _MATH_H
++
++#define ilog2(n)              \
++(                             \
++  (n) < 2 ? 0 :               \
++  (n) & (1ULL << 63) ? 63 :   \
++  (n) & (1ULL << 62) ? 62 :   \
++  (n) & (1ULL << 61) ? 61 :   \
++  (n) & (1ULL << 60) ? 60 :	  \
++  (n) & (1ULL << 59) ? 59 :	  \
++  (n) & (1ULL << 58) ? 58 :	  \
++  (n) & (1ULL << 57) ? 57 :	  \
++  (n) & (1ULL << 56) ? 56 :	  \
++  (n) & (1ULL << 55) ? 55 :	  \
++  (n) & (1ULL << 54) ? 54 :	  \
++  (n) & (1ULL << 53) ? 53 :	  \
++  (n) & (1ULL << 52) ? 52 :	  \
++  (n) & (1ULL << 51) ? 51 :	  \
++  (n) & (1ULL << 50) ? 50 :	  \
++  (n) & (1ULL << 49) ? 49 :	  \
++  (n) & (1ULL << 48) ? 48 :	  \
++  (n) & (1ULL << 47) ? 47 :	  \
++  (n) & (1ULL << 46) ? 46 :	  \
++  (n) & (1ULL << 45) ? 45 :	  \
++  (n) & (1ULL << 44) ? 44 :	  \
++  (n) & (1ULL << 43) ? 43 :	  \
++  (n) & (1ULL << 42) ? 42 :	  \
++  (n) & (1ULL << 41) ? 41 :	  \
++  (n) & (1ULL << 40) ? 40 :	  \
++  (n) & (1ULL << 39) ? 39 :	  \
++  (n) & (1ULL << 38) ? 38 :	  \
++  (n) & (1ULL << 37) ? 37 :	  \
++  (n) & (1ULL << 36) ? 36 :	  \
++  (n) & (1ULL << 35) ? 35 :	  \
++  (n) & (1ULL << 34) ? 34 :	  \
++  (n) & (1ULL << 33) ? 33 :	  \
++  (n) & (1ULL << 32) ? 32 :	  \
++  (n) & (1ULL << 31) ? 31 :	  \
++  (n) & (1ULL << 30) ? 30 :	  \
++  (n) & (1ULL << 29) ? 29 :	  \
++  (n) & (1ULL << 28) ? 28 :	  \
++  (n) & (1ULL << 27) ? 27 :	  \
++  (n) & (1ULL << 26) ? 26 :	  \
++  (n) & (1ULL << 25) ? 25 :	  \
++  (n) & (1ULL << 24) ? 24 :	  \
++  (n) & (1ULL << 23) ? 23 :	  \
++  (n) & (1ULL << 22) ? 22 :	  \
++  (n) & (1ULL << 21) ? 21 :	  \
++  (n) & (1ULL << 20) ? 20 :	  \
++  (n) & (1ULL << 19) ? 19 :	  \
++  (n) & (1ULL << 18) ? 18 :	  \
++  (n) & (1ULL << 17) ? 17 :	  \
++  (n) & (1ULL << 16) ? 16 :	  \
++  (n) & (1ULL << 15) ? 15 :	  \
++  (n) & (1ULL << 14) ? 14 :	  \
++  (n) & (1ULL << 13) ? 13 :	  \
++  (n) & (1ULL << 12) ? 12 :	  \
++  (n) & (1ULL << 11) ? 11 :	  \
++  (n) & (1ULL << 10) ? 10 :	  \
++  (n) & (1ULL <<  9) ?  9 :	  \
++  (n) & (1ULL <<  8) ?  8 :	  \
++  (n) & (1ULL <<  7) ?  7 :	  \
++  (n) & (1ULL <<  6) ?  6 :	  \
++  (n) & (1ULL <<  5) ?  5 :	  \
++  (n) & (1ULL <<  4) ?  4 :	  \
++  (n) & (1ULL <<  3) ?  3 :	  \
++  (n) & (1ULL <<  2) ?  2 :	  \
++  1                           \
++)
++
++#define power_2_align(n) (1 << (ilog2(n-1)+1))
++
++#define size_down_align(n, size) (n - ((n) % (size)))
++
++#define size_up_align(n, size) (size_down_align(n, size) + ((n) % (size) ? (size) : 0))
++
++#endif /* _MATH_H */
+diff --git a/include/sm/platform/pmp/enclave_mm.h b/include/sm/platform/pmp/enclave_mm.h
+new file mode 100644
+index 0000000..dcab9b4
+--- /dev/null
++++ b/include/sm/platform/pmp/enclave_mm.h
+@@ -0,0 +1,67 @@
++#ifndef _ENCLAVE_MM_H
++#define _ENCLAVE_MM_H
++
++#include <stdint.h>
++#include <sm/pmp.h>
++#include <sm/enclave.h>
++
++#define N_PMP_REGIONS (NPMP - 3)
++
++#define REGION_TO_PMP(region_idx) (region_idx + 2) //from the 3rd to the N-1 regions
++#define PMP_TO_REGION(pmp_idx) (pmp_idx - 2)
++
++/*
++ * Layout of free memory chunk
++ * | struct mm_list_head_t | struct mm_list_t | 00...0 |
++ * | struct mm_list_head_t | struct mm_list_t | 00...0 |
++ * | struct mm_list_head_t | struct mm_list_t | 00...0 |
++ */
++struct mm_list_t
++{
++	int order;
++	struct mm_list_t *prev_mm;
++	struct mm_list_t *next_mm;
++};
++
++struct mm_list_head_t
++{
++	int order;
++	struct mm_list_head_t *prev_list_head;
++	struct mm_list_head_t *next_list_head;
++	struct mm_list_t *mm_list;
++};
++
++#define MM_LIST_2_PADDR(mm_list) ((void*)(mm_list) - sizeof(struct mm_list_head_t))
++#define PADDR_2_MM_LIST(paddr) ((void*)(paddr) + sizeof(struct mm_list_head_t))
++
++struct mm_region_t
++{
++	int valid;
++	uintptr_t paddr;
++	unsigned long size;
++	struct mm_list_head_t *mm_list_head;
++};
++
++#define region_overlap(pa0, size0, pa1, size1) (((pa0<=pa1) && ((pa0+size0)>pa1)) \
++		|| ((pa1<=pa0) && ((pa1+size1)>pa0)))
++
++#define region_contain(pa0, size0, pa1, size1) (((unsigned long)(pa0) <= (unsigned long)(pa1)) \
++		&& (((unsigned long)(pa0) + (unsigned long)(size0)) >= ((unsigned long)(pa1) + (unsigned long)(size1))))
++
++int grant_kernel_access(void* paddr, unsigned long size);
++
++int grant_enclave_access(struct enclave_t* enclave);
++
++int retrieve_kernel_access(void* paddr, unsigned long size);
++
++int retrieve_enclave_access(struct enclave_t *enclave);
++
++uintptr_t mm_init(uintptr_t paddr, unsigned long size);
++
++void* mm_alloc(unsigned long req_size, unsigned long* resp_size);
++
++int mm_free(void* paddr, unsigned long size);
++
++void print_buddy_system();
++
++#endif /* _ENCLAVE_MM_H */
+diff --git a/include/sm/platform/pmp/platform.h b/include/sm/platform/pmp/platform.h
+new file mode 100644
+index 0000000..cb891e2
+--- /dev/null
++++ b/include/sm/platform/pmp/platform.h
+@@ -0,0 +1,9 @@
++#ifndef _PLATFORM_H
++#define _PLATFORM_H
++
++#include "enclave_mm.h"
++#include "platform_thread.h"
++
++int platform_init();
++
++#endif /* _PLATFORM_H */
+diff --git a/include/sm/platform/pmp/platform_thread.h b/include/sm/platform/pmp/platform_thread.h
+new file mode 100644
+index 0000000..36a7e72
+--- /dev/null
++++ b/include/sm/platform/pmp/platform_thread.h
+@@ -0,0 +1,13 @@
++#ifndef _PLATFORM_THREAD_H
++#define _PLATFORM_THREAD_H
++
++#include <sm/thread.h>
++
++void platform_enter_enclave_world();
++void platform_exit_enclave_world();
++int platform_check_in_enclave_world();
++int platform_check_enclave_authentication();
++void platform_switch_to_enclave_ptbr(struct thread_state_t* thread, uintptr_t ptbr);
++void platform_switch_to_host_ptbr(struct thread_state_t* thread, uintptr_t ptbr);
++
++#endif /* _PLATFORM_THREAD_H */
+diff --git a/include/sm/pmp.h b/include/sm/pmp.h
+new file mode 100644
+index 0000000..a88371f
+--- /dev/null
++++ b/include/sm/pmp.h
+@@ -0,0 +1,71 @@
++#ifndef _PMP_H
++#define _PMP_H
++
++#include <stdint.h>
++#include <sbi/sbi_types.h>
++#include <sbi/riscv_encoding.h>
++#include <sbi/riscv_asm.h>
++#include <sbi/sbi_hartmask.h>
++
++//number of PMP registers
++#define NPMP 16
++
++#define PMP_OFF   0x00
++#define PMP_NO_PERM  0
++
++//pmpfcg register's structure
++//|63     56|55     48|47     40|39     32|31     24|23     16|15      8|7       0|
++//| pmp7cfg | pmp6cfg | pmp5cfg | pmp4cfg | pmp3cfg | pmp2cfg | pmp1cfg | pmp1cfg |
++#define PMP_PER_CFG_REG           8
++#define PMPCFG_BIT_NUM            8
++#define PMPCFG_BITS               0xFF
++
++#define PMP_SET(num, cfg_index, pmpaddr, pmpcfg) do { \
++  uintptr_t oldcfg = csr_read(CSR_PMPCFG##cfg_index); \
++  pmpcfg |= (oldcfg & ~((uintptr_t)PMPCFG_BITS << (uintptr_t)PMPCFG_BIT_NUM*(num%PMP_PER_CFG_REG))); \
++  asm volatile ("la t0, 1f\n\t" \
++                "csrrw t0, mtvec, t0\n\t" \
++                "csrw pmpaddr"#num", %0\n\t" \
++                "csrw pmpcfg"#cfg_index", %1\n\t" \
++                "sfence.vma\n\t"\
++                ".align 2\n\t" \
++                "1: csrw mtvec, t0 \n\t" \
++                : : "r" (pmpaddr), "r" (pmpcfg) : "t0"); \
++} while(0)
++
++#define PMP_READ(num, cfg_index, pmpaddr, pmpcfg) do { \
++  asm volatile("csrr %0, pmpaddr"#num : "=r"(pmpaddr) :); \
++  asm volatile("csrr %0, pmpcfg"#cfg_index : "=r"(pmpcfg) :); \
++} while(0)
++
++struct pmp_config_t
++{
++  uintptr_t paddr;
++  unsigned long size;
++  uintptr_t perm;
++  uintptr_t mode;
++};
++
++struct pmp_data_t
++{
++  struct pmp_config_t pmp_config_arg;
++  int pmp_idx_arg;
++  struct sbi_hartmask smask;
++};
++
++#define SBI_PMP_DATA_INIT(__ptr, __pmp_config_arg, __pmp_idx_arg, __src) \
++do { \
++	(__ptr)->pmp_config_arg = (__pmp_config_arg); \
++	(__ptr)->pmp_idx_arg = (__pmp_idx_arg); \
++	SBI_HARTMASK_INIT_EXCEPT(&(__ptr)->smask, (__src)); \
++} while (0)
++
++
++void set_pmp_and_sync(int pmp_idx, struct pmp_config_t);
++void clear_pmp_and_sync(int pmp_idx);
++void set_pmp(int pmp_idx, struct pmp_config_t);
++void clear_pmp(int pmp_idx);
++struct pmp_config_t get_pmp(int pmp_idx);
++void dump_pmps(void);
++
++#endif /* _PMP_H */
+diff --git a/include/sm/print.h b/include/sm/print.h
+new file mode 100644
+index 0000000..29118cd
+--- /dev/null
++++ b/include/sm/print.h
+@@ -0,0 +1,15 @@
++#ifndef SM_PRINT_H
++#define SM_PRINT_H
++
++#include <sbi/sbi_console.h>
++
++#ifdef PENGLAI_DEBUG
++#define printm(...) sbi_printf(__VA_ARGS__)
++#else
++#define printm(...)
++#endif
++
++//For report error messages, always enabled
++#define printm_err(...) sbi_printf(__VA_ARGS__)
++
++#endif
+diff --git a/include/sm/sm.h b/include/sm/sm.h
+new file mode 100644
+index 0000000..db0b49e
+--- /dev/null
++++ b/include/sm/sm.h
+@@ -0,0 +1,80 @@
++#ifndef _SM_H
++#define _SM_H
++
++//#ifndef TARGET_PLATFORM_HEADER
++//#error "SM requires to specify a certain platform"
++//#endif
++
++//#include TARGET_PLATFORM_HEADER
++#include <sm/print.h>
++#include <sm/platform/pmp/platform.h>
++#include <stdint.h>
++#include <sm/enclave_args.h>
++
++/*
++ * Note: the hard-coded SM base and size depends on the M-mode firmware,
++ * 	 e.g., in OpenSBI, you should check the firmware range in platform/generic/config.mk
++ * */
++#define SM_BASE 0x80000000
++#define SM_SIZE 0x200000
++
++#define MAX_HARTS 8
++
++//Host SBI numbers
++#define SBI_MM_INIT            100
++#define SBI_CREATE_ENCLAVE      99
++#define SBI_ATTEST_ENCLAVE      98
++#define SBI_RUN_ENCLAVE         97
++#define SBI_STOP_ENCLAVE        96
++#define SBI_RESUME_ENCLAVE      95
++#define SBI_DESTROY_ENCLAVE     94
++#define SBI_ALLOC_ENCLAVE_MM    93
++#define SBI_MEMORY_EXTEND       92
++#define SBI_MEMORY_RECLAIM      91
++#define SBI_ENCLAVE_OCALL       90
++#define SBI_DEBUG_PRINT         88
++
++//Enclave SBI numbers
++#define SBI_EXIT_ENCLAVE        99
++
++//Error code of SBI_ALLOC_ENCLAVE_MEM
++#define ENCLAVE_NO_MEMORY       -2
++#define ENCLAVE_ERROR           -1
++#define ENCLAVE_SUCCESS          0
++#define ENCLAVE_TIMER_IRQ        1
++
++//error code of SBI_RESUME_RNCLAVE
++#define RESUME_FROM_TIMER_IRQ    2000
++#define RESUME_FROM_STOP         2003
++
++void sm_init();
++
++uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size);
++
++uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size);
++
++uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg);
++
++uintptr_t sm_create_enclave(uintptr_t enclave_create_args);
++
++uintptr_t sm_attest_enclave(uintptr_t enclave_id, uintptr_t report, uintptr_t nonce);
++
++uintptr_t sm_run_enclave(uintptr_t *regs, uintptr_t enclave_id);
++
++uintptr_t sm_debug_print(uintptr_t *regs, uintptr_t enclave_id);
++
++uintptr_t sm_stop_enclave(uintptr_t *regs, uintptr_t enclave_id);
++
++uintptr_t sm_resume_enclave(uintptr_t *regs, uintptr_t enclave_id);
++
++uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id);
++
++uintptr_t sm_enclave_ocall(uintptr_t *regs, uintptr_t ocall_func_id, uintptr_t arg);
++
++uintptr_t sm_exit_enclave(uintptr_t *regs, unsigned long retval);
++
++uintptr_t sm_do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc);
++
++int check_in_enclave_world();
++
++#endif /* _SM_H */
+diff --git a/include/sm/thread.h b/include/sm/thread.h
+new file mode 100644
+index 0000000..1d3db91
+--- /dev/null
++++ b/include/sm/thread.h
+@@ -0,0 +1,86 @@
++#ifndef __THREAD_H__
++#define __THREAD_H__
++
++#include <stdint.h>
++
++//default layout of enclave
++//#####################
++//#   reserved for    #
++//#       s mode      #
++//##################### 0xffffffe000000000
++//#       hole        #
++//##################### 0x0000004000000000
++//#       stack       #
++//#                   #
++//#       heap        #
++//##################### 0x0000002000000000
++//#  untrusted memory #
++//#  shared with host #
++//##################### 0x0000001000000000
++//#     code & data   #
++//##################### 0x0000000000001000
++//#       hole        #
++//##################### 0x0
++
++#define ENCLAVE_DEFAULT_STACK 0x0000004000000000;
++
++#define N_GENERAL_REGISTERS 32
++
++struct general_registers_t
++{
++  uintptr_t slot;
++  uintptr_t ra;
++  uintptr_t sp;
++  uintptr_t gp;
++  uintptr_t tp;
++  uintptr_t t0;
++  uintptr_t t1;
++  uintptr_t t2;
++  uintptr_t s0;
++  uintptr_t s1;
++  uintptr_t a0;
++  uintptr_t a1;
++  uintptr_t a2;
++  uintptr_t a3;
++  uintptr_t a4;
++  uintptr_t a5;
++  uintptr_t a6;
++  uintptr_t a7;
++  uintptr_t s2;
++  uintptr_t s3;
++  uintptr_t s4;
++  uintptr_t s5;
++  uintptr_t s6;
++  uintptr_t s7;
++  uintptr_t s8;
++  uintptr_t s9;
++  uintptr_t s10;
++  uintptr_t s11;
++  uintptr_t t3;
++  uintptr_t t4;
++  uintptr_t t5;
++  uintptr_t t6;
++};
++
++/* enclave thread state */
++struct thread_state_t
++{
++  uintptr_t encl_ptbr;
++  uintptr_t prev_stvec;
++  uintptr_t prev_mie;
++  uintptr_t prev_mideleg;
++  uintptr_t prev_medeleg;
++  uintptr_t prev_mepc;
++  uintptr_t prev_cache_binding;
++  struct general_registers_t prev_state;
++};
++
++/* swap previous and current thread states */
++void swap_prev_state(struct thread_state_t* state, uintptr_t* regs);
++void swap_prev_mepc(struct thread_state_t* state, uintptr_t mepc);
++void swap_prev_stvec(struct thread_state_t* state, uintptr_t stvec);
++void swap_prev_cache_binding(struct thread_state_t* state, uintptr_t cache_binding);
++void swap_prev_mie(struct thread_state_t* state, uintptr_t mie);
++void swap_prev_mideleg(struct thread_state_t* state, uintptr_t mideleg);
++void swap_prev_medeleg(struct thread_state_t* state, uintptr_t medeleg);
++#endif /* thread */
+diff --git a/include/sm/utils.h b/include/sm/utils.h
+new file mode 100644
+index 0000000..e3f2fab
+--- /dev/null
++++ b/include/sm/utils.h
+@@ -0,0 +1,10 @@
++// See LICENSE for license details.
++
++#ifndef _RISCV_SM_UTILS_H
++#define _RISCV_SM_UTILS_H
++
++#include <sbi/riscv_encoding.h>
++
++void dump_pt(unsigned long *page_table, int level);
++
++#endif
+diff --git a/include/sm/vm.h b/include/sm/vm.h
+new file mode 100644
+index 0000000..2cce276
+--- /dev/null
++++ b/include/sm/vm.h
+@@ -0,0 +1,21 @@
++#ifndef _VM_H
++#define _VM_H
++
++#include <sbi/riscv_encoding.h>
++#include <stdint.h>
++
++#define MEGAPAGE_SIZE ((uintptr_t)(RISCV_PGSIZE << RISCV_PGLEVEL_BITS))
++
++#if __riscv_xlen == 64
++
++# define SATP_MODE_CHOICE INSERT_FIELD(0, SATP64_MODE, SATP_MODE_SV39)
++# define VA_BITS 39
++# define GIGAPAGE_SIZE (MEGAPAGE_SIZE << RISCV_PGLEVEL_BITS)
++
++#else
++
++# define SATP_MODE_CHOICE INSERT_FIELD(0, SATP32_MODE, SATP_MODE_SV32)
++# define VA_BITS 32
++#endif
++
++#endif
+diff --git a/lib/sbi/objects.mk b/lib/sbi/objects.mk
+index 6f2c06f..605d39f 100644
+--- a/lib/sbi/objects.mk
++++ b/lib/sbi/objects.mk
+@@ -41,3 +41,14 @@ libsbi-objs-y += sbi_tlb.o
+ libsbi-objs-y += sbi_trap.o
+ libsbi-objs-y += sbi_unpriv.o
+ libsbi-objs-y += sbi_expected_trap.o
++libsbi-objs-y += sbi_pmp.o
++
++## Add by Dong Du
++#  The Penglai related files here
++libsbi-objs-y += sbi_ecall_penglai.o
++libsbi-objs-y += sm/enclave.o
++libsbi-objs-y += sm/pmp.o
++libsbi-objs-y += sm/sm.o
++libsbi-objs-y += sm/thread.o
++libsbi-objs-y += sm/utils.o
++libsbi-objs-y += sm/platform/pmp/platform.o
+diff --git a/lib/sbi/sbi_ecall.c b/lib/sbi/sbi_ecall.c
+index e92a539..22cb677 100644
+--- a/lib/sbi/sbi_ecall.c
++++ b/lib/sbi/sbi_ecall.c
+@@ -116,6 +116,12 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
+ 	if (ret == SBI_ETRAP) {
+ 		trap.epc = regs->mepc;
+ 		sbi_trap_redirect(regs, &trap);
++	} else if (extension_id == SBI_EXT_PENGLAI_HOST ||
++			extension_id == SBI_EXT_PENGLAI_ENCLAVE) {
++		regs->a0 = ret;
++		if (!is_0_1_spec)
++			regs->a1 = out_val;
++
+ 	} else {
+ 		if (ret < SBI_LAST_ERR) {
+ 			sbi_printf("%s: Invalid error %d for ext=0x%lx "
+@@ -168,6 +174,12 @@ int sbi_ecall_init(void)
+ 	if (ret)
+ 		return ret;
+ 	ret = sbi_ecall_register_extension(&ecall_vendor);
++	if (ret)
++		return ret;
++	ret = sbi_ecall_register_extension(&ecall_penglai_host);
++	if (ret)
++		return ret;
++	ret = sbi_ecall_register_extension(&ecall_penglai_enclave);
+ 	if (ret)
+ 		return ret;
+ 
+diff --git a/lib/sbi/sbi_ecall_penglai.c b/lib/sbi/sbi_ecall_penglai.c
+new file mode 100644
+index 0000000..b6a1395
+--- /dev/null
++++ b/lib/sbi/sbi_ecall_penglai.c
+@@ -0,0 +1,98 @@
++/*
++ * Authors:
++ *   Dong Du <Dd_nirvana@sjtu.edu.cn>
++ *   Erhu Feng <2748250768@qq.com>
++ */
++
++#include <sbi/sbi_ecall.h>
++#include <sbi/sbi_ecall_interface.h>
++#include <sbi/sbi_error.h>
++#include <sbi/sbi_trap.h>
++#include <sbi/sbi_version.h>
++#include <sbi/riscv_asm.h>
++#include <sbi/sbi_console.h>
++#include <sm/sm.h>
++
++
++static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long funcid,
++		const struct sbi_trap_regs *regs, unsigned long *out_val,
++		struct sbi_trap_info *out_trap)
++{
++	uintptr_t ret = 0;
++
++	//csr_write(CSR_MEPC, regs->mepc + 4);
++	((struct sbi_trap_regs *)regs)->mepc += 4;
++
++	switch (funcid) {
++		// The following is the Penglai's Handler
++		case SBI_MM_INIT:
++			ret = sm_mm_init(regs->a0, regs->a1);
++			break;
++		case SBI_MEMORY_EXTEND:
++			ret = sm_mm_extend(regs->a0, regs->a1);
++			break;
++		case SBI_ALLOC_ENCLAVE_MM:
++			ret = sm_alloc_enclave_mem(regs->a0);
++			break;
++		case SBI_CREATE_ENCLAVE:
++			ret = sm_create_enclave(regs->a0);
++			break;
++		case SBI_RUN_ENCLAVE:
++			ret = sm_run_enclave((uintptr_t *)regs, regs->a0);
++			break;
++		case SBI_STOP_ENCLAVE:
++			ret = sm_stop_enclave((uintptr_t *)regs, regs->a0);
++			break;
++		case SBI_RESUME_ENCLAVE:
++			ret = sm_resume_enclave((uintptr_t *)regs, regs->a0);
++			break;
++		case SBI_DESTROY_ENCLAVE:
++			ret = sm_destroy_enclave((uintptr_t *)regs, regs->a0);
++			break;
++		case SBI_ATTEST_ENCLAVE:
++			ret = -1;
++			sbi_printf("[Penglai@Monitor] attest interface not supported yet\n");
++			break;
++		default:
++			sbi_printf("[Penglai@Monitor] host interface(funcid:%ld) not supported yet\n", funcid);
++			ret = SBI_ENOTSUPP;
++	}
++	//((struct sbi_trap_regs *)regs)->mepc = csr_read(CSR_MEPC);
++	//((struct sbi_trap_regs *)regs)->mstatus = csr_read(CSR_MSTATUS);
++	*out_val = ret;
++	return ret;
++}
++
++struct sbi_ecall_extension ecall_penglai_host = {
++	.extid_start = SBI_EXT_PENGLAI_HOST,
++	.extid_end = SBI_EXT_PENGLAI_HOST,
++	.handle = sbi_ecall_penglai_host_handler,
++};
++
++static int sbi_ecall_penglai_enclave_handler(unsigned long extid, unsigned long funcid,
++		const struct sbi_trap_regs *regs, unsigned long *out_val,
++		struct sbi_trap_info *out_trap)
++{
++	uintptr_t ret = 0;
++
++	//csr_write(CSR_MEPC, regs->mepc + 4);
++	((struct sbi_trap_regs *)regs)->mepc += 4;
++
++	switch (funcid) {
++		// The following is the Penglai's Handler
++		case SBI_EXIT_ENCLAVE:
++			ret = sm_exit_enclave((uintptr_t *)regs, regs->a0);
++			break;
++		default:
++			sbi_printf("[Penglai@Monitor] enclave interface(funcid:%ld) not supported yet\n", funcid);
++			ret = SBI_ENOTSUPP;
++	}
++	*out_val = ret;
++	return ret;
++}
++
++struct sbi_ecall_extension ecall_penglai_enclave = {
++	.extid_start = SBI_EXT_PENGLAI_ENCLAVE,
++	.extid_end = SBI_EXT_PENGLAI_ENCLAVE,
++	.handle = sbi_ecall_penglai_enclave_handler,
++};
+diff --git a/lib/sbi/sbi_hart.c b/lib/sbi/sbi_hart.c
+index fc86e9f..9bd0499 100644
+--- a/lib/sbi/sbi_hart.c
++++ b/lib/sbi/sbi_hart.c
+@@ -21,6 +21,7 @@
+ #include <sbi/sbi_platform.h>
+ #include <sbi/sbi_string.h>
+ #include <sbi/sbi_trap.h>
++#include <sm/sm.h>
+ 
+ extern void __sbi_expected_trap(void);
+ extern void __sbi_expected_trap_hext(void);
+@@ -529,6 +530,9 @@ sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1,
+ 		}
+ 	}
+ 
++	//Init Penglai SM here
++	sm_init();
++
+ 	register unsigned long a0 asm("a0") = arg0;
+ 	register unsigned long a1 asm("a1") = arg1;
+ 	__asm__ __volatile__("mret" : : "r"(a0), "r"(a1));
+diff --git a/lib/sbi/sbi_init.c b/lib/sbi/sbi_init.c
+index 0e82458..68c21f5 100644
+--- a/lib/sbi/sbi_init.c
++++ b/lib/sbi/sbi_init.c
+@@ -23,6 +23,7 @@
+ #include <sbi/sbi_string.h>
+ #include <sbi/sbi_timer.h>
+ #include <sbi/sbi_tlb.h>
++#include <sbi/sbi_pmp.h>
+ #include <sbi/sbi_version.h>
+ 
+ #define BANNER                                              \
+@@ -41,9 +42,9 @@ static void sbi_boot_print_banner(struct sbi_scratch *scratch)
+ 		return;
+ 
+ #ifdef OPENSBI_VERSION_GIT
+-	sbi_printf("\nOpenSBI %s\n", OPENSBI_VERSION_GIT);
++	sbi_printf("\nOpenSBI %s (with Penglai TEE)\n", OPENSBI_VERSION_GIT);
+ #else
+-	sbi_printf("\nOpenSBI v%d.%d\n", OPENSBI_VERSION_MAJOR,
++	sbi_printf("\nOpenSBI v%d.%d (with Penglai TEE)\n", OPENSBI_VERSION_MAJOR,
+ 		   OPENSBI_VERSION_MINOR);
+ #endif
+ 
+@@ -252,6 +253,13 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
+ 		sbi_hart_hang();
+ 	}
+ 
++	/* Penglai PMP init for synchronize PMP settings among Harts */
++	rc = sbi_pmp_init(scratch, TRUE);
++	if (rc) {
++		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
++		sbi_hart_hang();
++	}
++
+ 	rc = sbi_timer_init(scratch, TRUE);
+ 	if (rc) {
+ 		sbi_printf("%s: timer init failed (error %d)\n", __func__, rc);
+@@ -281,6 +289,11 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
+ 
+ 	sbi_boot_print_domains(scratch);
+ 
++	/*
++	 * Note (DD):
++	 * 	In our case, the PMP set by domain will be erased, as penglai
++	 * 	will take control of PMP
++	 * */
+ 	rc = sbi_hart_pmp_configure(scratch);
+ 	if (rc) {
+ 		sbi_printf("%s: PMP configure failed (error %d)\n",
+@@ -301,6 +314,8 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
+ 
+ 	sbi_boot_print_hart(scratch, hartid);
+ 
++	sbi_printf("[Penglai] Penglai Enclave Preparing\n");
++
+ 	wake_coldboot_harts(scratch, hartid);
+ 
+ 	init_count = sbi_scratch_offset_ptr(scratch, init_count_offset);
+@@ -346,10 +361,21 @@ static void __noreturn init_warmboot(struct sbi_scratch *scratch, u32 hartid)
+ 	if (rc)
+ 		sbi_hart_hang();
+ 
++	rc = sbi_pmp_init(scratch, FALSE);
++	if (rc) {
++		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
++		sbi_hart_hang();
++	}
++
+ 	rc = sbi_timer_init(scratch, FALSE);
+ 	if (rc)
+ 		sbi_hart_hang();
+ 
++	/*
++	 * Note (DD):
++	 * 	In our case, the PMP set by domain will be erased, as penglai
++	 * 	will take control of PMP
++	 * */
+ 	rc = sbi_hart_pmp_configure(scratch);
+ 	if (rc)
+ 		sbi_hart_hang();
+diff --git a/lib/sbi/sbi_pmp.c b/lib/sbi/sbi_pmp.c
+new file mode 100644
+index 0000000..935ca7b
+--- /dev/null
++++ b/lib/sbi/sbi_pmp.c
+@@ -0,0 +1,123 @@
++#include <sbi/sbi_pmp.h>
++#include <sbi/riscv_asm.h>
++#include <sbi/riscv_atomic.h>
++#include <sbi/riscv_barrier.h>
++#include <sbi/sbi_error.h>
++#include <sbi/sbi_fifo.h>
++#include <sbi/sbi_hart.h>
++#include <sbi/sbi_ipi.h>
++#include <sbi/sbi_scratch.h>
++#include <sbi/sbi_tlb.h>
++#include <sbi/sbi_hfence.h>
++#include <sbi/sbi_string.h>
++#include <sbi/sbi_console.h>
++#include <sbi/sbi_platform.h>
++#include <sbi/sbi_hartmask.h>
++
++static unsigned long pmp_data_offset;
++static unsigned long pmp_sync_offset;
++
++static void sbi_process_pmp(struct sbi_scratch *scratch)
++{
++	struct pmp_data_t *data = sbi_scratch_offset_ptr(scratch, pmp_data_offset);
++	struct pmp_config_t pmp_config = *(struct pmp_config_t*)(data);
++	struct sbi_scratch *rscratch = NULL;
++	u32 rhartid;
++	unsigned long *pmp_sync = NULL;
++	int pmp_idx = data->pmp_idx_arg;
++	set_pmp(pmp_idx, pmp_config);
++
++	//sync
++	sbi_hartmask_for_each_hart(rhartid, &data->smask) {
++		rscratch = sbi_hartid_to_scratch(rhartid);
++		if (!rscratch)
++			continue;
++		pmp_sync = sbi_scratch_offset_ptr(rscratch, pmp_sync_offset);
++		while (atomic_raw_xchg_ulong(pmp_sync, 1));
++	}
++}
++
++static int sbi_update_pmp(struct sbi_scratch *scratch,
++			  struct sbi_scratch *remote_scratch,
++			  u32 remote_hartid, void *data)
++{
++	struct pmp_data_t *pmp_data = NULL;
++	int pmp_idx = 0;
++	u32 curr_hartid = current_hartid();
++
++	if (remote_hartid == curr_hartid) {
++		//update the pmp register locally
++		struct pmp_config_t pmp_config = *(struct pmp_config_t*)(data);
++		pmp_idx = ((struct pmp_data_t *)data)->pmp_idx_arg;
++		set_pmp(pmp_idx, pmp_config);
++		return -1;
++	}
++
++	pmp_data = sbi_scratch_offset_ptr(remote_scratch, pmp_data_offset);
++	//update the remote hart pmp data
++	sbi_memcpy(pmp_data, data, sizeof(struct pmp_data_t));
++
++	return 0;
++}
++
++static void sbi_pmp_sync(struct sbi_scratch *scratch)
++{
++	unsigned long *pmp_sync =
++			sbi_scratch_offset_ptr(scratch, pmp_sync_offset);
++	//wait the remote hart process the pmp signal
++	while (!atomic_raw_xchg_ulong(pmp_sync, 0));
++	return;
++}
++
++static struct sbi_ipi_event_ops pmp_ops = {
++	.name = "IPI_PMP",
++	.update = sbi_update_pmp,
++	.sync = sbi_pmp_sync,
++	.process = sbi_process_pmp,
++};
++
++static u32 pmp_event = SBI_IPI_EVENT_MAX;
++
++int sbi_send_pmp(ulong hmask, ulong hbase, struct pmp_data_t* pmp_data)
++{
++	return sbi_ipi_send_many(hmask, hbase, pmp_event, pmp_data);
++}
++
++int sbi_pmp_init(struct sbi_scratch *scratch, bool cold_boot)
++{
++	int ret;
++	struct pmp_data_t *pmpdata;
++	unsigned long *pmp_sync;
++
++	if (cold_boot) {
++        //Define the pmp data offset in the scratch
++		pmp_data_offset = sbi_scratch_alloc_offset(sizeof(*pmpdata),
++							    "PMP_DATA");
++		if (!pmp_data_offset)
++			return SBI_ENOMEM;
++
++		pmp_sync_offset = sbi_scratch_alloc_offset(sizeof(*pmp_sync),
++							    "PMP_SYNC");
++		if (!pmp_sync_offset)
++			return SBI_ENOMEM;
++
++		pmpdata = sbi_scratch_offset_ptr(scratch,
++						       pmp_data_offset);
++
++		pmp_sync = sbi_scratch_offset_ptr(scratch,
++						       pmp_sync_offset);
++
++		*pmp_sync = 0;
++
++		ret = sbi_ipi_event_create(&pmp_ops);
++		if (ret < 0) {
++			sbi_scratch_free_offset(pmp_data_offset);
++			return ret;
++		}
++		pmp_event = ret;
++	} else {
++		//do nothing for warmboot
++	}
++
++	return 0;
++}
+diff --git a/lib/sbi/sbi_trap.c b/lib/sbi/sbi_trap.c
+index b7349d2..110292b 100644
+--- a/lib/sbi/sbi_trap.c
++++ b/lib/sbi/sbi_trap.c
+@@ -20,6 +20,8 @@
+ #include <sbi/sbi_timer.h>
+ #include <sbi/sbi_trap.h>
+ 
++#include <sm/sm.h>
++
+ static void __noreturn sbi_trap_error(const char *msg, int rc,
+ 				      ulong mcause, ulong mtval, ulong mtval2,
+ 				      ulong mtinst, struct sbi_trap_regs *regs)
+@@ -228,6 +230,9 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
+ 		switch (mcause) {
+ 		case IRQ_M_TIMER:
+ 			sbi_timer_process();
++			if (check_in_enclave_world() >=0) { //handle timer for enclaves
++				sm_do_timer_irq( (uintptr_t *)regs, mcause, regs->mepc);
++			}
+ 			break;
+ 		case IRQ_M_SOFT:
+ 			sbi_ipi_process();
+@@ -252,6 +257,15 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
+ 		rc  = sbi_misaligned_store_handler(mtval, mtval2, mtinst, regs);
+ 		msg = "misaligned store handler failed";
+ 		break;
++	case CAUSE_USER_ECALL:
++		//The only case for USER_ECALL is issued by Penglai Enclave now
++		if (check_in_enclave_world() <0) {
++			sbi_printf("[Penglai] Error, user ecall not in enclaves\n");
++			rc = -1;
++			break;
++		} else {// continue to sbi_ecall_handler
++			//sbi_printf("[Penglai] ecall from enclaves\n");
++		}
+ 	case CAUSE_SUPERVISOR_ECALL:
+ 	case CAUSE_MACHINE_ECALL:
+ 		rc  = sbi_ecall_handler(regs);
+diff --git a/lib/sbi/sm/.gitignore b/lib/sbi/sm/.gitignore
+new file mode 100644
+index 0000000..751553b
+--- /dev/null
++++ b/lib/sbi/sm/.gitignore
+@@ -0,0 +1 @@
++*.bak
+diff --git a/lib/sbi/sm/enclave.c b/lib/sbi/sm/enclave.c
+new file mode 100644
+index 0000000..a93c04c
+--- /dev/null
++++ b/lib/sbi/sm/enclave.c
+@@ -0,0 +1,796 @@
++#include <sm/print.h>
++#include <sm/enclave.h>
++#include <sm/sm.h>
++#include <sm/math.h>
++#include <sbi/riscv_encoding.h>
++#include <sbi/sbi_string.h>
++#include <sbi/riscv_locks.h>
++#include <sm/platform/pmp/platform.h>
++#include <sm/utils.h>
++#include <sbi/sbi_timer.h>
++
++static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
++
++//spinlock
++static spinlock_t enclave_metadata_lock = SPIN_LOCK_INITIALIZER;
++
++//enclave metadata
++struct link_mem_t* enclave_metadata_head = NULL;
++struct link_mem_t* enclave_metadata_tail = NULL;
++
++uintptr_t copy_from_host(void* dest, void* src, size_t size)
++{
++	/* TODO: checking */
++	sbi_memcpy(dest, src, size);
++	return 0;
++}
++
++uintptr_t copy_to_host(void* dest, void* src, size_t size)
++{
++	/* TODO: checking */
++	sbi_memcpy(dest, src, size);
++	return 0;
++}
++
++int copy_word_to_host(unsigned int* ptr, uintptr_t value)
++{
++	/* TODO: checking */
++	*ptr = value;
++	return 0;
++}
++
++static void enter_enclave_world(int eid)
++{
++	cpus[csr_read(CSR_MHARTID)].in_enclave = ENCLAVE_MODE;
++	cpus[csr_read(CSR_MHARTID)].eid = eid;
++
++	platform_enter_enclave_world();
++}
++
++static int get_enclave_id()
++{
++	return cpus[csr_read(CSR_MHARTID)].eid;
++}
++
++static void exit_enclave_world()
++{
++	cpus[csr_read(CSR_MHARTID)].in_enclave = 0;
++	cpus[csr_read(CSR_MHARTID)].eid = -1;
++
++	platform_exit_enclave_world();
++}
++
++int check_in_enclave_world()
++{
++	if(!(cpus[csr_read(CSR_MHARTID)].in_enclave))
++		return -1;
++
++	if(platform_check_in_enclave_world() < 0)
++		return -1;
++
++	return 0;
++}
++
++static int check_enclave_authentication()
++{
++	if(platform_check_enclave_authentication() < 0)
++		return -1;
++
++	return 0;
++}
++
++static void switch_to_enclave_ptbr(struct thread_state_t* thread, uintptr_t ptbr)
++{
++	platform_switch_to_enclave_ptbr(thread, ptbr);
++}
++
++static void switch_to_host_ptbr(struct thread_state_t* thread, uintptr_t ptbr)
++{
++	platform_switch_to_host_ptbr(thread, ptbr);
++}
++
++struct link_mem_t* init_mem_link(unsigned long mem_size, unsigned long slab_size)
++{
++	struct link_mem_t* head;
++
++	head = (struct link_mem_t*)mm_alloc(mem_size, NULL);
++
++	if (head == NULL)
++		return NULL;
++	else
++		sbi_memset((void*)head, 0, mem_size);
++
++	head->mem_size = mem_size;
++	head->slab_size = slab_size;
++	head->slab_num = (mem_size - sizeof(struct link_mem_t)) / slab_size;
++	void* align_addr = (char*)head + sizeof(struct link_mem_t);
++	head->addr = (char*)size_up_align((unsigned long)align_addr, slab_size);
++	head->next_link_mem = NULL;
++
++	return head;
++}
++
++struct link_mem_t* add_link_mem(struct link_mem_t** tail)
++{
++	struct link_mem_t* new_link_mem;
++
++	new_link_mem = (struct link_mem_t*)mm_alloc((*tail)->mem_size, NULL);
++
++	if (new_link_mem == NULL)
++		return NULL;
++	else
++		sbi_memset((void*)new_link_mem, 0, (*tail)->mem_size);
++
++	(*tail)->next_link_mem = new_link_mem;
++	new_link_mem->mem_size = (*tail)->mem_size;
++	new_link_mem->slab_num = (*tail)->slab_num;
++	new_link_mem->slab_size = (*tail)->slab_size;
++	void* align_addr = (char*)new_link_mem + sizeof(struct link_mem_t);
++	new_link_mem->addr = (char*)size_up_align((unsigned long)align_addr, (*tail)->slab_size);
++	new_link_mem->next_link_mem = NULL;
++
++	return new_link_mem;
++}
++
++int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr)
++{
++	struct link_mem_t *cur_link_mem, *tmp_link_mem;
++	int retval =0;
++
++	cur_link_mem = *head;
++	if (cur_link_mem == ptr)
++	{
++		*head = cur_link_mem->next_link_mem;
++		mm_free(cur_link_mem, cur_link_mem->mem_size);
++		return 1;
++	}
++
++	for (cur_link_mem = *head; cur_link_mem != NULL; cur_link_mem = cur_link_mem->next_link_mem)
++	{
++		if (cur_link_mem->next_link_mem == ptr)
++		{
++			tmp_link_mem = cur_link_mem->next_link_mem;
++			cur_link_mem->next_link_mem = cur_link_mem->next_link_mem->next_link_mem;
++			//FIXME
++			mm_free(tmp_link_mem, tmp_link_mem->mem_size);
++			return retval;
++		}
++	}
++
++	return retval;
++}
++
++/*
++ * alloc an enclave struct now, which is zeroed
++ * Note: do not acquire metadata lock before the function!
++ * */
++static struct enclave_t* alloc_enclave()
++{
++	struct link_mem_t *cur, *next;
++	struct enclave_t* enclave = NULL;
++	int i, found, eid;
++
++	spin_lock(&enclave_metadata_lock);
++
++	//enclave metadata list hasn't be initialized yet
++	if(enclave_metadata_head == NULL)
++	{
++		enclave_metadata_head = init_mem_link(ENCLAVE_METADATA_REGION_SIZE, sizeof(struct enclave_t));
++		if(!enclave_metadata_head)
++		{
++			printm("[Penglai Monitor@%s] don't have enough mem\r\n", __func__);
++			goto alloc_eid_out;
++		}
++		enclave_metadata_tail = enclave_metadata_head;
++	}
++
++	found = 0;
++	eid = 0;
++	for(cur = enclave_metadata_head; cur != NULL; cur = cur->next_link_mem)
++	{
++		for(i = 0; i < (cur->slab_num); i++)
++		{
++			enclave = (struct enclave_t*)(cur->addr) + i;
++			if(enclave->state == INVALID)
++			{
++				sbi_memset((void*)enclave, 0, sizeof(struct enclave_t));
++				enclave->state = FRESH;
++				enclave->eid = eid;
++				found = 1;
++				break;
++			}
++			eid++;
++		}
++		if(found)
++			break;
++	}
++
++	//don't have enough enclave metadata
++	if(!found)
++	{
++		next = add_link_mem(&enclave_metadata_tail);
++		if(next == NULL)
++		{
++			printm("[Penglai Monitor@%s] don't have enough mem\r\n", __func__);
++			enclave = NULL;
++			goto alloc_eid_out;
++		}
++		enclave = (struct enclave_t*)(next->addr);
++		sbi_memset((void*)enclave, 0, sizeof(struct enclave_t));
++		enclave->state = FRESH;
++		enclave->eid = eid;
++	}
++
++alloc_eid_out:
++	spin_unlock(&enclave_metadata_lock);
++	return enclave;
++}
++
++static int free_enclave(int eid)
++{
++	struct link_mem_t *cur;
++	struct enclave_t *enclave = NULL;
++	int found, count, ret_val;
++
++	spin_lock(&enclave_metadata_lock);
++
++	found = 0;
++	count = 0;
++	for(cur = enclave_metadata_head; cur != NULL; cur = cur->next_link_mem)
++	{
++		if(eid < (count + cur->slab_num))
++		{
++			enclave = (struct enclave_t*)(cur->addr) + (eid - count);
++			sbi_memset((void*)enclave, 0, sizeof(struct enclave_t));
++			enclave->state = INVALID;
++			found = 1;
++			ret_val = 0;
++			break;
++		}
++		count += cur->slab_num;
++	}
++
++	//haven't alloc this eid
++	if(!found)
++	{
++		printm("[Penglai Monitor@%s] haven't alloc this eid\r\n", __func__);
++		ret_val = -1;
++	}
++
++	spin_unlock(&enclave_metadata_lock);
++
++	return ret_val;
++}
++
++struct enclave_t* get_enclave(int eid)
++{
++	struct link_mem_t *cur;
++	struct enclave_t *enclave;
++	int found, count;
++
++	spin_lock(&enclave_metadata_lock);
++
++	found = 0;
++	count = 0;
++	for(cur = enclave_metadata_head; cur != NULL; cur = cur->next_link_mem)
++	{
++		if(eid < (count + cur->slab_num))
++		{
++			enclave = (struct enclave_t*)(cur->addr) + (eid - count);
++			found = 1;
++			break;
++		}
++
++		count += cur->slab_num;
++	}
++
++	//haven't alloc this eid
++	if(!found)
++	{
++		printm("[Penglai Monitor@%s]  haven't alloc this enclave\r\n", __func__);
++		enclave = NULL;
++	}
++
++	spin_unlock(&enclave_metadata_lock);
++	return enclave;
++}
++
++int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
++{
++	//grant encalve access to memory
++	if(grant_enclave_access(enclave) < 0)
++		return -1;
++
++	//save host context
++	swap_prev_state(&(enclave->thread_context), host_regs);
++
++	//different platforms have differnt ptbr switch methods
++	switch_to_enclave_ptbr(&(enclave->thread_context), enclave->thread_context.encl_ptbr);
++
++	/*
++	 * save host cache binding
++	 * only workable when the hardware supports the feature
++	 */
++#if 0
++	swap_prev_cache_binding(&enclave -> threads[0], read_csr(0x356));
++#endif
++
++	// disable interrupts
++	swap_prev_mie(&(enclave->thread_context), csr_read(CSR_MIE));
++
++	// clear pending interrupts
++	csr_read_clear(CSR_MIP, MIP_MTIP);
++	csr_read_clear(CSR_MIP, MIP_STIP);
++	csr_read_clear(CSR_MIP, MIP_SSIP);
++	csr_read_clear(CSR_MIP, MIP_SEIP);
++
++	//disable interrupts/exceptions delegation
++	swap_prev_mideleg(&(enclave->thread_context), csr_read(CSR_MIDELEG));
++	swap_prev_medeleg(&(enclave->thread_context), csr_read(CSR_MEDELEG));
++
++	// swap the mepc to transfer control to the enclave
++	// This will be overwriten by the entry-address in the case of run_enclave
++	//swap_prev_mepc(&(enclave->thread_context), csr_read(CSR_MEPC));
++	swap_prev_mepc(&(enclave->thread_context), host_regs[32]);
++	host_regs[32] = csr_read(CSR_MEPC); //update the new value to host_regs
++
++	//set return address to enclave
++
++	//set mstatus to transfer control to u mode
++	uintptr_t mstatus = host_regs[33]; //In OpenSBI, we use regs to change mstatus
++	mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_U);
++	host_regs[33] = mstatus;
++
++	//mark that cpu is in enclave world now
++	enter_enclave_world(enclave->eid);
++
++	__asm__ __volatile__ ("sfence.vma" : : : "memory");
++
++	return 0;
++}
++
++int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
++{
++	//retrieve enclave access to memory
++	retrieve_enclave_access(enclave);
++
++	//restore host context
++	swap_prev_state(&(enclave->thread_context), regs);
++
++	//restore host's ptbr
++	switch_to_host_ptbr(&(enclave->thread_context), enclave->host_ptbr);
++
++	//TODO: restore host cache binding
++	//swap_prev_cache_binding(&(enclave->thread_context), );
++
++	//restore interrupts
++	swap_prev_mie(&(enclave->thread_context), csr_read(CSR_MIE));
++
++	//restore interrupts/exceptions delegation
++	swap_prev_mideleg(&(enclave->thread_context), csr_read(CSR_MIDELEG));
++	swap_prev_medeleg(&(enclave->thread_context), csr_read(CSR_MEDELEG));
++
++	//transfer control back to kernel
++	//swap_prev_mepc(&(enclave->thread_context), read_csr(mepc));
++	//regs[32] = (uintptr_t)(enclave->thread_context.prev_mepc); //In OpenSBI, we use regs to change mepc
++	swap_prev_mepc(&(enclave->thread_context), regs[32]);
++	regs[32] = csr_read(CSR_MEPC); //update the new value to host_regs
++
++	//restore mstatus
++#if 0
++	uintptr_t mstatus = read_csr(mstatus);
++	mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_S);
++	write_csr(mstatus, mstatus);
++#else
++	uintptr_t mstatus = regs[33]; //In OpenSBI, we use regs to change mstatus
++	mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_S);
++	regs[33] = mstatus;
++#endif
++
++	//mark that cpu is out of enclave world now
++	exit_enclave_world();
++
++	__asm__ __volatile__ ("sfence.vma" : : : "memory");
++
++	return 0;
++}
++
++uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
++{
++	struct enclave_t* enclave;
++
++	enclave = alloc_enclave();
++	if(!enclave)
++	{
++		printm("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
++		return -1UL;
++	}
++
++	//TODO: check whether enclave memory is out of bound
++	//TODO: verify enclave page table layout
++
++	spin_lock(&enclave_metadata_lock);
++
++	enclave->paddr = create_args.paddr;
++	enclave->size = create_args.size;
++	enclave->entry_point = create_args.entry_point;
++	enclave->untrusted_ptr = create_args.untrusted_ptr;
++	enclave->untrusted_size = create_args.untrusted_size;
++	enclave->free_mem = create_args.free_mem;
++	enclave->ocall_func_id = create_args.ecall_arg0;
++	enclave->ocall_arg0 = create_args.ecall_arg1;
++	enclave->ocall_arg1 = create_args.ecall_arg2;
++	enclave->ocall_syscall_num = create_args.ecall_arg3;
++	enclave->host_ptbr = csr_read(CSR_SATP);
++	enclave->thread_context.encl_ptbr = (create_args.paddr >> (RISCV_PGSHIFT) | SATP_MODE_CHOICE);
++	enclave->root_page_table = (unsigned long*)create_args.paddr;
++	enclave->state = FRESH;
++
++	//Dump the PT here, for debug
++#if 0
++	printm("[Penglai@%s], Dump PT for created enclave\n", __func__);
++	dump_pt(enclave->root_page_table, 1);
++#endif
++
++	spin_unlock(&enclave_metadata_lock);
++	printm("[Penglai@%s] paddr:0x%lx, size:0x%lx, entry:0x%lx\n"
++			"untrusted ptr:0x%lx host_ptbr:0x%lx, pt:0x%ln\n"
++			"thread_context.encl_ptbr:0x%lx\n cur_satp:0x%lx\n",
++			__func__, enclave->paddr, enclave->size, enclave->entry_point,
++			enclave->untrusted_ptr, enclave->host_ptbr, enclave->root_page_table,
++			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
++
++	copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
++	printm("[Penglai Monitor@%s] return eid:%d\n",
++			__func__, enclave->eid);
++
++	return 0;
++}
++
++uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
++{
++	struct enclave_t* enclave;
++	uintptr_t retval = 0;
++
++	enclave = get_enclave(eid);
++	if (!enclave)
++	{
++		printm_err("[Penglai Monitor@%s] wrong enclave id\r\n", __func__);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++
++	if (enclave->state != FRESH)
++	{
++		printm_err("[Penglai Monitor@%s] enclave is not initialized or already used\r\n", __func__);
++		retval = -1UL;
++		goto run_enclave_out;
++	}
++	if (enclave->host_ptbr != csr_read(CSR_SATP))
++	{
++		printm_err("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
++		retval = -1UL;
++		goto run_enclave_out;
++	}
++
++	if (swap_from_host_to_enclave(regs, enclave) < 0)
++	{
++		printm("[Penglai Monitor@%s] enclave can not be run\r\n", __func__);
++		retval = -1UL;
++		goto run_enclave_out;
++	}
++
++	//swap_prev_mepc(&(enclave->thread_context), regs[32]);
++	regs[32] = (uintptr_t)(enclave->entry_point); //In OpenSBI, we use regs to change mepc
++
++	//TODO: enable timer interrupt
++	csr_read_set(CSR_MIE, MIP_MTIP);
++
++	//set default stack
++	regs[2] = ENCLAVE_DEFAULT_STACK;
++
++	//pass parameters
++	regs[11] = (uintptr_t)enclave->entry_point;
++	regs[12] = (uintptr_t)enclave->untrusted_ptr;
++	regs[13] = (uintptr_t)enclave->untrusted_size;
++
++	enclave->state = RUNNING;
++
++run_enclave_out:
++	spin_unlock(&enclave_metadata_lock);
++	return retval;
++}
++
++uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
++{
++	uintptr_t retval = 0;
++	struct enclave_t *enclave = get_enclave(eid);
++	if(!enclave)
++	{
++		printm_err("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++
++	if(enclave->host_ptbr != csr_read(CSR_SATP))
++	{
++		printm_err("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
++		retval = -1UL;
++		goto stop_enclave_out;
++	}
++
++	if(enclave->state <= FRESH)
++	{
++		printm_err("[Penglai Monitor@%s] enclave%d hasn't begin running at all\r\n", __func__, eid);
++		retval = -1UL;
++		goto stop_enclave_out;
++	}
++
++	if(enclave->state == STOPPED || enclave-> state == DESTROYED)
++	{
++		printm_err("[Penglai Monitor@%s] enclave%d already stopped/destroyed\r\n", __func__, eid);
++		retval = -1UL;
++		goto stop_enclave_out;
++	}
++
++	/* The real-stop happen when the enclave traps into the monitor */
++	enclave->state = STOPPED;
++
++stop_enclave_out:
++	spin_unlock(&enclave_metadata_lock);
++	return retval;
++}
++
++uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
++{
++	uintptr_t retval = 0;
++	struct enclave_t *enclave = get_enclave(eid);
++	if(!enclave)
++	{
++		printm_err("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++
++	if (enclave->host_ptbr != csr_read(CSR_SATP))
++	{
++		printm_err("[Penglai Monitor@%s] enclave doesn't belong to current host process"
++				"enclave->host_ptbr:0x%lx, csr_satp:0x%lx\r\n", __func__, enclave->host_ptbr, csr_read(CSR_SATP));
++		retval = -1UL;
++		goto out;
++	}
++
++	if (enclave->state < FRESH)
++	{
++		printm_err("[Penglai Monitor@%s] enclave%d hasn't created\r\n", __func__, eid);
++		retval = -1UL;
++		goto out;
++	}
++
++	/*
++	 * If the enclave is stopped or fresh, it will never goto the timer trap handler,
++	 * we should destroy the enclave immediately
++	 * */
++	//if (enclave->state == STOPPED || enclave->state == FRESH) {
++	if (enclave->state == FRESH) {
++		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
++		mm_free((void*)(enclave->paddr), enclave->size);
++
++		spin_unlock(&enclave_metadata_lock);
++
++		//free enclave struct
++		retval = free_enclave(eid); //the enclave state will be set INVALID here
++		return retval;
++	}
++	//FIXME: what if the enclave->state is RUNNABLE now?
++
++	/* The real-destroy happen when the enclave traps into the monitor */
++	enclave->state = DESTROYED;
++out:
++	spin_unlock(&enclave_metadata_lock);
++	return retval;
++}
++
++uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
++{
++	uintptr_t retval = 0;
++	struct enclave_t* enclave = get_enclave(eid);
++
++	if (!enclave)
++	{
++		printm("[Penglai Monitor@%s] wrong enclave id%d\r\n", __func__, eid);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++	if(enclave->host_ptbr != csr_read(CSR_SATP))
++	{
++		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
++		retval = -1UL;
++		goto resume_from_stop_out;
++	}
++
++	if(enclave->state != STOPPED)
++	{
++		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
++		retval = -1UL;
++		goto resume_from_stop_out;
++	}
++
++	enclave->state = RUNNABLE;
++	printm("[Penglai Monitor@%s] encalve-%d turns to runnable now!\n", __func__, eid);
++
++resume_from_stop_out:
++	spin_unlock(&enclave_metadata_lock);
++	return retval;
++}
++
++uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
++{
++	uintptr_t retval = 0;
++	struct enclave_t* enclave = get_enclave(eid);
++	if(!enclave)
++	{
++		printm("[Penglai Monitor@%s]  wrong enclave id%d\r\n", __func__, eid);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++
++	if(enclave->host_ptbr != csr_read(CSR_SATP))
++	{
++		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
++		retval = -1UL;
++		goto resume_enclave_out;
++	}
++
++	if(enclave->state == STOPPED)
++	{
++		retval = ENCLAVE_TIMER_IRQ;
++		goto resume_enclave_out;
++	}
++
++	if (enclave->state == DESTROYED) {
++		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
++		mm_free((void*)(enclave->paddr), enclave->size);
++
++		spin_unlock(&enclave_metadata_lock);
++
++		//free enclave struct
++		free_enclave(eid); //the enclave state will be set INVALID here
++		return ENCLAVE_SUCCESS; //this will break the infinite loop in the enclave-driver
++	}
++
++	if(enclave->state != RUNNABLE)
++	{
++		printm("[Penglai Monitor@%s]  enclave%d is not runnable\r\n", __func__, eid);
++		retval = -1UL;
++		goto resume_enclave_out;
++	}
++
++	if(swap_from_host_to_enclave(regs, enclave) < 0)
++	{
++		printm("[Penglai Monitor@%s]  enclave can not be run\r\n", __func__);
++		retval = -1UL;
++		goto resume_enclave_out;
++	}
++
++	enclave->state = RUNNING;
++
++	//regs[10] will be set to retval when mcall_trap return, so we have to
++	//set retval to be regs[10] here to succuessfully restore context
++	//TODO: retval should be set to indicate success or fail when resume from ocall
++	retval = regs[10];
++
++	//enable timer interrupt
++	csr_read_set(CSR_MIE, MIP_MTIP);
++
++resume_enclave_out:
++	spin_unlock(&enclave_metadata_lock);
++	return retval;
++}
++
++uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
++{
++
++	struct enclave_t *enclave;
++	int eid;
++
++	if(check_in_enclave_world() < 0)
++	{
++		printm_err("[Penglai Monitor@%s] cpu is not in enclave world now\r\n", __func__);
++		return -1;
++	}
++	printm_err("[Penglai Monitor@%s] retval of enclave is %lx\r\n", __func__, retval);
++
++	eid = get_enclave_id();
++	enclave = get_enclave(eid);
++	if(!enclave)
++	{
++		printm("[Penglai Monitor@%s] didn't find eid%d 's corresponding enclave\r\n", __func__, eid);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++
++	if(check_enclave_authentication(enclave) < 0)
++	{
++		printm_err("[Penglai Monitor@%s] current enclave's eid is not %d\r\n", __func__, eid);
++		spin_unlock(&enclave_metadata_lock);
++		return -1UL;
++	}
++
++	swap_from_enclave_to_host(regs, enclave);
++
++	//free enclave's memory
++	//TODO: support multiple memory region
++	sbi_memset((void*)(enclave->paddr), 0, enclave->size);
++	mm_free((void*)(enclave->paddr), enclave->size);
++
++	spin_unlock(&enclave_metadata_lock);
++
++	//free enclave struct
++	free_enclave(eid);
++
++	return 0;
++}
++
++/*
++ * Timer handler for penglai enclaves
++ * In normal case, an enclave will pin a HART and run until it finished.
++ * The exception case is timer interrupt, which will trap into monitor to
++ * check current enclave states.
++ *
++ * If current enclave states is not Running or Runnable, it will be stoped/destroyed
++ *
++ * */
++uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
++{
++	uintptr_t retval = 0;
++	unsigned int eid = get_enclave_id();
++	struct enclave_t *enclave = get_enclave(eid);
++	if (!enclave)
++	{
++		printm("[Penglai Monitor@%s]  something is wrong with enclave%d\r\n", __func__, eid);
++		return -1UL;
++	}
++
++	spin_lock(&enclave_metadata_lock);
++
++	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
++	{
++		printm("[Penglai Monitor@%s]  Enclave(%d) is not runnable\r\n", __func__, eid);
++		retval = -1;
++	}
++
++	swap_from_enclave_to_host(regs, enclave);
++
++	if (enclave->state == DESTROYED) {
++		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
++		mm_free((void*)(enclave->paddr), enclave->size);
++
++		spin_unlock(&enclave_metadata_lock);
++
++		//free enclave struct
++		retval = free_enclave(eid); //the enclave state will be set INVALID here
++
++		retval = ENCLAVE_SUCCESS; //this means we will not run any more
++		goto timer_irq_out;
++	}else if (enclave->state == RUNNING) {
++		enclave->state = RUNNABLE;
++
++		retval = ENCLAVE_TIMER_IRQ;
++	}else { // The case for STOPPED
++		retval = ENCLAVE_TIMER_IRQ;
++	}
++
++	spin_unlock(&enclave_metadata_lock);
++
++timer_irq_out:
++	/*ret set timer now*/
++	// sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
++	return retval;
++}
+diff --git a/lib/sbi/sm/platform/README.md b/lib/sbi/sm/platform/README.md
+new file mode 100644
+index 0000000..f81659b
+--- /dev/null
++++ b/lib/sbi/sm/platform/README.md
+@@ -0,0 +1,9 @@
++## Platforms
++
++Penglai is designed to naturally support different platforms with their own isolation methods.
++
++Currently, it supports:
++
++- PMP-only platforms: this is suitable for most devices
++- PMP + sPMP/MPU: Penglai can achieve better scalability with sPMP/MPU
++- TVM (or Guarded Paging): please refer to another repo for more details about TVM
+diff --git a/lib/sbi/sm/platform/pmp/enclave_mm.c b/lib/sbi/sm/platform/pmp/enclave_mm.c
+new file mode 100644
+index 0000000..bd9c81d
+--- /dev/null
++++ b/lib/sbi/sm/platform/pmp/enclave_mm.c
+@@ -0,0 +1,705 @@
++#include <sm/sm.h>
++#include <sm/enclave.h>
++#include <sm/platform/pmp/enclave_mm.h>
++//#include <sm/atomic.h>
++#include <sbi/riscv_atomic.h>
++#include <sbi/riscv_locks.h>
++//#include "mtrap.h"
++#include <sm/math.h>
++#include <sbi/sbi_string.h>
++
++/*
++ * Only NPMP-3 enclave regions are supported.
++ * The last PMP is used to allow kernel to access memory.
++ * The 1st PMP is used to protect security monitor from kernel.
++ * The 2nd PMP is used to allow kernel to configure enclave's page table.
++ * Othres, (NPMP-3) PMPs are for enclaves, i.e., secure memory
++ *
++ * TODO: this array can be removed as we can get
++ * existing enclave regions via pmp registers
++ */
++static struct mm_region_t mm_regions[N_PMP_REGIONS];
++static unsigned long pmp_bitmap = 0;
++static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
++
++
++/*
++ * Check the validness of the paddr and size
++ * */
++static int check_mem_size(uintptr_t paddr, unsigned long size)
++{
++	if((size == 0) || (size & (size - 1)))
++	{
++		printm_err("pmp size should be 2^power!\r\n");
++		return -1;
++	}
++
++	if(size < RISCV_PGSIZE)
++	{
++		printm_err("pmp size should be no less than one page!\r\n");
++		return -1;
++	}
++
++	if(paddr & (size - 1))
++	{
++		printm_err("pmp size should be %ld aligned!\r\n", size);
++		return -1;
++	}
++
++	return 0;
++}
++
++/*
++ * TODO: we should protect kernel temporal region with lock
++ * 	 A possible malicious case:
++ * 	 	kernel@Hart-0: acquire memory region, set to PMP-1
++ * 	 	kernel@Hart-1: acquire memory region, set to PMP-1 <- this will overlap the prior region
++ * 	 	kernel@Hart-0: release memory region <- dangerous behavior now
++ * */
++
++/**
++ * \brief This function grants kernel (temporaily) access to allocated enclave memory
++ * 	  for initializing enclave and configuring page table.
++ */
++int grant_kernel_access(void* req_paddr, unsigned long size)
++{
++	//pmp1 is used for allowing kernel to access enclave memory
++	int pmp_idx = 1;
++	struct pmp_config_t pmp_config;
++	uintptr_t paddr = (uintptr_t)req_paddr;
++
++	if(check_mem_size(paddr, size) != 0){
++		printm("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
++		return -1;
++	}
++
++	pmp_config.paddr = paddr;
++	pmp_config.size = size;
++	pmp_config.perm = PMP_R | PMP_W | PMP_X;
++	pmp_config.mode = PMP_A_NAPOT;
++	set_pmp_and_sync(pmp_idx, pmp_config);
++
++	return 0;
++}
++
++/*
++ * This function retrieves kernel access to allocated enclave memory.
++ */
++int retrieve_kernel_access(void* req_paddr, unsigned long size)
++{
++	//pmp1 is used for allowing kernel to access enclave memory
++	int pmp_idx = 1;
++	struct pmp_config_t pmp_config;
++	uintptr_t paddr = (uintptr_t)req_paddr;
++
++	pmp_config = get_pmp(pmp_idx);
++
++	if((pmp_config.mode != PMP_A_NAPOT) || (pmp_config.paddr != paddr) || (pmp_config.size != size))
++	{
++		printm_err("retrieve_kernel_access: error pmp_config\r\n");
++		return -1;
++	}
++
++	clear_pmp_and_sync(pmp_idx);
++
++	return 0;
++}
++
++//grant enclave access to enclave's memory
++int grant_enclave_access(struct enclave_t* enclave)
++{
++	int region_idx = 0;
++	int pmp_idx = 0;
++	struct pmp_config_t pmp_config;
++
++	if(check_mem_size(enclave->paddr, enclave->size) < 0)
++		return -1;
++
++	//set pmp permission, ensure that enclave's paddr and size is pmp legal
++	//TODO: support multiple memory regions
++	spin_lock(&pmp_bitmap_lock);
++	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
++	{
++		if(mm_regions[region_idx].valid && region_contain(
++					mm_regions[region_idx].paddr, mm_regions[region_idx].size,
++					enclave->paddr, enclave->size))
++		{
++			break;
++		}
++	}
++	spin_unlock(&pmp_bitmap_lock);
++
++	if(region_idx >= N_PMP_REGIONS)
++	{
++		printm_err("M mode: grant_enclave_access: can not find exact mm_region\r\n");
++		return -1;
++	}
++
++	pmp_idx = REGION_TO_PMP(region_idx);
++#if 0
++	pmp_config.paddr = mm_regions[region_idx].paddr;
++	pmp_config.size = mm_regions[region_idx].size;
++#else
++	//this enclave memory region could be less than the mm_region size
++	pmp_config.paddr = enclave->paddr;
++	pmp_config.size = enclave->size;
++#endif
++	pmp_config.perm = PMP_R | PMP_W | PMP_X;
++	pmp_config.mode = PMP_A_NAPOT;
++
++	/* Note: here we only set the PMP regions in local Hart*/
++	set_pmp(pmp_idx, pmp_config);
++
++	/*FIXME: we should handle the case that the PMP region contains larger region */
++	if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){
++		printm("[Penglai Monitor@%s] warning, region != enclave mem\n", __func__);
++		printm("[Penglai Monitor@%s] region: paddr(0x%lx) size(0x%lx)\n",
++				__func__, pmp_config.paddr, pmp_config.size);
++		printm("[Penglai Monitor@%s] enclave mem: paddr(0x%lx) size(0x%lx)\n",
++				__func__, enclave->paddr, enclave->size);
++	}
++
++	return 0;
++}
++
++int retrieve_enclave_access(struct enclave_t *enclave)
++{
++	int region_idx = 0;
++	int pmp_idx = 0;
++	//struct pmp_config_t pmp_config;
++
++	//set pmp permission, ensure that enclave's paddr and size is pmp legal
++	//TODO: support multiple memory regions
++	spin_lock(&pmp_bitmap_lock);
++	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
++	{
++		if(mm_regions[region_idx].valid && region_contain(
++					mm_regions[region_idx].paddr, mm_regions[region_idx].size,
++					enclave->paddr, enclave->size))
++		{
++			break;
++		}
++	}
++	spin_unlock(&pmp_bitmap_lock);
++
++	if(region_idx >= N_PMP_REGIONS)
++	{
++		printm_err("M mode: Error: %s\r\n", __func__);
++		/* For Debug */
++		for (region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx) {
++			printm("[Monitor Debug@%s] mm_region[%d], valid(%d), paddr(0x%lx) size(0x%lx)\n",
++					__func__, region_idx, mm_regions[region_idx].valid, mm_regions[region_idx].paddr,
++					mm_regions[region_idx].size);
++		}
++		printm("[Monitor Debug@%s] enclave paddr(0x%lx) size(0x%lx)\n",
++				__func__, enclave->paddr, enclave->size);
++
++		return -1;
++	}
++
++	pmp_idx = REGION_TO_PMP(region_idx);
++
++	// we can simply clear the PMP to retrieve the permission
++	clear_pmp(pmp_idx);
++
++	return 0;
++}
++
++int check_mem_overlap(uintptr_t paddr, unsigned long size)
++{
++	unsigned long sm_base = SM_BASE;
++	unsigned long sm_size = SM_SIZE;
++	int region_idx = 0;
++
++	//check whether the new region overlaps with security monitor
++	if(region_overlap(sm_base, sm_size, paddr, size))
++	{
++		printm_err("pmp memory overlaps with security monitor!\r\n");
++		return -1;
++	}
++
++	//check whether the new region overlap with existing enclave region
++	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
++	{
++		if(mm_regions[region_idx].valid
++				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
++					paddr, size))
++		{
++			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
++			return -1;
++		}
++	}
++
++	return 0;
++}
++
++uintptr_t mm_init(uintptr_t paddr, unsigned long size)
++{
++	uintptr_t retval = 0;
++	int region_idx = 0;
++	int pmp_idx =0;
++	struct pmp_config_t pmp_config;
++
++	//check align of paddr and size
++	if(check_mem_size(paddr, size) < 0)
++		return -1UL;
++
++	//acquire a free enclave region
++	spin_lock(&pmp_bitmap_lock);
++
++	//check memory overlap
++	//memory overlap should be checked after acquire lock
++	if(check_mem_overlap(paddr, size) < 0)
++	{
++		retval = -1UL;
++		goto out;
++	}
++
++	//alloc a free pmp
++	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
++	{
++		pmp_idx = REGION_TO_PMP(region_idx);
++		if(!(pmp_bitmap & (1<<pmp_idx)))
++		{
++			//FIXME: we already have mm_regions[x].valid, why pmp_bitmap again
++			pmp_bitmap |= (1 << pmp_idx);
++			break;
++		}
++	}
++	if(region_idx >= N_PMP_REGIONS)
++	{
++		retval = -1UL;
++		goto out;
++	}
++
++	//set PMP to protect enclave memory region
++	pmp_config.paddr = paddr;
++	pmp_config.size = size;
++	pmp_config.perm = PMP_NO_PERM;
++	pmp_config.mode = PMP_A_NAPOT;
++	set_pmp_and_sync(pmp_idx, pmp_config);
++
++	//mark this region is valid and init mm_list
++	mm_regions[region_idx].valid = 1;
++	mm_regions[region_idx].paddr = paddr;
++	mm_regions[region_idx].size = size;
++	struct mm_list_t *mm_list = (struct mm_list_t*)PADDR_2_MM_LIST(paddr);
++	mm_list->order = ilog2(size-1) + 1;
++	mm_list->prev_mm = NULL;
++	mm_list->next_mm = NULL;
++	struct mm_list_head_t *mm_list_head = (struct mm_list_head_t*)paddr;
++	mm_list_head->order = mm_list->order;
++	mm_list_head->prev_list_head = NULL;
++	mm_list_head->next_list_head = NULL;
++	mm_list_head->mm_list = mm_list;
++	mm_regions[region_idx].mm_list_head = mm_list_head;
++
++out:
++	spin_unlock(&pmp_bitmap_lock);
++	return retval;
++}
++
++//NOTE: this function may modify the arg mm_list_head
++//remember to acquire lock before calling this function
++//be sure that mm_region does exist in mm_list and mm_list does exist in mm_lists
++static int delete_certain_region(int region_idx, struct mm_list_head_t** mm_list_head, struct mm_list_t *mm_region)
++{
++	struct mm_list_t* prev_mm = mm_region->prev_mm;
++	struct mm_list_t* next_mm = mm_region->next_mm;
++	struct mm_list_head_t* prev_list_head = (*mm_list_head)->prev_list_head;
++	struct mm_list_head_t* next_list_head = (*mm_list_head)->next_list_head;
++
++	//delete mm_region from old mm_list
++	//mm_region is in the middle of the mm_list
++	if(prev_mm)
++	{
++		prev_mm->next_mm = next_mm;
++		if(next_mm)
++			next_mm->prev_mm = prev_mm;
++	}
++	//mm_region is in the first place of old mm_list
++	else if(next_mm)
++	{
++		next_mm->prev_mm = NULL;
++		struct mm_list_head_t* new_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(next_mm);
++		new_list_head->order = next_mm->order;
++		new_list_head->prev_list_head = prev_list_head;
++		new_list_head->next_list_head = next_list_head;
++		new_list_head->mm_list = next_mm;
++		if(prev_list_head)
++			prev_list_head->next_list_head = new_list_head;
++		else
++			mm_regions[region_idx].mm_list_head = new_list_head;
++		if(next_list_head)
++			next_list_head->prev_list_head = new_list_head;
++
++		*mm_list_head = new_list_head;
++	}
++	//mm_region is the only region in old mm_list
++	else
++	{
++		if(prev_list_head)
++			prev_list_head->next_list_head = next_list_head;
++		else
++			mm_regions[region_idx].mm_list_head = next_list_head;
++		if(next_list_head)
++			next_list_head->prev_list_head = prev_list_head;
++
++		*mm_list_head = NULL;
++	}
++
++	return 0;
++}
++
++//remember to acquire a lock before calling this function
++static struct mm_list_t* alloc_one_region(int region_idx, int order)
++{
++	if(!mm_regions[region_idx].valid || !mm_regions[region_idx].mm_list_head)
++	{
++		printm("M mode: alloc_one_region: m_regions[%d] is invalid/NULL\r\n", region_idx);
++		return NULL;
++	}
++
++	struct mm_list_head_t *mm_list_head = mm_regions[region_idx].mm_list_head;
++	while(mm_list_head && (mm_list_head->order < order))
++	{
++		mm_list_head = mm_list_head->next_list_head;
++	}
++
++	//current region has no enough free space
++	if(!mm_list_head)
++		return NULL;
++
++	//pick a mm region from current mm_list
++	struct mm_list_t *mm_region = mm_list_head->mm_list;
++
++	//delete the mm region from current mm_list
++	delete_certain_region(region_idx, &mm_list_head, mm_region);
++
++	return mm_region;
++}
++
++//remember to acquire lock before calling this function
++//be sure that mm_list_head does exist in mm_lists
++static int merge_regions(int region_idx, struct mm_list_head_t* mm_list_head, struct mm_list_t *mm_region)
++{
++	if(region_idx<0 || region_idx>=N_PMP_REGIONS || !mm_list_head || !mm_region)
++		return -1;
++	if(mm_list_head->order != mm_region->order)
++		return -1;
++
++	struct mm_list_head_t* current_list_head = mm_list_head;
++	struct mm_list_t* current_region = mm_region;
++	while(current_list_head)
++	{
++		struct mm_list_t* buddy_region = current_list_head->mm_list;
++		unsigned long paddr = (unsigned long)MM_LIST_2_PADDR(current_region);
++		unsigned long buddy_paddr = (unsigned long)MM_LIST_2_PADDR(buddy_region);
++		while(buddy_region)
++		{
++			buddy_paddr = (unsigned long)MM_LIST_2_PADDR(buddy_region);
++			if((paddr | (1 << current_region->order)) == (buddy_paddr | (1 << current_region->order)))
++				break;
++			buddy_region = buddy_region->next_mm;
++		}
++
++		struct mm_list_head_t* new_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(current_region);
++		struct mm_list_head_t* prev_list_head = current_list_head->prev_list_head;
++		struct mm_list_head_t* next_list_head = current_list_head->next_list_head;
++		//didn't find buddy region, just insert this region in current mm_list
++		if(!buddy_region)
++		{
++			current_region->prev_mm = NULL;
++			current_region->next_mm = current_list_head->mm_list;
++			current_list_head->mm_list->prev_mm = current_region;
++			new_list_head->order = current_region->order;
++			new_list_head->prev_list_head = prev_list_head;
++			new_list_head->next_list_head = next_list_head;
++			new_list_head->mm_list = current_region;
++
++			if(prev_list_head)
++				prev_list_head->next_list_head = new_list_head;
++			else
++				mm_regions[region_idx].mm_list_head = new_list_head;
++			if(next_list_head)
++				next_list_head->prev_list_head = new_list_head;
++
++			break;
++		}
++
++		//found buddy_region, merge it and current region
++
++		//first delete buddy_region from old mm_list
++		//Note that this function may modify prev_list and next_list
++		//but won't modify their positions relative to new mm_region
++		delete_certain_region(region_idx, &current_list_head, buddy_region);
++
++		//then merge buddy_region with current region
++		int order = current_region->order;
++		current_region = paddr < buddy_paddr ? PADDR_2_MM_LIST(paddr) : PADDR_2_MM_LIST(buddy_paddr);
++		current_region->order = order + 1;
++		current_region->prev_mm = NULL;
++		current_region->next_mm = NULL;
++
++		//next mm_list doesn't exist or has a different order, no need to merge
++		if(!next_list_head || next_list_head->order != current_region->order)
++		{
++			//current_list_head may be NULL now after delete buddy region
++			if(current_list_head)
++				prev_list_head = current_list_head;
++			new_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(current_region);
++			new_list_head->order = current_region->order;
++			new_list_head->prev_list_head = prev_list_head;
++			new_list_head->next_list_head = next_list_head;
++			new_list_head->mm_list = current_region;
++
++			if(prev_list_head)
++				prev_list_head->next_list_head = new_list_head;
++			else
++				mm_regions[region_idx].mm_list_head = new_list_head;
++			if(next_list_head)
++				next_list_head->prev_list_head = new_list_head;
++
++			break;
++		}
++
++		//continue to merge with next mm_list
++		current_list_head = next_list_head;
++	}
++
++	return 0;
++}
++
++//remember to acquire lock before calling this function
++static int insert_mm_region(int region_idx, struct mm_list_t* mm_region, int merge)
++{
++	if(region_idx<0 || region_idx>=N_PMP_REGIONS || !mm_regions[region_idx].valid || !mm_region)
++		return -1;
++
++	struct mm_list_head_t* mm_list_head = mm_regions[region_idx].mm_list_head;
++	struct mm_list_head_t* prev_list_head = NULL;
++
++	//there is no mm_list in current pmp_region
++	if(!mm_list_head)
++	{
++		mm_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(mm_region);
++		mm_list_head->order = mm_region->order;
++		mm_list_head->prev_list_head = NULL;
++		mm_list_head->next_list_head = NULL;
++		mm_list_head->mm_list = mm_region;
++		mm_regions[region_idx].mm_list_head = mm_list_head;
++		return 0;
++	}
++
++	//traversal from front to back
++	while(mm_list_head && mm_list_head->order < mm_region->order)
++	{
++		prev_list_head = mm_list_head;
++		mm_list_head = mm_list_head->next_list_head;
++	}
++
++	//found the exact mm_list
++	int ret_val = 0;
++	struct mm_list_head_t *new_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(mm_region);
++	if(mm_list_head && mm_list_head->order == mm_region->order)
++	{
++		if(!merge)
++		{
++			//insert mm_region to the first pos in mm_list
++			mm_region->prev_mm = NULL;
++			mm_region->next_mm = mm_list_head->mm_list;
++			mm_list_head->mm_list->prev_mm = mm_region;
++
++			//set mm_list_head
++			struct mm_list_head_t* next_list_head = mm_list_head->next_list_head;
++			new_list_head->order = mm_region->order;
++			new_list_head->prev_list_head = prev_list_head;
++			new_list_head->next_list_head = next_list_head;
++			new_list_head->mm_list = mm_region;
++			if(prev_list_head)
++				prev_list_head->next_list_head = new_list_head;
++			else
++				mm_regions[region_idx].mm_list_head = new_list_head;
++			if(next_list_head)
++				next_list_head->prev_list_head = new_list_head;
++		}
++		else
++		{
++			//insert with merge
++			ret_val = merge_regions(region_idx, mm_list_head, mm_region);
++		}
++	}
++	//should create a new mm_list for this mm region
++	//note that mm_list_head might be NULL
++	else
++	{
++		new_list_head->order = mm_region->order;
++		new_list_head->prev_list_head = prev_list_head;
++		new_list_head->next_list_head = mm_list_head;
++		new_list_head->mm_list = mm_region;
++		if(prev_list_head)
++			prev_list_head->next_list_head = new_list_head;
++		else
++			mm_regions[region_idx].mm_list_head = new_list_head;
++		if(mm_list_head)
++			mm_list_head->prev_list_head = new_list_head;
++	}
++
++	return ret_val;
++}
++
++//TODO: delete this function
++void print_buddy_system()
++{
++	//spinlock_lock(&pmp_bitmap_lock);
++
++	struct mm_list_head_t* mm_list_head = mm_regions[0].mm_list_head;
++	printm("struct mm_list_head_t size is 0x%lx\r\n", sizeof(struct mm_list_head_t));
++	printm("struct mm_list_t size is 0x%lx\r\n", sizeof(struct mm_list_t));
++	while(mm_list_head)
++	{
++		printm("mm_list_head addr is 0x%ln, order is %d\r\n", (long int *)mm_list_head, mm_list_head->order);
++		printm("mm_list_head prev is 0x%ln, next is 0x%ln, mm_list is 0x%ln\r\n",
++				(long int *)mm_list_head->prev_list_head,
++				(long int *)mm_list_head->next_list_head,
++				(long int*)mm_list_head->mm_list);
++		struct mm_list_t *mm_region = mm_list_head->mm_list;
++		while(mm_region)
++		{
++			printm("  mm_region addr is 0x%ln, order is %d\r\n", (long int *)mm_region, mm_region->order);
++			printm("  mm_region prev is 0x%ln, next is 0x%ln\r\n", (long int*)mm_region->prev_mm, (long int*)mm_region->next_mm);
++			mm_region = mm_region->next_mm;
++		}
++		mm_list_head = mm_list_head->next_list_head;
++	}
++
++	//spinlock_unlock(&pmp_bitmap_lock);
++}
++
++void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
++{
++	void* ret_addr = NULL;
++	if(req_size == 0)
++		return ret_addr;
++
++	//TODO: reduce lock granularity
++	spin_lock(&pmp_bitmap_lock);
++
++	//print_buddy_system();
++
++	unsigned long order = ilog2(req_size-1) + 1;
++	for(int region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
++	{
++		struct mm_list_t* mm_region = alloc_one_region(region_idx, order);
++
++		//there is no enough space in current pmp region
++		if(!mm_region)
++			continue;
++
++		while(mm_region->order > order)
++		{
++			//allocated mm region need to be split
++			mm_region->order -= 1;
++			mm_region->prev_mm = NULL;
++			mm_region->next_mm = NULL;
++
++			void* new_mm_region_paddr = MM_LIST_2_PADDR(mm_region) + (1 << mm_region->order);
++			struct mm_list_t* new_mm_region = PADDR_2_MM_LIST(new_mm_region_paddr);
++			new_mm_region->order = mm_region->order;
++			new_mm_region->prev_mm = NULL;
++			new_mm_region->next_mm = NULL;
++			insert_mm_region(region_idx, new_mm_region, 0);
++		}
++
++		ret_addr = MM_LIST_2_PADDR(mm_region);
++		break;
++	}
++
++	//print_buddy_system();
++
++	spin_unlock(&pmp_bitmap_lock);
++
++	if(ret_addr && resp_size)
++	{
++		*resp_size = 1 << order;
++		sbi_memset(ret_addr, 0, *resp_size);
++	}
++
++	return ret_addr;
++}
++
++int mm_free(void* req_paddr, unsigned long free_size)
++{
++	//check this paddr is 2^power aligned
++	uintptr_t paddr = (uintptr_t)req_paddr;
++	unsigned long order = ilog2(free_size-1) + 1;
++	unsigned long size = 1 << order;
++	if(check_mem_size(paddr, size) < 0)
++		return -1;
++
++	int ret_val = 0;
++	int region_idx = 0;
++	struct mm_list_t* mm_region = PADDR_2_MM_LIST(paddr);
++	mm_region->order = order;
++	mm_region->prev_mm = NULL;
++	mm_region->next_mm = NULL;
++
++	spin_lock(&pmp_bitmap_lock);
++
++	//print_buddy_system();
++
++	for(region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
++	{
++		if(mm_regions[region_idx].valid && region_contain(mm_regions[region_idx].paddr, mm_regions[region_idx].size, paddr, size))
++		{
++			break;
++		}
++	}
++	if(region_idx >= N_PMP_REGIONS)
++	{
++		printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
++		ret_val = -1;
++		goto mm_free_out;
++	}
++
++	//check whether this region overlap with existing free mm_lists
++	struct mm_list_head_t* mm_list_head = mm_regions[region_idx].mm_list_head;
++	while(mm_list_head)
++	{
++		struct mm_list_t* mm_region = mm_list_head->mm_list;
++		while(mm_region)
++		{
++			uintptr_t region_paddr = (uintptr_t)MM_LIST_2_PADDR(mm_region);
++			unsigned long region_size = 1 << mm_region->order;
++			if(region_overlap(paddr, size, region_paddr, region_size))
++			{
++				printm("mm_free: memory(addr 0x%lx order %ld) overlap with free memory(addr 0x%lx order %d)\r\n", paddr, order, region_paddr, mm_region->order);
++				ret_val = -1;
++				break;
++			}
++			mm_region = mm_region->next_mm;
++		}
++		if(mm_region)
++			break;
++
++		mm_list_head = mm_list_head->next_list_head;
++	}
++	if(mm_list_head)
++	{
++		goto mm_free_out;
++	}
++
++	//insert with merge
++	ret_val = insert_mm_region(region_idx, mm_region, 1);
++	if(ret_val < 0)
++	{
++		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
++	}
++
++	//printm("after mm_free\r\n");
++	//print_buddy_system();
++
++mm_free_out:
++	spin_unlock(&pmp_bitmap_lock);
++	return ret_val;
++}
+diff --git a/lib/sbi/sm/platform/pmp/platform.c b/lib/sbi/sm/platform/pmp/platform.c
+new file mode 100644
+index 0000000..1ad07ff
+--- /dev/null
++++ b/lib/sbi/sm/platform/pmp/platform.c
+@@ -0,0 +1,34 @@
++#include "enclave_mm.c"
++#include "platform_thread.c"
++
++#include <sm/print.h>
++
++int platform_init()
++{
++  struct pmp_config_t pmp_config;
++
++  //Clear pmp1, this pmp is reserved for allowing kernel
++  //to config page table for enclave in enclave's memory.
++  //There is no need to broadcast to other hart as every
++  //hart will execute this function.
++  //clear_pmp(1);
++  clear_pmp_and_sync(1);
++
++  //config the PMP 0 to protect security monitor
++  pmp_config.paddr = (uintptr_t)SM_BASE;
++  pmp_config.size = (unsigned long)SM_SIZE;
++  pmp_config.mode = PMP_A_NAPOT;
++  pmp_config.perm = PMP_NO_PERM;
++  set_pmp_and_sync(0, pmp_config);
++
++  //config the last PMP to allow kernel to access memory
++  pmp_config.paddr = 0;
++  pmp_config.size = -1UL;
++  pmp_config.mode = PMP_A_NAPOT;
++  pmp_config.perm = PMP_R | PMP_W | PMP_X;
++  //set_pmp(NPMP-1, pmp_config);
++  set_pmp_and_sync(NPMP-1, pmp_config);
++
++  printm("[Penglai Monitor@%s] setting initial PMP ready\n", __func__);
++  return 0;
++}
+diff --git a/lib/sbi/sm/platform/pmp/platform_thread.c b/lib/sbi/sm/platform/pmp/platform_thread.c
+new file mode 100644
+index 0000000..8aa9df6
+--- /dev/null
++++ b/lib/sbi/sm/platform/pmp/platform_thread.c
+@@ -0,0 +1,31 @@
++void platform_enter_enclave_world()
++{
++  return;
++}
++
++void platform_exit_enclave_world()
++{
++  return;
++}
++
++int platform_check_in_enclave_world()
++{
++  return 0;
++}
++
++int platform_check_enclave_authentication(struct enclave_t* enclave)
++{
++  if(enclave->thread_context.encl_ptbr != csr_read(CSR_SATP))
++    return -1;
++  return 0;
++}
++
++void platform_switch_to_enclave_ptbr(struct thread_state_t* thread, uintptr_t enclave_ptbr)
++{
++  csr_write(CSR_SATP, enclave_ptbr);
++}
++
++void platform_switch_to_host_ptbr(struct thread_state_t* thread, uintptr_t host_ptbr)
++{
++  csr_write(CSR_SATP, host_ptbr);
++}
+diff --git a/lib/sbi/sm/pmp.c b/lib/sbi/sm/pmp.c
+new file mode 100644
+index 0000000..550a758
+--- /dev/null
++++ b/lib/sbi/sm/pmp.c
+@@ -0,0 +1,287 @@
++#include <sm/pmp.h>
++#include <stddef.h>
++#include <sbi/sbi_pmp.h>
++#include <sbi/sbi_console.h>
++#include <sm/sm.h>
++
++/**
++ * \brief Set pmp and sync all harts.
++ *
++ * \param pmp_idx_arg The pmp index.
++ * \param pmp_config_arg The pmp config.
++ */
++void set_pmp_and_sync(int pmp_idx_arg, struct pmp_config_t pmp_config_arg)
++{
++	struct pmp_data_t pmp_data;
++	u32 source_hart = current_hartid();
++
++	//set current hart's pmp
++	set_pmp(pmp_idx_arg, pmp_config_arg);
++	//sync all other harts
++	SBI_PMP_DATA_INIT(&pmp_data, pmp_config_arg, pmp_idx_arg, source_hart);
++	sbi_send_pmp(0xFFFFFFFF&(~(1<<source_hart)), 0, &pmp_data);
++	return;
++}
++
++/**
++ * \brief Clear pmp and sync all harts.
++ *
++ * \param pmp_idx_arg The pmp index.
++ */
++void clear_pmp_and_sync(int pmp_idx)
++{
++	struct pmp_config_t pmp_config = {0,};
++
++	pmp_config.mode = PMP_OFF;
++	set_pmp_and_sync(pmp_idx, pmp_config);
++
++	return;
++}
++
++//TODO Only handle for the __riscv_64
++void set_pmp_reg(int pmp_idx, uintptr_t* pmp_address, uintptr_t* pmp_config)
++{
++	uintptr_t tmp_pmp_address, tmp_pmp_config;
++	tmp_pmp_address = *pmp_address;
++	tmp_pmp_config = *pmp_config;
++	switch(pmp_idx)
++	{
++		case 0:
++			PMP_SET(0, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 1:
++			PMP_SET(1, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 2:
++			PMP_SET(2, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 3:
++			PMP_SET(3, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 4:
++			PMP_SET(4, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 5:
++			PMP_SET(5, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 6:
++			PMP_SET(6, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 7:
++			PMP_SET(7, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 8:
++			PMP_SET(8, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 9:
++			PMP_SET(9, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 10:
++			PMP_SET(10, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 11:
++			PMP_SET(11, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 12:
++			PMP_SET(12, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 13:
++			PMP_SET(13, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 14:
++			PMP_SET(14, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 15:
++			PMP_SET(15, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		default:
++			break;
++	}
++	*pmp_address = tmp_pmp_address;
++	*pmp_config = tmp_pmp_config;
++}
++
++/**
++ * \brief get pmp reg
++ */
++void get_pmp_reg(int pmp_idx, uintptr_t* pmp_address, uintptr_t* pmp_config)
++{
++	uintptr_t tmp_pmp_address=0, tmp_pmp_config=0;
++	switch(pmp_idx)
++	{
++		case 0:
++			PMP_READ(0, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 1:
++			PMP_READ(1, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 2:
++			PMP_READ(2, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 3:
++			PMP_READ(3, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 4:
++			PMP_READ(4, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 5:
++			PMP_READ(5, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 6:
++			PMP_READ(6, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 7:
++			PMP_READ(7, 0, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 8:
++			PMP_READ(8, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 9:
++			PMP_READ(9, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 10:
++			PMP_READ(10, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 11:
++			PMP_READ(11, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 12:
++			PMP_READ(12, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 13:
++			PMP_READ(13, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 14:
++			PMP_READ(14, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		case 15:
++			PMP_READ(15, 2, tmp_pmp_address, tmp_pmp_config);
++			break;
++		default:
++			break;
++	}
++	*pmp_address = tmp_pmp_address;
++	*pmp_config = tmp_pmp_config;
++}
++
++/**
++ * \brief set current hart's pmp
++ *
++ * \param pmp_idx the index of target PMP register
++ * \param pmp_cfg the configuration of the PMP register
++ */
++void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
++{
++	uintptr_t pmp_address = 0;
++	//uintptr_t old_config = 0;
++#define PMP_CONFIG_OFFSET(pmp_idx) ((uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG))
++	uintptr_t pmp_config = ((pmp_cfg_t.mode & PMP_A) | (pmp_cfg_t.perm & (PMP_R|PMP_W|PMP_X)))
++		<< PMP_CONFIG_OFFSET(pmp_idx);
++
++	switch(pmp_cfg_t.mode)
++	{
++		case PMP_A_NAPOT:
++			if(pmp_cfg_t.paddr == 0 && pmp_cfg_t.size == -1UL)
++				pmp_address = -1UL;
++			else
++				pmp_address = (pmp_cfg_t.paddr | ((pmp_cfg_t.size>>1)-1)) >> 2;
++			break;
++		case PMP_A_TOR:
++			pmp_address = pmp_cfg_t.paddr;
++			break;
++		case PMP_A_NA4:
++			pmp_address = pmp_cfg_t.paddr;
++		case PMP_OFF:
++			pmp_address = 0;
++			break;
++		default:
++			pmp_address = 0;
++			break;
++	}
++	set_pmp_reg(pmp_idx, &pmp_address, &pmp_config);
++
++	return;
++}
++
++/**
++ * \brief clear the configuration of a PMP register
++ *
++ * \param pmp_idx the index of target PMP register
++ */
++void clear_pmp(int pmp_idx)
++{
++	struct pmp_config_t pmp_cfg_t;
++
++	pmp_cfg_t.mode = PMP_OFF;
++	pmp_cfg_t.perm = PMP_NO_PERM;
++	pmp_cfg_t.paddr = 0;
++	pmp_cfg_t.size = 0;
++	set_pmp(pmp_idx, pmp_cfg_t);
++
++	return;
++}
++
++/**
++ * \brief Get the configuration of a pmp register (pmp_idx)
++ *
++ * \param pmp_idx the index of target PMP register
++ */
++struct pmp_config_t get_pmp(int pmp_idx)
++{
++	struct pmp_config_t pmp = {0,};
++	uintptr_t pmp_address = 0;
++	uintptr_t pmp_config = 0;
++	unsigned long order = 0;
++	unsigned long size = 0;
++
++	//set_pmp_reg(pmp_idx, &pmp_address, &pmp_config);
++	get_pmp_reg(pmp_idx, &pmp_address, &pmp_config);
++
++
++	pmp_config >>= (uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG);
++	pmp_config &= PMPCFG_BITS;
++	switch(pmp_config & PMP_A)
++	{
++		case PMP_A_NAPOT:
++			while(pmp_address & 1)
++			{
++				order += 1;
++				pmp_address >>= 1;
++			}
++			order += 3;
++			size = 1 << order;
++			pmp_address <<= (order-1);
++			break;
++		case PMP_A_NA4:
++			size = 4;
++			break;
++		case PMP_A_TOR:
++			break;
++		case PMP_OFF:
++			pmp_address = 0;
++			size = 0;
++			break;
++	}
++
++	pmp.mode = pmp_config & PMP_A;
++	pmp.perm = pmp_config & (PMP_R | PMP_W | PMP_X);
++	pmp.paddr = pmp_address;
++	pmp.size = size;
++
++	return pmp;
++}
++
++/**
++ * \brief Dump PMP registers, only used for debug
++ */
++void dump_pmps(void)
++{
++	/*FIXME: we can have different number of PMP regions */
++	int i;
++	for (i=0; i<16; i++){
++		struct pmp_config_t pmp = get_pmp(i);
++		(void)pmp; //to ignore the unused variable warnings
++		printm("[Debug:SM@%s] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
++				__func__, i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
++	}
++}
+diff --git a/lib/sbi/sm/sm.ac b/lib/sbi/sm/sm.ac
+new file mode 100644
+index 0000000..0479971
+--- /dev/null
++++ b/lib/sbi/sm/sm.ac
+@@ -0,0 +1,3 @@
++AC_ARG_WITH([target_platform], AS_HELP_STRING([--with-target-platform], [Set a specific platform for the sm to build with]),
++  [AC_SUBST([TARGET_PLATFORM], $with_target_platform, [Set a specific platform for the sm to build with])],
++  [AC_SUBST([TARGET_PLATFORM], pmp, [Set a specific platform for the sm to build with])])
+diff --git a/lib/sbi/sm/sm.c b/lib/sbi/sm/sm.c
+new file mode 100644
+index 0000000..03bf677
+--- /dev/null
++++ b/lib/sbi/sm/sm.c
+@@ -0,0 +1,204 @@
++//#include <sm/atomic.h>
++#include <sbi/riscv_atomic.h>
++#include <sm/sm.h>
++#include <sm/pmp.h>
++#include <sm/enclave.h>
++#include <sm/math.h>
++#include <sbi/sbi_console.h>
++
++//static int sm_initialized = 0;
++//static spinlock_t sm_init_lock = SPINLOCK_INIT;
++
++void sm_init()
++{
++  platform_init();
++}
++
++uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size)
++{
++  uintptr_t retval = 0;
++
++  printm("[Penglai Monitor] %s invoked\r\n",__func__);
++
++  printm("[Penglai Monitor] %s paddr:0x%lx, size:0x%lx\r\n",__func__, paddr, size);
++  /*DEBUG: Dump PMP registers here */
++  dump_pmps();
++  retval = mm_init(paddr, size);
++  /*DEBUG: Dump PMP registers here */
++  dump_pmps();
++
++  printm("[Penglai Monitor] %s ret:%ld \r\n",__func__, retval);
++  return retval;
++}
++
++uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size)
++{
++  uintptr_t retval = 0;
++  printm("[Penglai Monitor] %s invoked\r\n",__func__);
++
++  retval = mm_init(paddr, size);
++
++  printm("[Penglai Monitor] %s return:%ld\r\n",__func__, retval);
++  return retval;
++}
++
++uintptr_t sm_debug_print(uintptr_t* regs, uintptr_t arg0)
++{
++  print_buddy_system();
++  return 0;
++}
++
++uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
++{
++  struct mm_alloc_arg_t mm_alloc_arg_local;
++  uintptr_t retval = 0;
++
++  printm("[Penglai Monitor] %s invoked\r\n",__func__);
++
++  retval = copy_from_host(&mm_alloc_arg_local,
++      (struct mm_alloc_arg_t*)mm_alloc_arg,
++      sizeof(struct mm_alloc_arg_t));
++  if(retval != 0)
++  {
++    printm_err("M mode: sm_alloc_enclave_mem: unknown error happended when copy from host\r\n");
++    return ENCLAVE_ERROR;
++  }
++
++  dump_pmps();
++  unsigned long resp_size = 0;
++  void* paddr = mm_alloc(mm_alloc_arg_local.req_size, &resp_size);
++  if(paddr == NULL)
++  {
++    printm("M mode: sm_alloc_enclave_mem: no enough memory\r\n");
++    return ENCLAVE_NO_MEMORY;
++  }
++  dump_pmps();
++
++  //grant kernel access to this memory
++  if(grant_kernel_access(paddr, resp_size) != 0)
++  {
++    printm_err("M mode: ERROR: faile to grant kernel access to pa 0x%lx, size 0x%lx\r\n", (unsigned long) paddr, resp_size);
++    mm_free(paddr, resp_size);
++    return ENCLAVE_ERROR;
++  }
++
++  mm_alloc_arg_local.resp_addr = (uintptr_t)paddr;
++  mm_alloc_arg_local.resp_size = resp_size;
++
++  copy_to_host((struct mm_alloc_arg_t*)mm_alloc_arg,
++      &mm_alloc_arg_local,
++      sizeof(struct mm_alloc_arg_t));
++
++  printm("[Penglai Monitor] %s return:%ld\r\n",__func__, retval);
++
++  return ENCLAVE_SUCCESS;
++}
++
++uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
++{
++  struct enclave_sbi_param_t enclave_sbi_param_local;
++  uintptr_t retval = 0;
++
++  printm("[Penglai Monitor] %s invoked\r\n",__func__);
++
++  retval = copy_from_host(&enclave_sbi_param_local,
++      (struct enclave_sbi_param_t*)enclave_sbi_param,
++      sizeof(struct enclave_sbi_param_t));
++
++  void* paddr = (void*)enclave_sbi_param_local.paddr;
++  unsigned long size = (unsigned long)enclave_sbi_param_local.size;
++  if(retrieve_kernel_access(paddr, size) != 0)
++  {
++    mm_free(paddr, size);
++    return -1UL;
++  }
++
++  retval = create_enclave(enclave_sbi_param_local);
++
++  printm("[Penglai Monitor] %s created return value:%ld \r\n",__func__, retval);
++  return retval;
++}
++
++uintptr_t sm_run_enclave(uintptr_t* regs, unsigned long eid)
++{
++  uintptr_t retval;
++  printm("[Penglai Monitor] %s invoked, eid:%ld\r\n",__func__, eid);
++
++  retval = run_enclave(regs, (unsigned int)eid);
++
++  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, retval);
++
++  return retval;
++}
++
++uintptr_t sm_stop_enclave(uintptr_t* regs, unsigned long eid)
++{
++  uintptr_t retval;
++  printm("[Penglai Monitor] %s invoked, eid:%ld\r\n",__func__, eid);
++
++  retval = stop_enclave(regs, (unsigned int)eid);
++
++  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, retval);
++  return retval;
++}
++
++uintptr_t sm_resume_enclave(uintptr_t* regs, unsigned long eid)
++{
++  uintptr_t retval = 0;
++  uintptr_t resume_func_id = regs[11];
++
++  switch(resume_func_id)
++  {
++    case RESUME_FROM_TIMER_IRQ:
++      retval = resume_enclave(regs, eid);
++      break;
++    case RESUME_FROM_STOP:
++      retval = resume_from_stop(regs, eid);
++      break;
++    default:
++      break;
++  }
++
++  return retval;
++}
++
++uintptr_t sm_exit_enclave(uintptr_t* regs, unsigned long retval)
++{
++  uintptr_t ret;
++  printm("[Penglai Monitor] %s invoked\r\n",__func__);
++
++  ret = exit_enclave(regs, retval);
++
++  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, ret);
++
++  return ret;
++}
++
++/**
++ * \brief This transitional function is used to destroy the enclave.
++ *
++ * \param regs The host reg.
++ * \param enclave_eid The enclave id.
++ */
++uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id)
++{
++  uintptr_t ret = 0;
++  printm("[Penglai Monitor] %s invoked\r\n",__func__);
++
++  ret = destroy_enclave(regs, enclave_id);
++
++  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, ret);
++
++  return ret;
++}
++
++uintptr_t sm_do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
++{
++  uintptr_t ret;
++
++  ret = do_timer_irq(regs, mcause, mepc);
++
++  regs[10] = 0; //no errors in all cases for timer handler
++  regs[11] = ret; //value
++  return ret;
++}
+diff --git a/lib/sbi/sm/sm.mk.in b/lib/sbi/sm/sm.mk.in
+new file mode 100644
+index 0000000..649d773
+--- /dev/null
++++ b/lib/sbi/sm/sm.mk.in
+@@ -0,0 +1,25 @@
++sm_hdrs = \
++  pmp.h \
++  sm.h \
++  enclave_args.h \
++  enclave.h \
++  platform/@TARGET_PLATFORM@/platform.h \
++  thread.h \
++  math.h
++
++sm_c_srcs = \
++  ipi.c \
++  pmp.c \
++  platform/@TARGET_PLATFORM@/platform.c \
++  sm.c \
++  enclave.c \
++  thread.c \
++  math.c
++
++sm_asm_srcs = \
++
++
++sm_test_srcs =
++
++
++sm_install_prog_srcs =
+diff --git a/lib/sbi/sm/thread.c b/lib/sbi/sm/thread.c
+new file mode 100644
+index 0000000..2ecc419
+--- /dev/null
++++ b/lib/sbi/sm/thread.c
+@@ -0,0 +1,67 @@
++#include <sm/thread.h>
++//#include <sm/mtrap.h>
++#include <sbi/riscv_encoding.h>
++#include <sbi/riscv_asm.h>
++
++void swap_prev_state(struct thread_state_t* thread, uintptr_t* regs)
++{
++  int i;
++
++  uintptr_t* prev = (uintptr_t*) &thread->prev_state;
++  for(i = 1; i < N_GENERAL_REGISTERS; ++i)
++  {
++    /* swap general registers */
++    uintptr_t tmp = prev[i];
++    prev[i] = regs[i];
++    regs[i] = tmp;
++  }
++
++  return;
++}
++
++void swap_prev_mepc(struct thread_state_t* thread, uintptr_t current_mepc)
++{
++  uintptr_t tmp = thread->prev_mepc;
++  thread->prev_mepc = current_mepc;
++  csr_write(CSR_MEPC, tmp);
++}
++
++void swap_prev_stvec(struct thread_state_t* thread, uintptr_t current_stvec)
++{
++  uintptr_t tmp = thread->prev_stvec;
++  thread->prev_stvec = current_stvec;
++  csr_write(CSR_STVEC, tmp);
++}
++
++/*
++ * Cache line binding is only workable
++ * when the hardware supports penglai's on-demand cacheline locking
++ * */
++void swap_prev_cache_binding(struct thread_state_t* thread, uintptr_t current_cache_binding)
++{
++#if 0
++  uintptr_t tmp = thread->prev_cache_binding;
++  thread->prev_cache_binding = current_cache_binding;
++#endif
++}
++
++void swap_prev_mie(struct thread_state_t* thread, uintptr_t current_mie)
++{
++  uintptr_t tmp = thread->prev_mie;
++  thread->prev_mie = current_mie;
++  csr_write(CSR_MIE, tmp);
++}
++
++void swap_prev_mideleg(struct thread_state_t* thread, uintptr_t current_mideleg)
++{
++  uintptr_t tmp = thread->prev_mideleg;
++  thread->prev_mideleg = current_mideleg;
++  csr_write(CSR_MIDELEG, tmp);
++}
++
++void swap_prev_medeleg(struct thread_state_t* thread, uintptr_t current_medeleg)
++{
++  uintptr_t tmp = thread->prev_medeleg;
++  thread->prev_medeleg = current_medeleg;
++  csr_write(CSR_MEDELEG, tmp);
++}
+diff --git a/lib/sbi/sm/utils.c b/lib/sbi/sm/utils.c
+new file mode 100644
+index 0000000..091209b
+--- /dev/null
++++ b/lib/sbi/sm/utils.c
+@@ -0,0 +1,40 @@
++/*
++ * Author: Dong Du
++ * */
++#include <sbi/riscv_encoding.h>
++#include <sbi/sbi_string.h>
++#include <sbi/riscv_locks.h>
++#include <sbi/sbi_console.h>
++#include <sm/utils.h>
++#include <sm/sm.h>
++
++/*
++ * Go through and dump a page table, used for debug
++ * */
++void dump_pt(unsigned long *page_table, int level)
++{
++	int l1, i;
++	unsigned long* l1_pt = page_table;
++
++	if (!l1_pt)
++		return;
++
++	//only consider sv39 now
++	for (l1=0; l1<512; l1++){
++		if (!(l1_pt[l1] & PTE_V)) //this entry is not valid
++			continue;
++
++		for (i=0; i<level; i++) printm("\t"); //space before entries
++		printm("%d: 0x%lx, perm: 0x%lx\n",l1, l1_pt[l1], l1_pt[l1] & (PTE_R | PTE_W | PTE_X));
++		if (!PTE_TABLE(l1_pt[l1])) // not page table page
++			continue;
++
++		if (level == 3) // the last level
++			continue;
++
++		//goto the next level
++		dump_pt((unsigned long*) ((l1_pt[l1]>>PTE_PPN_SHIFT)<<RISCV_PGSHIFT), level+1);
++	}
++
++	return;
++}
+-- 
+2.31.1
+

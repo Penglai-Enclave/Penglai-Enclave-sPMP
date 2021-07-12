@@ -1,0 +1,52 @@
+ILP32 AARCH64 SYSCALL ABI
+=========================
+
+This document describes the ILP32 syscall ABI and where it differs
+from the generic compat linux syscall interface.
+
+ILP32 is acronym for memory model which stands for "Integers, Longs and
+Pointers are 32-bit". The main purpose of ILP32 in Linux kernel is providing
+compatibility with 32-bit legacy code. Also, ILP32 binaries look better in some
+performance tests. ARM has AN490 document which coves ILP32 details for ARM64
+platform:
+http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dai0490a/ar01s01.html
+
+AARCH64/ILP32 userspace may pass garbage in the top halve of w0-w7 registers
+(syscall arguments). So top 32 bits are zeroed for them.
+
+Comparing to AARCH32, AARCH64/ILP32 has 64-bit length of following types:
+ino_t       is u64 type.
+off_t       is s64 type.
+blkcnt_t    is s64 type.
+fsblkcnt_t  is u64 type.
+fsfilcnt_t  is u64 type.
+rlim_t      is u64 type.
+
+AARCH64/ILP32 ABI uses standard syscall table which can be found at
+include/uapi/asm-generic/unistd.h, with the exceptions listed below.
+
+Syscalls which pass 64-bit values are handled by the code shared from
+AARCH32 and pass that value as a pair. Following syscalls are affected:
+fadvise64_64()
+fallocate()
+ftruncate64()
+pread64()
+pwrite64()
+readahead()
+sync_file_range()
+truncate64()
+
+ptrace() syscall is handled by compat version.
+
+shmat() syscall is handled by non-compat handler as aarch64/ilp32 has no
+limitation on 4-pages alignment for shared memory.
+
+statfs() and fstatfs() take the size of struct statfs as an argument.
+It is calculated differently in kernel and user spaces. So AARCH32 handlers
+are taken to handle it.
+
+struct rt_sigframe is redefined and contains struct compat_siginfo,
+as compat syscalls expect, and struct ilp32_ucontext, to handle
+AARCH64 register set and 32-bit userspace register representation.
+
+elf_gregset_t is taken from lp64 to handle registers properly.
