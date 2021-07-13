@@ -113,6 +113,18 @@ Note: a script, run_openeuler.sh is provided to execute the above command easily
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
 
+**Copy files to openEuler Qemu**
+
+You can copy any files to the VM using *scp*.
+
+For example, to run the following demo, you should:
+
+	scp -P 12055 penglai-enclave-driver/penglai.ko root@localhost:~/
+	scp -P 12055 sdk/demo/host/host root@localhost:~/
+	scp -P 12055 sdk/demo/prime/prime root@localhost:~/
+
+The passwd is "openEuler12#$"
+
 **Insmod the enclave-driver**
 
 `insmod penglai.ko`
