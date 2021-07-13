@@ -158,11 +158,16 @@ Please refer our readthedocs page for [documents](https://penglai-doc.readthedoc
 
 To cite Penglai, please consider using the following bibtex:
 ```
-@inproceedings{feng2021penglai,
-  title={Scalable Memory Protection in the PENGLAI Enclave},
-  author={Erhu, Feng and Xu, Lu and Dong, Du and Bicheng, Yang and Xueqiang, Jiang and Yubin, Xia and Binyu, Zang and Haibo, Chen},
-  booktitle={15th $\{$USENIX$\}$ Symposium on Operating Systems Design and Implementation ($\{$OSDI$\}$ 21)},
-  year={2021}
+@inproceedings {273705,
+	author = {Erhu Feng and Xu Lu and Dong Du and Bicheng Yang and Xueqiang Jiang and Yubin Xia and Binyu Zang and Haibo Chen},
+	title = {Scalable Memory Protection in the {PENGLAI} Enclave},
+	booktitle = {15th {USENIX} Symposium on Operating Systems Design and Implementation ({OSDI} 21)},
+	year = {2021},
+	isbn = {978-1-939133-22-9},
+	pages = {275--294},
+	url = {https://www.usenix.org/conference/osdi21/presentation/feng},
+	publisher = {{USENIX} Association},
+	month = jul,
 }
 ```
 
