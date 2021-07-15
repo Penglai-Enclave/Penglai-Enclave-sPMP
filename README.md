@@ -66,6 +66,8 @@ A simpler way:
 	#In the docker image
 	./scripts/build_opensbi.sh
 
+**Note**: if you use the simpler way, please **copy** your latest kernel image to the root dir of the repo.
+
 ### Build Penglai SDK
 
 Following the commands to build enclave driver:
@@ -113,6 +115,18 @@ Note: a script, run_openeuler.sh is provided to execute the above command easily
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
 
+**Copy files to openEuler Qemu**
+
+You can copy any files to the VM using *scp*.
+
+For example, to run the following demo, you should:
+
+	scp -P 12055 penglai-enclave-driver/penglai.ko root@localhost:~/
+	scp -P 12055 sdk/demo/host/host root@localhost:~/
+	scp -P 12055 sdk/demo/prime/prime root@localhost:~/
+
+The passwd is "openEuler12#$"
+
 **Insmod the enclave-driver**
 
 `insmod penglai.ko`
@@ -146,11 +160,16 @@ Please refer our readthedocs page for [documents](https://penglai-doc.readthedoc
 
 To cite Penglai, please consider using the following bibtex:
 ```
-@inproceedings{feng2021penglai,
-  title={Scalable Memory Protection in the PENGLAI Enclave},
-  author={Erhu, Feng and Xu, Lu and Dong, Du and Bicheng, Yang and Xueqiang, Jiang and Yubin, Xia and Binyu, Zang and Haibo, Chen},
-  booktitle={15th $\{$USENIX$\}$ Symposium on Operating Systems Design and Implementation ($\{$OSDI$\}$ 21)},
-  year={2021}
+@inproceedings {273705,
+	author = {Erhu Feng and Xu Lu and Dong Du and Bicheng Yang and Xueqiang Jiang and Yubin Xia and Binyu Zang and Haibo Chen},
+	title = {Scalable Memory Protection in the {PENGLAI} Enclave},
+	booktitle = {15th {USENIX} Symposium on Operating Systems Design and Implementation ({OSDI} 21)},
+	year = {2021},
+	isbn = {978-1-939133-22-9},
+	pages = {275--294},
+	url = {https://www.usenix.org/conference/osdi21/presentation/feng},
+	publisher = {{USENIX} Association},
+	month = jul,
 }
 ```
 
