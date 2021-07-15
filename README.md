@@ -66,6 +66,8 @@ A simpler way:
 	#In the docker image
 	./scripts/build_opensbi.sh
 
+**Note**: if you use the simpler way, please **copy** your latest kernel image to the root dir of the repo.
+
 ### Build Penglai SDK
 
 Following the commands to build enclave driver:
