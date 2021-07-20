@@ -23,6 +23,34 @@ static unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
 
+int check_mem_overlap(uintptr_t paddr, unsigned long size)
+{
+	unsigned long sm_base = SM_BASE;
+	unsigned long sm_size = SM_SIZE;
+	int region_idx = 0;
+
+	//check whether the new region overlaps with security monitor
+	if(region_overlap(sm_base, sm_size, paddr, size))
+	{
+		printm_err("pmp memory overlaps with security monitor!\r\n");
+		return -1;
+	}
+
+	//check whether the new region overlap with existing enclave region
+	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
+	{
+		if(mm_regions[region_idx].valid
+				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
+					paddr, size))
+		{
+			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 uintptr_t copy_from_host_with_check(void* dest, void* src, size_t size)
 {
 	//prevent TOCTTOU
@@ -30,7 +58,7 @@ uintptr_t copy_from_host_with_check(void* dest, void* src, size_t size)
 
 	//check memory overlap
 	//prevent coping from memory in secure region
-	int err = check_mem_overlap(src, size);
+	int err = check_mem_overlap((uintptr_t)src, size);
 	if(err != 0)
 		goto out;
 
@@ -48,7 +76,7 @@ uintptr_t copy_to_host_with_check(void* dest, void* src, size_t size)
 
 	//check memory overlap
 	//prevent coping from memory in secure region
-	int err = check_mem_overlap(dest, size);
+	int err = check_mem_overlap((uintptr_t)dest, size);
 	if(err != 0)
 		goto out;
 	sbi_memcpy(dest, src, size);
@@ -65,7 +93,7 @@ int copy_word_to_host_with_check(unsigned int* ptr, uintptr_t value)
 
 	//check memory overlap
 	//prevent coping from memory in secure region
-	int err = check_mem_overlap(ptr, sizeof(unsigned int));
+	int err = check_mem_overlap((uintptr_t)ptr, sizeof(unsigned int));
 	if(err != 0)
 		goto out;
 	
@@ -254,34 +282,6 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	// we can simply clear the PMP to retrieve the permission
 	clear_pmp(pmp_idx);
-
-	return 0;
-}
-
-int check_mem_overlap(uintptr_t paddr, unsigned long size)
-{
-	unsigned long sm_base = SM_BASE;
-	unsigned long sm_size = SM_SIZE;
-	int region_idx = 0;
-
-	//check whether the new region overlaps with security monitor
-	if(region_overlap(sm_base, sm_size, paddr, size))
-	{
-		printm_err("pmp memory overlaps with security monitor!\r\n");
-		return -1;
-	}
-
-	//check whether the new region overlap with existing enclave region
-	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
-	{
-		if(mm_regions[region_idx].valid
-				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
-					paddr, size))
-		{
-			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
-			return -1;
-		}
-	}
 
 	return 0;
 }
