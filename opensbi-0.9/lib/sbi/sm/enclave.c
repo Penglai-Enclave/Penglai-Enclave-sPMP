@@ -20,23 +20,17 @@ struct link_mem_t* enclave_metadata_tail = NULL;
 
 uintptr_t copy_from_host(void* dest, void* src, size_t size)
 {
-	/* TODO: checking */
-	sbi_memcpy(dest, src, size);
-	return 0;
+	return copy_from_host_with_check(dest, src, size);
 }
 
 uintptr_t copy_to_host(void* dest, void* src, size_t size)
 {
-	/* TODO: checking */
-	sbi_memcpy(dest, src, size);
-	return 0;
+	return copy_to_host_with_check(dest, src, size);
 }
 
 int copy_word_to_host(unsigned int* ptr, uintptr_t value)
 {
-	/* TODO: checking */
-	*ptr = value;
-	return 0;
+	return copy_word_to_host_with_check(ptr, value);
 }
 
 static void enter_enclave_world(int eid)

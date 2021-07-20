@@ -23,6 +23,59 @@ static unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
 
+uintptr_t copy_from_host_with_check(void* dest, void* src, size_t size)
+{
+	//prevent TOCTTOU
+	spin_lock(&pmp_bitmap_lock);
+
+	//check memory overlap
+	//prevent coping from memory in secure region
+	int err = check_mem_overlap(src, size);
+	if(err != 0)
+		goto out;
+
+	sbi_memcpy(dest, src, size);
+
+out:
+	spin_unlock(&pmp_bitmap_lock);
+	return err;
+}
+
+uintptr_t copy_to_host_with_check(void* dest, void* src, size_t size)
+{
+	//prevent TOCTTOU
+	spin_lock(&pmp_bitmap_lock);
+
+	//check memory overlap
+	//prevent coping from memory in secure region
+	int err = check_mem_overlap(dest, size);
+	if(err != 0)
+		goto out;
+	sbi_memcpy(dest, src, size);
+
+out:
+	spin_unlock(&pmp_bitmap_lock);
+	return err;
+}
+
+int copy_word_to_host_with_check(unsigned int* ptr, uintptr_t value)
+{
+	//prevent TOCTTOU
+	spin_lock(&pmp_bitmap_lock);
+
+	//check memory overlap
+	//prevent coping from memory in secure region
+	int err = check_mem_overlap(ptr, sizeof(unsigned int));
+	if(err != 0)
+		goto out;
+	
+	*ptr = value;
+
+out:
+	spin_unlock(&pmp_bitmap_lock);
+	return err;
+}
+
 /*
  * Check the validness of the paddr and size
  * */

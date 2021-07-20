@@ -48,6 +48,12 @@ struct mm_region_t
 #define region_contain(pa0, size0, pa1, size1) (((unsigned long)(pa0) <= (unsigned long)(pa1)) \
 		&& (((unsigned long)(pa0) + (unsigned long)(size0)) >= ((unsigned long)(pa1) + (unsigned long)(size1))))
 
+uintptr_t copy_from_host_with_check(void* dest, void* src, size_t size);
+
+uintptr_t copy_to_host_with_check(void* dest, void* src, size_t size);
+
+int copy_word_to_host_with_check(unsigned int* ptr, uintptr_t value);
+
 int grant_kernel_access(void* paddr, unsigned long size);
 
 int grant_enclave_access(struct enclave_t* enclave);
