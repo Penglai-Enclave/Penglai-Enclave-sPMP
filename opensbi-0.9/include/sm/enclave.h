@@ -35,6 +35,7 @@ typedef enum
   RUNNABLE,
   RUNNING,
   STOPPED,
+  OCALLING
 } enclave_state_t;
 
 /*
@@ -62,6 +63,10 @@ struct enclave_t
   unsigned long host_ptbr;
   //entry point of enclave
   unsigned long entry_point;
+
+  //shared mem with kernel
+  unsigned long kbuffer;
+  unsigned long kbuffer_size;
 
   unsigned long* ocall_func_id;
   unsigned long* ocall_arg0;
@@ -94,5 +99,8 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid);
 uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid);
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval);
 uintptr_t do_timer_irq(uintptr_t* regs, uintptr_t mcause, uintptr_t mepc);
+
+uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid);
+uintptr_t enclave_sys_write(uintptr_t *regs);
 
 #endif /* _ENCLAVE_H */

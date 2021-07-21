@@ -24,6 +24,8 @@
 
 #define DEFAULT_CLOCK_DELAY 100000
 #define DEFAULT_UNTRUSTED_PTR   0x0000001000000000
+#define ENCLAVE_DEFAULT_KBUFFER_SIZE              0x1000UL
+#define ENCLAVE_DEFAULT_KBUFFER         0xffffffe000000000UL
 
 struct penglai_enclave_user_param
 {
@@ -44,6 +46,9 @@ struct penglai_enclave_sbi_param
 	unsigned long untrusted_ptr;
 	unsigned long untrusted_size;
 	unsigned long free_mem;
+	//enclave shared mem with kernel
+	unsigned long kbuffer;
+	unsigned long kbuffer_size;
 	unsigned long *ecall_arg0;
 	unsigned long *ecall_arg1;
 	unsigned long *ecall_arg2;

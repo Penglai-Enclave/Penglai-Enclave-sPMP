@@ -144,3 +144,14 @@ int map_untrusted_mem(enclave_mem_t* enclave_mem, vaddr_t vaddr, paddr_t paddr, 
 	}
 	return 0;
 }
+
+int map_kbuffer(enclave_mem_t* enclave_mem, vaddr_t vaddr, paddr_t paddr, unsigned long size)
+{
+	vaddr_t addr = vaddr;
+
+	for (; addr < vaddr + size; addr += RISCV_PGSIZE) {
+		map_va2pa(enclave_mem, addr, paddr, ENCLAVE_KBUFFER_PAGE);
+		paddr += RISCV_PGSIZE;
+	}
+	return 0;
+}
