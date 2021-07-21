@@ -392,6 +392,7 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 {
 	struct enclave_t* enclave;
+	uintptr_t retval = 0;
 
 	enclave = alloc_enclave();
 	if(!enclave)
@@ -434,7 +435,13 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 			enclave->untrusted_ptr, enclave->host_ptbr, enclave->root_page_table,
 			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
 
-	copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
+	retval = copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
+	if(retval != 0)
+	{
+		printm_err("M mode: create_enclave: unknown error happended when copy word to host\r\n");
+		return ENCLAVE_ERROR;
+	}
+
 	printm("[Penglai Monitor@%s] return eid:%d\n",
 			__func__, enclave->eid);
 
