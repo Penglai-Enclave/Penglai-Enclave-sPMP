@@ -51,57 +51,61 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
 	return 0;
 }
 
-uintptr_t copy_from_host_with_check(void* dest, void* src, size_t size)
+int data_is_nonsecure(uintptr_t paddr, unsigned long size)
 {
-	//prevent TOCTTOU
-	spin_lock(&pmp_bitmap_lock);
-
-	//check memory overlap
-	//prevent coping from memory in secure region
-	int err = check_mem_overlap((uintptr_t)src, size);
-	if(err != 0)
-		goto out;
-
-	sbi_memcpy(dest, src, size);
-
-out:
-	spin_unlock(&pmp_bitmap_lock);
-	return err;
+	return !check_mem_overlap(paddr, size);
 }
 
-uintptr_t copy_to_host_with_check(void* dest, void* src, size_t size)
+uintptr_t copy_from_host(void* dest, void* src, size_t size)
 {
-	//prevent TOCTTOU
+	int retval = -1;
+	//get lock to prevent TOCTTOU
 	spin_lock(&pmp_bitmap_lock);
 
-	//check memory overlap
+	//check data is nonsecure
 	//prevent coping from memory in secure region
-	int err = check_mem_overlap((uintptr_t)dest, size);
-	if(err != 0)
-		goto out;
-	sbi_memcpy(dest, src, size);
+	if(data_is_nonsecure((uintptr_t)src, size))
+	{
+		sbi_memcpy(dest, src, size);
+		retval = 0;
+	}
 
-out:
 	spin_unlock(&pmp_bitmap_lock);
-	return err;
+	return retval;
 }
 
-int copy_word_to_host_with_check(unsigned int* ptr, uintptr_t value)
+uintptr_t copy_to_host(void* dest, void* src, size_t size)
 {
-	//prevent TOCTTOU
+	int retval = -1;
 	spin_lock(&pmp_bitmap_lock);
 
-	//check memory overlap
+	//check data is nonsecure
 	//prevent coping from memory in secure region
-	int err = check_mem_overlap((uintptr_t)ptr, sizeof(unsigned int));
-	if(err != 0)
-		goto out;
-	
-	*ptr = value;
+	if(data_is_nonsecure((uintptr_t)dest, size))
+	{
+		sbi_memcpy(dest, src, size);
+		retval = 0;
+	}
 
-out:
 	spin_unlock(&pmp_bitmap_lock);
-	return err;
+	return retval;
+}
+
+int copy_word_to_host(unsigned int* ptr, uintptr_t value)
+{
+	int retval = -1;
+	spin_lock(&pmp_bitmap_lock);
+
+	//check data is nonsecure
+	//prevent coping from memory in secure region
+	if(data_is_nonsecure((uintptr_t)ptr, sizeof(unsigned int)))
+	{
+		*ptr = value;
+		retval = 0;
+	}
+
+	spin_unlock(&pmp_bitmap_lock);
+	return retval;
 }
 
 /*

@@ -18,21 +18,6 @@ static spinlock_t enclave_metadata_lock = SPIN_LOCK_INITIALIZER;
 struct link_mem_t* enclave_metadata_head = NULL;
 struct link_mem_t* enclave_metadata_tail = NULL;
 
-uintptr_t copy_from_host(void* dest, void* src, size_t size)
-{
-	return copy_from_host_with_check(dest, src, size);
-}
-
-uintptr_t copy_to_host(void* dest, void* src, size_t size)
-{
-	return copy_to_host_with_check(dest, src, size);
-}
-
-int copy_word_to_host(unsigned int* ptr, uintptr_t value)
-{
-	return copy_word_to_host_with_check(ptr, value);
-}
-
 static void enter_enclave_world(int eid)
 {
 	cpus[csr_read(CSR_MHARTID)].in_enclave = ENCLAVE_MODE;
