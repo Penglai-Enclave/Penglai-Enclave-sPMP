@@ -39,13 +39,6 @@ int copy_word_to_host(unsigned int* ptr, uintptr_t value)
 	return 0;
 }
 
-int copy_dword_to_host(uintptr_t* ptr, uintptr_t value)
-{
-	/* TODO: checking */
-	*ptr = value;
-	return 0;
-}
-
 static void enter_enclave_world(int eid)
 {
 	cpus[csr_read(CSR_MHARTID)].in_enclave = ENCLAVE_MODE;
@@ -768,7 +761,8 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 
 	spin_lock(&enclave_metadata_lock);
 
-	copy_dword_to_host((uintptr_t*)enclave->ocall_func_id, OCALL_SYS_WRITE);
+	uintptr_t ocall_func_id = OCALL_SYS_WRITE;
+	copy_to_host((uintptr_t*)enclave->ocall_func_id, &ocall_func_id, sizeof(uintptr_t));
 
 	swap_from_enclave_to_host(regs, enclave);
 	enclave->state = RUNNABLE;
