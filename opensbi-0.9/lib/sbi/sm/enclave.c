@@ -771,7 +771,7 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	copy_dword_to_host((uintptr_t*)enclave->ocall_func_id, OCALL_SYS_WRITE);
 
 	swap_from_enclave_to_host(regs, enclave);
-	enclave->state = OCALLING;
+	enclave->state = RUNNABLE;
 	ret = ENCLAVE_OCALL;
 out:
 	spin_unlock(&enclave_metadata_lock);
@@ -842,9 +842,9 @@ uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
 	struct enclave_t* enclave = NULL;
 
 	enclave = get_enclave(eid);
-	if(!enclave || enclave->state != OCALLING || enclave->host_ptbr != csr_read(CSR_SATP))
+	if(!enclave || enclave->host_ptbr != csr_read(CSR_SATP))
 	{
-		printm("M mode: %s check enclave OCALLING state is failed\n", __func__);
+		printm("M mode: %s wrong enclave id or enclave doesn't belong to current host process\n", __func__);
 		return -1UL;
 	}
 
@@ -860,14 +860,8 @@ uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
 			break;
 	}
 
-	if(swap_from_host_to_enclave(regs, enclave) < 0)
-	{
-		retval = -1UL;
-		goto out;
-	}
-	enclave->state = RUNNING;
-
-out:
 	spin_unlock(&enclave_metadata_lock);
+
+	retval = resume_enclave(regs, eid);
 	return retval;
 }

@@ -35,7 +35,6 @@ typedef enum
   RUNNABLE,
   RUNNING,
   STOPPED,
-  OCALLING
 } enclave_state_t;
 
 /*

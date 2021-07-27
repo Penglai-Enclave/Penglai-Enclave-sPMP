@@ -332,7 +332,6 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 				}
 				default:
 				{
-					printk("KERNEL MODULE: ocall \n");
 					ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL);
 				}
 			}

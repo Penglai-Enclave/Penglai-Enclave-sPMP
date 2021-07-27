@@ -184,10 +184,10 @@ uintptr_t sm_enclave_ocall(uintptr_t* regs, uintptr_t ocall_id, uintptr_t arg0, 
   {
     case OCALL_SYS_WRITE:
       ret = enclave_sys_write(regs);
-          break;
+      break;
     default:
       ret = -1UL;
-          break;
+      break;
   }
   return ret;
 }
