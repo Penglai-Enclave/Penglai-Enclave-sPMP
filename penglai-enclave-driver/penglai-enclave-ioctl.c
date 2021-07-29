@@ -39,6 +39,9 @@ int create_sbi_param(enclave_t* enclave, struct penglai_enclave_sbi_param * encl
 	enclave_sbi_param -> untrusted_ptr = untrusted_ptr ;
 	enclave_sbi_param -> untrusted_size = untrusted_size;
 	enclave_sbi_param -> free_mem = free_mem;
+	//enclave share mem with kernel
+	enclave_sbi_param->kbuffer = __pa(enclave->kbuffer);
+	enclave_sbi_param->kbuffer_size = enclave->kbuffer_size;
 	return 0;
 }
 
@@ -61,6 +64,26 @@ int alloc_untrusted_mem(unsigned long untrusted_mem_size, unsigned long* untrust
 	return ret;
 }
 
+int alloc_kbuffer(unsigned long kbuffer_size, unsigned long* kbuffer_ptr, enclave_t* enclave)
+{
+	int ret = 0;
+	vaddr_t addr;
+	unsigned long order = ilog2((kbuffer_size >> RISCV_PGSHIFT) - 1) + 1;
+
+	addr = __get_free_pages(GFP_HIGHUSER, order);
+	if(!addr)
+	{
+		printk("KERNEL MODULE: can not alloc kbuffer\n");
+		return -1;
+	}
+	memset((void*)addr, 0, kbuffer_size);
+
+	*kbuffer_ptr = addr;
+	map_kbuffer(enclave->enclave_mem, ENCLAVE_DEFAULT_KBUFFER, __pa(addr), kbuffer_size);
+
+	return ret;
+}
+
 int check_eapp_memory_size(long elf_size, long stack_size, long untrusted_mem_size)
 {
 	if((elf_size > MAX_ELF_SIZE) || (stack_size > MAX_STACK_SIZE) || (untrusted_mem_size > MAX_UNTRUSTED_MEM_SIZE))
@@ -76,6 +99,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	long stack_size = enclave_param->stack_size;
 	long untrusted_mem_size = enclave_param->untrusted_mem_size;
 	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;
+	unsigned long kbuffer_ptr = ENCLAVE_DEFAULT_KBUFFER;
 	struct penglai_enclave_sbi_param enclave_sbi_param;
 	enclave_t* enclave;
 	unsigned int total_pages = total_enclave_page(elf_size, stack_size);
@@ -121,6 +145,10 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	enclave->untrusted_mem->size = untrusted_mem_size;
 	printk("[Penglai Driver@%s] untrusted_mem->addr:0x%lx untrusted_mem->size:0x%lx\n",
 			__func__, (vaddr_t)untrusted_mem_ptr, untrusted_mem_size);
+
+	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);
+	enclave->kbuffer = (vaddr_t)kbuffer_ptr;
+	enclave->kbuffer_size = ENCLAVE_DEFAULT_KBUFFER_SIZE;
 
 	free_mem = get_free_mem(&(enclave->enclave_mem->free_mem));
 
@@ -248,9 +276,10 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	unsigned long eid = enclave_param ->eid;
 	unsigned int enclave_eid; //this eid is not equal to eid
 	enclave_t * enclave;
-	//unsigned long ocall_func_id;
+	unsigned long ocall_func_id;
 	struct sbiret ret = {0};
 	int retval = 0;
+	int resume_id = 0;
 
 	printk("[Penglai Driver@%s] begin\n", __func__);
 	acquire_big_lock(__func__);
@@ -280,12 +309,34 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	// Note: stop_enclave will not leave the loop, but will not run
 	// 	 the enclave (as resume_from_timer_irq will check status of an enclave)
 	ret = SBI_CALL_1(SBI_SM_RUN_ENCLAVE, enclave_eid);
-	while(ret.value == ENCLAVE_TIMER_IRQ)
+	resume_id = enclave->eid;
+
+	while((ret.value == ENCLAVE_TIMER_IRQ) || (ret.value == ENCLAVE_OCALL))
 	{
-		//schedule();
-		yield();
-		ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave_eid, RESUME_FROM_TIMER_IRQ, get_cycles64() + DEFAULT_CLOCK_DELAY);
-	}
+		if (ret.value == ENCLAVE_TIMER_IRQ)
+		{
+			schedule();
+			ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_TIMER_IRQ, get_cycles64() + DEFAULT_CLOCK_DELAY);
+		}
+		else
+		{
+			ocall_func_id = enclave->ocall_func_id;
+			switch(ocall_func_id)
+			{
+				case OCALL_SYS_WRITE:
+				{
+					((char*)(enclave->kbuffer))[511] = '\0';
+					printk((void*)(enclave->kbuffer));
+					ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL, OCALL_SYS_WRITE);
+					break;
+				}
+				default:
+				{
+					ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL);
+				}
+			}
+		}	
+		}
 
 	acquire_big_lock(__func__);
 	//if(ret < 0)

@@ -15,5 +15,10 @@ int map_untrusted_mem(
 		vaddr_t vaddr, 
 		paddr_t paddr, 
 		unsigned long size);
+int map_kbuffer(
+		enclave_mem_t* enclave_mem,
+		vaddr_t vaddr,
+		paddr_t paddr,
+		unsigned long size);
 
 #endif

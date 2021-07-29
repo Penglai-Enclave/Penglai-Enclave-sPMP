@@ -30,6 +30,7 @@ typedef unsigned long pt_entry_t;
 #define ENCLAVE_USER_PAGE PTE_D | PTE_A | PTE_R | PTE_X | PTE_W | PTE_U
 #define ENCLAVE_STACK_PAGE PTE_D | PTE_A | PTE_R | PTE_W | PTE_U
 #define ENCLAVE_UNTRUSTED_PAGE PTE_D | PTE_A | PTE_R | PTE_W | PTE_U
+#define ENCLAVE_KBUFFER_PAGE PTE_D | PTE_A | PTE_R | PTE_W | PTE_U
 
 /* Abstract for enclave memory (secure memory) */
 struct enclave_mem

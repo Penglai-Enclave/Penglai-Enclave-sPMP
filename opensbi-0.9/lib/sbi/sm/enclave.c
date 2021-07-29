@@ -401,6 +401,8 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	enclave->ocall_arg0 = create_args.ecall_arg1;
 	enclave->ocall_arg1 = create_args.ecall_arg2;
 	enclave->ocall_syscall_num = create_args.ecall_arg3;
+	enclave->kbuffer = create_args.kbuffer;
+	enclave->kbuffer_size = create_args.kbuffer_size;
 	enclave->host_ptbr = csr_read(CSR_SATP);
 	enclave->thread_context.encl_ptbr = (create_args.paddr >> (RISCV_PGSHIFT) | SATP_MODE_CHOICE);
 	enclave->root_page_table = (unsigned long*)create_args.paddr;
@@ -724,6 +726,38 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	return 0;
 }
 
+uintptr_t enclave_sys_write(uintptr_t* regs)
+{
+	uintptr_t ret = 0;
+	int eid = get_enclave_id();
+	struct enclave_t* enclave = NULL;
+	if(check_in_enclave_world() < 0)
+	{
+		printm("M mode: %s check enclave world is failed\n", __func__);
+		return -1;
+	}
+
+	enclave = get_enclave(eid);
+	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
+	{
+		ret = -1UL;
+		printm("M mode: %s check enclave authentication is failed\n", __func__);
+		goto out;
+	}
+
+	spin_lock(&enclave_metadata_lock);
+
+	uintptr_t ocall_func_id = OCALL_SYS_WRITE;
+	copy_to_host((uintptr_t*)enclave->ocall_func_id, &ocall_func_id, sizeof(uintptr_t));
+
+	swap_from_enclave_to_host(regs, enclave);
+	enclave->state = RUNNABLE;
+	ret = ENCLAVE_OCALL;
+out:
+	spin_unlock(&enclave_metadata_lock);
+	return ret;
+}
+
 /*
  * Timer handler for penglai enclaves
  * In normal case, an enclave will pin a HART and run until it finished.
@@ -778,5 +812,36 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 timer_irq_out:
 	/*ret set timer now*/
 	// sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
+	return retval;
+}
+
+uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
+{
+	uintptr_t retval = 0;
+	uintptr_t ocall_func_id = regs[12];
+	struct enclave_t* enclave = NULL;
+
+	enclave = get_enclave(eid);
+	if(!enclave || enclave->host_ptbr != csr_read(CSR_SATP))
+	{
+		printm("M mode: %s wrong enclave id or enclave doesn't belong to current host process\n", __func__);
+		return -1UL;
+	}
+
+	spin_lock(&enclave_metadata_lock);
+
+	switch(ocall_func_id)
+	{
+		case OCALL_SYS_WRITE:
+			retval = enclave->thread_context.prev_state.a0;
+			break;
+		default:
+			retval = 0;
+			break;
+	}
+
+	spin_unlock(&enclave_metadata_lock);
+
+	retval = resume_enclave(regs, eid);
 	return retval;
 }

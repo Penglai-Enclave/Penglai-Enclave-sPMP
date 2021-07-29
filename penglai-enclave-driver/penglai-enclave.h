@@ -49,12 +49,15 @@
 #define RESUME_FROM_MALLOC_PAGES       2001
 #define RESUME_FROM_FREE_PAGES         2002
 #define RESUME_FROM_STOP               2003
+#define RESUME_FROM_OCALL              2
 
 #define FLAG_DESTROY                      0
 #define DIRECT_DESTROY                    1
 #define FREE_MAX_MEMORY                   2
 #define FREE_SPEC_MEMORY                  3
 
+/* OCALL codes */
+#define OCALL_SYS_WRITE                   3
 
 #define PRE_EXTEND_MONITOR_MEMORY 1
 
@@ -64,6 +67,8 @@ typedef struct penglai_enclave
 	unsigned int eid;	/* Allocated by secure monitor */
 	untrusted_mem_t* untrusted_mem;
 	enclave_mem_t* enclave_mem;
+	vaddr_t kbuffer;
+	unsigned long kbuffer_size;
 	unsigned long ocall_func_id;
 	unsigned long ocall_arg0;
 	unsigned long ocall_arg1;
