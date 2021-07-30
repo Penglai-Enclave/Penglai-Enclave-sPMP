@@ -196,6 +196,7 @@ uintptr_t sm_enclave_ocall(uintptr_t* regs, uintptr_t ocall_id, uintptr_t arg0, 
       ret = enclave_sys_write(regs);
       break;
     default:
+      printm_err("[Penglai Monitor@%s] wrong ocall_id(%ld)\r\n", __func__, ocall_id);
       ret = -1UL;
       break;
   }

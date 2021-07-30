@@ -733,7 +733,7 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	struct enclave_t* enclave = NULL;
 	if(check_in_enclave_world() < 0)
 	{
-		printm("M mode: %s check enclave world is failed\n", __func__);
+		printm_err("[Penglai Monitor@%s] check enclave world is failed\n", __func__);
 		return -1;
 	}
 
@@ -741,7 +741,7 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		ret = -1UL;
-		printm("M mode: %s check enclave authentication is failed\n", __func__);
+		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
 		goto out;
 	}
 
