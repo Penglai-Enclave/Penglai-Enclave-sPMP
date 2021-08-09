@@ -18,27 +18,6 @@ static spinlock_t enclave_metadata_lock = SPIN_LOCK_INITIALIZER;
 struct link_mem_t* enclave_metadata_head = NULL;
 struct link_mem_t* enclave_metadata_tail = NULL;
 
-uintptr_t copy_from_host(void* dest, void* src, size_t size)
-{
-	/* TODO: checking */
-	sbi_memcpy(dest, src, size);
-	return 0;
-}
-
-uintptr_t copy_to_host(void* dest, void* src, size_t size)
-{
-	/* TODO: checking */
-	sbi_memcpy(dest, src, size);
-	return 0;
-}
-
-int copy_word_to_host(unsigned int* ptr, uintptr_t value)
-{
-	/* TODO: checking */
-	*ptr = value;
-	return 0;
-}
-
 static void enter_enclave_world(int eid)
 {
 	cpus[csr_read(CSR_MHARTID)].in_enclave = ENCLAVE_MODE;
@@ -398,6 +377,7 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 {
 	struct enclave_t* enclave;
+	uintptr_t retval = 0;
 
 	enclave = alloc_enclave();
 	if(!enclave)
@@ -442,7 +422,13 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 			enclave->untrusted_ptr, enclave->host_ptbr, enclave->root_page_table,
 			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
 
-	copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
+	retval = copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
+	if(retval != 0)
+	{
+		printm_err("M mode: create_enclave: unknown error happended when copy word to host\r\n");
+		return ENCLAVE_ERROR;
+	}
+
 	printm("[Penglai Monitor@%s] return eid:%d\n",
 			__func__, enclave->eid);
 
@@ -747,7 +733,7 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	struct enclave_t* enclave = NULL;
 	if(check_in_enclave_world() < 0)
 	{
-		printm("M mode: %s check enclave world is failed\n", __func__);
+		printm_err("[Penglai Monitor@%s] check enclave world is failed\n", __func__);
 		return -1;
 	}
 
@@ -755,7 +741,7 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		ret = -1UL;
-		printm("M mode: %s check enclave authentication is failed\n", __func__);
+		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
 		goto out;
 	}
 

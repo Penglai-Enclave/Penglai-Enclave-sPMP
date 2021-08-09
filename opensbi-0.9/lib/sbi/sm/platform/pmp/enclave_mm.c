@@ -23,6 +23,91 @@ static unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
 
+int check_mem_overlap(uintptr_t paddr, unsigned long size)
+{
+	unsigned long sm_base = SM_BASE;
+	unsigned long sm_size = SM_SIZE;
+	int region_idx = 0;
+
+	//check whether the new region overlaps with security monitor
+	if(region_overlap(sm_base, sm_size, paddr, size))
+	{
+		printm_err("pmp memory overlaps with security monitor!\r\n");
+		return -1;
+	}
+
+	//check whether the new region overlap with existing enclave region
+	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
+	{
+		if(mm_regions[region_idx].valid
+				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
+					paddr, size))
+		{
+			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int data_is_nonsecure(uintptr_t paddr, unsigned long size)
+{
+	return !check_mem_overlap(paddr, size);
+}
+
+uintptr_t copy_from_host(void* dest, void* src, size_t size)
+{
+	int retval = -1;
+	//get lock to prevent TOCTTOU
+	spin_lock(&pmp_bitmap_lock);
+
+	//check data is nonsecure
+	//prevent coping from memory in secure region
+	if(data_is_nonsecure((uintptr_t)src, size))
+	{
+		sbi_memcpy(dest, src, size);
+		retval = 0;
+	}
+
+	spin_unlock(&pmp_bitmap_lock);
+	return retval;
+}
+
+uintptr_t copy_to_host(void* dest, void* src, size_t size)
+{
+	int retval = -1;
+	spin_lock(&pmp_bitmap_lock);
+
+	//check data is nonsecure
+	//prevent coping from memory in secure region
+	if(data_is_nonsecure((uintptr_t)dest, size))
+	{
+		sbi_memcpy(dest, src, size);
+		retval = 0;
+	}
+
+	spin_unlock(&pmp_bitmap_lock);
+	return retval;
+}
+
+int copy_word_to_host(unsigned int* ptr, uintptr_t value)
+{
+	int retval = -1;
+	spin_lock(&pmp_bitmap_lock);
+
+	//check data is nonsecure
+	//prevent coping from memory in secure region
+	if(data_is_nonsecure((uintptr_t)ptr, sizeof(unsigned int)))
+	{
+		*ptr = value;
+		retval = 0;
+	}
+
+	spin_unlock(&pmp_bitmap_lock);
+	return retval;
+}
+
 /*
  * Check the validness of the paddr and size
  * */
@@ -201,34 +286,6 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	// we can simply clear the PMP to retrieve the permission
 	clear_pmp(pmp_idx);
-
-	return 0;
-}
-
-int check_mem_overlap(uintptr_t paddr, unsigned long size)
-{
-	unsigned long sm_base = SM_BASE;
-	unsigned long sm_size = SM_SIZE;
-	int region_idx = 0;
-
-	//check whether the new region overlaps with security monitor
-	if(region_overlap(sm_base, sm_size, paddr, size))
-	{
-		printm_err("pmp memory overlaps with security monitor!\r\n");
-		return -1;
-	}
-
-	//check whether the new region overlap with existing enclave region
-	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
-	{
-		if(mm_regions[region_idx].valid
-				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
-					paddr, size))
-		{
-			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
-			return -1;
-		}
-	}
 
 	return 0;
 }

@@ -87,9 +87,6 @@ struct cpu_state_t
   int eid;
 };
 
-uintptr_t copy_from_host(void* dest, void* src, size_t size);
-uintptr_t copy_to_host(void* dest, void* src, size_t size);
-
 uintptr_t create_enclave(struct enclave_sbi_param_t create_args);
 uintptr_t run_enclave(uintptr_t* regs, unsigned int eid);
 uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid);

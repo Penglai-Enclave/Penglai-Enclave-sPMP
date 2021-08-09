@@ -85,9 +85,14 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
   mm_alloc_arg_local.resp_addr = (uintptr_t)paddr;
   mm_alloc_arg_local.resp_size = resp_size;
 
-  copy_to_host((struct mm_alloc_arg_t*)mm_alloc_arg,
+  retval = copy_to_host((struct mm_alloc_arg_t*)mm_alloc_arg,
       &mm_alloc_arg_local,
       sizeof(struct mm_alloc_arg_t));
+  if(retval != 0)
+  {
+    printm_err("M mode: sm_alloc_enclave_mem: unknown error happended when copy to host\r\n");
+    return ENCLAVE_ERROR;
+  }
 
   printm("[Penglai Monitor] %s return:%ld\r\n",__func__, retval);
 
@@ -104,6 +109,11 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
   retval = copy_from_host(&enclave_sbi_param_local,
       (struct enclave_sbi_param_t*)enclave_sbi_param,
       sizeof(struct enclave_sbi_param_t));
+  if(retval != 0)
+  {
+    printm_err("M mode: sm_create_enclave: unknown error happended when copy from host\r\n");
+    return ENCLAVE_ERROR;
+  }
 
   void* paddr = (void*)enclave_sbi_param_local.paddr;
   unsigned long size = (unsigned long)enclave_sbi_param_local.size;
@@ -186,6 +196,7 @@ uintptr_t sm_enclave_ocall(uintptr_t* regs, uintptr_t ocall_id, uintptr_t arg0, 
       ret = enclave_sys_write(regs);
       break;
     default:
+      printm_err("[Penglai Monitor@%s] wrong ocall_id(%ld)\r\n", __func__, ocall_id);
       ret = -1UL;
       break;
   }
