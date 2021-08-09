@@ -119,6 +119,7 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 		sbi_trap_redirect(regs, &trap);
 	} else if (extension_id == SBI_EXT_PENGLAI_HOST ||
 			extension_id == SBI_EXT_PENGLAI_ENCLAVE) {
+		//FIXME: update the return value assignment when we update enclave side SBI routines
 		regs->a0 = out_val;
 		if (!is_0_1_spec){
 			if(check_in_enclave_world() == -1){
