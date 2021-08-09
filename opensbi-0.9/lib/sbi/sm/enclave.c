@@ -673,9 +673,6 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 	//TODO: retval should be set to indicate success or fail when resume from ocall
 	retval = regs[10];
 
-	//enable timer interrupt
-	csr_read_set(CSR_MIE, MIP_MTIP);
-
 resume_enclave_out:
 	spin_unlock(&enclave_metadata_lock);
 	return retval;
