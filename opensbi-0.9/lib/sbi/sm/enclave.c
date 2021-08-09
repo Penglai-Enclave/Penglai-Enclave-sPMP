@@ -807,6 +807,8 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	spin_unlock(&enclave_metadata_lock);
 
 timer_irq_out:
+	csr_read_clear(CSR_MIE, MIP_MTIP);
+	csr_read_set(CSR_MIP, MIP_STIP);
 	/*ret set timer now*/
 	// sbi_timer_event_start(csr_read(CSR_TIME) + ENCLAVE_TIME_CREDITS);
 	return retval;

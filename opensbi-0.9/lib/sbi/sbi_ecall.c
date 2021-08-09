@@ -12,6 +12,7 @@
 #include <sbi/sbi_ecall_interface.h>
 #include <sbi/sbi_error.h>
 #include <sbi/sbi_trap.h>
+#include "sm/enclave.h"
 
 u16 sbi_ecall_version_major(void)
 {
@@ -118,10 +119,14 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 		sbi_trap_redirect(regs, &trap);
 	} else if (extension_id == SBI_EXT_PENGLAI_HOST ||
 			extension_id == SBI_EXT_PENGLAI_ENCLAVE) {
-		regs->a0 = ret;
-		if (!is_0_1_spec)
-			regs->a1 = out_val;
-
+		//FIXME: update the return value assignment when we update enclave side SBI routines
+		regs->a0 = out_val;
+		if (!is_0_1_spec){
+			if(check_in_enclave_world() == -1){
+				regs->a0 = ret;
+				regs->a1 = out_val;
+			}
+		}
 	} else {
 		if (ret < SBI_LAST_ERR) {
 			sbi_printf("%s: Invalid error %d for ext=0x%lx "
