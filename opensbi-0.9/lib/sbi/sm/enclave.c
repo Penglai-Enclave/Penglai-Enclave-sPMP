@@ -790,6 +790,8 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 		mm_free((void*)(enclave->paddr), enclave->size);
 
 		spin_unlock(&enclave_metadata_lock);
+		csr_read_clear(CSR_MIE, MIP_MTIP);
+		csr_read_set(CSR_MIP, MIP_STIP);
 
 		//free enclave struct
 		retval = free_enclave(eid); //the enclave state will be set INVALID here
@@ -805,6 +807,8 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	}
 
 	spin_unlock(&enclave_metadata_lock);
+	csr_read_clear(CSR_MIE, MIP_MTIP);
+	csr_read_set(CSR_MIP, MIP_STIP);
 
 timer_irq_out:
 	/*ret set timer now*/

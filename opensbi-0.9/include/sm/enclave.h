@@ -99,4 +99,6 @@ uintptr_t do_timer_irq(uintptr_t* regs, uintptr_t mcause, uintptr_t mepc);
 uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid);
 uintptr_t enclave_sys_write(uintptr_t *regs);
 
+int check_in_enclave_world();
+
 #endif /* _ENCLAVE_H */
