@@ -124,7 +124,7 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 			if(check_in_enclave_world() == -1){
 				regs->a0 = ret;
 				regs->a1 = out_val;
-		    }
+			}
 		}
 	} else {
 		if (ret < SBI_LAST_ERR) {
