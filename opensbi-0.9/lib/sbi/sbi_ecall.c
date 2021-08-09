@@ -123,7 +123,7 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 		if (!is_0_1_spec){
 			if(check_in_enclave_world() == -1){
 				regs->a0 = ret;
-                regs->a1 = out_val;
+				regs->a1 = out_val;
 		    }
 		}
 	} else {
