@@ -318,6 +318,7 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 	//set mstatus to transfer control to u mode
 	uintptr_t mstatus = host_regs[33]; //In OpenSBI, we use regs to change mstatus
 	mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_U);
+	mstatus = INSERT_FIELD(mstatus, MSTATUS_FS, 0x3); // enable float
 	host_regs[33] = mstatus;
 
 	//mark that cpu is in enclave world now
