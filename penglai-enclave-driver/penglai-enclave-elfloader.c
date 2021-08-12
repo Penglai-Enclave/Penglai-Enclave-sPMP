@@ -115,6 +115,63 @@ int penglai_enclave_loadelf(enclave_mem_t*enclave_mem, void* __user elf_ptr, uns
 	return 0;
 }
 
+int penglai_enclave_elfmemsize(void* __user elf_ptr, int* size)
+{
+	struct elfhdr elf_hdr;
+	struct elf_phdr elf_prog_hdr;
+	struct elf_shdr elf_sect_hdr;
+	int i, elf_prog_size;
+	vaddr_t elf_sect_ptr, elf_prog_ptr;
+	if(copy_from_user(&elf_hdr, elf_ptr, sizeof(struct elfhdr)) != 0)
+	{
+		printk("[Penglai Driver@%s] elf_hdr copy_from_user failed\n", __func__);
+		return -1;
+	}
+	elf_sect_ptr = (vaddr_t) elf_ptr + elf_hdr.e_shoff;
+
+	for (i = 0; i < elf_hdr.e_shnum;i++)
+	{
+		if (copy_from_user(&elf_sect_hdr,(void *)elf_sect_ptr,sizeof(struct elf_shdr)))
+		{
+			printk("[Penglai Driver@%s] elf_sect_hdr copy_from_user failed\n", __func__);
+			elf_sect_ptr += sizeof(struct elf_shdr);
+			return -1;
+		}
+		if (elf_sect_hdr.sh_addr == 0)
+		{
+			elf_sect_ptr += sizeof(struct elf_shdr);
+			continue;
+		}
+
+		// Calculate the size of the NOBITS section
+		if (elf_sect_hdr.sh_type == SHT_NOBITS)
+		{
+			int elf_sect_size = elf_sect_hdr.sh_size;
+			*size = *size + elf_sect_size;
+		}
+		elf_sect_ptr += sizeof(struct elf_shdr);
+	}
+
+	// Calculate the size of the PROGBITS segment
+	elf_prog_ptr = (vaddr_t) elf_ptr + elf_hdr.e_phoff;
+
+	for(i = 0; i < elf_hdr.e_phnum;i++)
+	{
+		if (copy_from_user(&elf_prog_hdr,(void *)elf_prog_ptr,sizeof(struct elf_phdr)))
+		{
+			printk("[Penglai Driver@%s] elf_prog_hdr copy_from_user failed\n", __func__);
+			elf_prog_ptr += sizeof(struct elf_phdr);
+			return -1;
+		}
+
+		// Virtual addr for program begin address
+		elf_prog_size = elf_prog_hdr.p_filesz;
+		*size = *size + elf_prog_size;
+		elf_prog_ptr += sizeof(struct elf_phdr);
+	}
+	return 0;
+}
+
 int penglai_enclave_eapp_preprare(enclave_mem_t* enclave_mem,  void* __user elf_ptr, unsigned long size, vaddr_t * elf_entry_point, vaddr_t stack_ptr, int stack_size)
 {
 	vaddr_t addr;

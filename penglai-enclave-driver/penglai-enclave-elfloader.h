@@ -20,5 +20,6 @@ int map_kbuffer(
 		vaddr_t vaddr,
 		paddr_t paddr,
 		unsigned long size);
+int penglai_enclave_elfmemsize(void* __user elf_ptr, int* size);
 
 #endif
