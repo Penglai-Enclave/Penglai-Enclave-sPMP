@@ -96,8 +96,8 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	struct penglai_enclave_user_param* enclave_param = (struct penglai_enclave_user_param*)args;
 	void *elf_ptr = (void*)enclave_param->elf_ptr;
 	int elf_size = 0;
-	penglai_enclave_elfmemsize(elf_ptr, &elf_size);
-	if(elf_size < 0){
+	if(penglai_enclave_elfmemsize(elf_ptr, &elf_size) < 0)
+	{
 		printk("KERNEL MODULE: calculate elf_size failed\n");
 		return -1;
 	}
