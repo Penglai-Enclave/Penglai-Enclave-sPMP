@@ -9,3 +9,4 @@ copy-files/*
 *.qcow2
 *.hex
 *.swp
+tags
