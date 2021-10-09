@@ -46,17 +46,17 @@ Follow the instructions in openeuler riscv gitee to compile openEuler kernel.
 
 For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
 
-	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
 	./scripts/build_euler_kernel.sh
 
 ### Build OpenSBI (with Penglai supports)
 
-	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
-	cd /env/opensbi-0.9
+	cd /home/penglai/penglai-enclave/opensbi-0.9
 	mkdir -p build-oe/qemu-virt
-	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/env/Image
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 
 Note: the /env/Image is the image compiled openEuler Kernel Image.
 
