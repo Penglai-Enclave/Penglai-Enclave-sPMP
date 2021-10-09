@@ -58,7 +58,7 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 	mkdir -p build-oe/qemu-virt
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 
-Note: the /env/Image is the image compiled openEuler Kernel Image.
+Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Kernel Image.
 
 A simpler way:
 
