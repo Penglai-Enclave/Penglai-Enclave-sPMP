@@ -46,6 +46,7 @@
 
 //ENCLAVE OCALL NUMBERS
 #define OCALL_SYS_WRITE              3
+#define OCALL_USER_DEFINED           4
 
 //error code of SBI_RESUME_RNCLAVE
 #define RESUME_FROM_TIMER_IRQ    2000

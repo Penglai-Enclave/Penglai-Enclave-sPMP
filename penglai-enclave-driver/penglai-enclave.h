@@ -38,6 +38,9 @@
 #define ENCLAVE_TIMER_IRQ                   1
 #define ENCLAVE_OCALL                   2
 
+#define RETURN_USER_EXIT_ENCL			0
+#define RETURN_USER_FOR_OCALL			1
+
 /* OCALL codes */
 #define OCALL_TIMER_IRQ                   2000
 #define OCALL_MEMORY_EXTEND            2001
@@ -58,6 +61,7 @@
 
 /* OCALL codes */
 #define OCALL_SYS_WRITE                   3
+#define OCALL_USER_DEFINED				  4
 
 #define PRE_EXTEND_MONITOR_MEMORY 1
 
