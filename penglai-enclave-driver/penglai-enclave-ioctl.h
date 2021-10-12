@@ -11,7 +11,7 @@
 #define PENGLAI_ENCLAVE_IOC_RUN_ENCLAVE \
 	_IOR(PENGLAI_ENCLAVE_IOC_MAGIC, 0x01, struct penglai_enclave_user_param)
 #define PENGLAI_ENCLAVE_IOC_ATTEST_ENCLAVE \
-	_IOR(PENGLAI_ENCLAVE_IOC_MAGIC, 0x02, struct penglai_enclave_user_param)
+	_IOR(PENGLAI_ENCLAVE_IOC_MAGIC, 0x02, struct penglai_enclave_ioctl_attest_enclave)
 #define PENGLAI_ENCLAVE_IOC_STOP_ENCLAVE \
 	_IOR(PENGLAI_ENCLAVE_IOC_MAGIC, 0x03, struct penglai_enclave_user_param)
 #define PENGLAI_ENCLAVE_IOC_RESUME_ENCLAVE \
@@ -59,39 +59,48 @@ struct penglai_enclave_sbi_param
 typedef unsigned char byte;
 
 #define MD_SIZE 64
-#define SIGNATURE_SIZE 64
-#define PRIVATE_KEY_SIZE 64
-#define PUBLIC_KEY_SIZE 32
 #define MAX_ELF_SIZE 512*1024*1024
 #define MAX_STACK_SIZE 64*1024*1024
 #define MAX_UNTRUSTED_MEM_SIZE 16*1024*1024
 
-
-struct enclave_report_t
-{
-	byte hash[MD_SIZE];
-	uint64_t nonce;
-	byte signature[SIGNATURE_SIZE];
-};
+//TODO: 64?
+#define PRIVATE_KEY_SIZE       32
+//TODO: 32?
+#define PUBLIC_KEY_SIZE        64
+#define HASH_SIZE              32
+#define SIGNATURE_SIZE         64
 
 struct sm_report_t
 {
-	byte hash[MD_SIZE];
-	byte public_key[PUBLIC_KEY_SIZE];
-	byte signature[SIGNATURE_SIZE];
+  unsigned char hash[HASH_SIZE];
+  unsigned char signature[SIGNATURE_SIZE];
+  unsigned char sm_pub_key[PUBLIC_KEY_SIZE];
+};
+
+struct enclave_report_t
+{
+  unsigned char hash[HASH_SIZE];
+  unsigned char signature[SIGNATURE_SIZE];
+  uintptr_t nonce;
 };
 
 struct report_t
 {
-	struct enclave_report_t enclave;
-	struct sm_report_t sm;
-	byte dev_public_key[PUBLIC_KEY_SIZE];
+  struct sm_report_t sm;
+  struct enclave_report_t enclave;
+  unsigned char dev_pub_key[PUBLIC_KEY_SIZE];
+};
+
+struct signature_t
+{
+  unsigned char r[PUBLIC_KEY_SIZE/2];
+  unsigned char s[PUBLIC_KEY_SIZE/2];
 };
 
 struct penglai_enclave_ioctl_attest_enclave
 {
-	__u64 eid;
-	uint64_t nonce;
+	unsigned long eid;
+	unsigned long nonce;
 	struct report_t report;
 };
 
