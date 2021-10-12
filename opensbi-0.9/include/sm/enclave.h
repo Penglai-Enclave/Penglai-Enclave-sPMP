@@ -35,6 +35,7 @@ typedef enum
   RUNNABLE,
   RUNNING,
   STOPPED,
+  ATTESTING,
 } enclave_state_t;
 
 /*
@@ -75,6 +76,8 @@ struct enclave_t
   //shared memory with host
   unsigned long untrusted_ptr;
   unsigned long untrusted_size;
+  // enclave measurement
+  unsigned char hash[HASH_SIZE];
 
   //enclave thread context
   //TODO: support multiple threads
@@ -93,6 +96,7 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid);
 uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid);
 uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid);
 uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid);
+uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce);
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval);
 uintptr_t do_timer_irq(uintptr_t* regs, uintptr_t mcause, uintptr_t mepc);
 

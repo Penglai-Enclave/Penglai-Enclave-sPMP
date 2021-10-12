@@ -40,6 +40,9 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 		case SBI_RUN_ENCLAVE:
 			ret = sm_run_enclave((uintptr_t *)regs, regs->a0);
 			break;
+		case SBI_ATTEST_ENCLAVE:
+			ret = sm_attest_enclave(regs->a0, regs->a1, regs->a2);
+			break;
 		case SBI_STOP_ENCLAVE:
 			ret = sm_stop_enclave((uintptr_t *)regs, regs->a0);
 			break;
@@ -48,10 +51,6 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 			break;
 		case SBI_DESTROY_ENCLAVE:
 			ret = sm_destroy_enclave((uintptr_t *)regs, regs->a0);
-			break;
-		case SBI_ATTEST_ENCLAVE:
-			ret = -1;
-			sbi_printf("[Penglai@Monitor] attest interface not supported yet\n");
 			break;
 		default:
 			sbi_printf("[Penglai@Monitor] host interface(funcid:%ld) not supported yet\n", funcid);

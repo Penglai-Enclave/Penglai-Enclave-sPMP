@@ -395,7 +395,7 @@ int penglai_enclave_attest(struct file * filep, unsigned long args)
 
 out:
 	release_big_lock(__func__);
-	return ret.value;
+	return retval;
 }
 
 long penglai_enclave_stop(struct file* filep, unsigned long args)
@@ -483,7 +483,10 @@ long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long a
 	}
 
 	if(copy_from_user(ioctl_data, (void*)args, ioc_size))
+	{
+		printk("KERNEL MODULE : copy from the user is failed\n");
 		return -EFAULT;
+	}
 
 	switch(cmd)
 	{
@@ -514,7 +517,9 @@ long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long a
 	}
 
 	if (copy_to_user((void*)args, ioctl_data, ioc_size))
+	{
+		printk("KERNEL MODULE: ioc_data buff is not enough\n");
 		return -EFAULT;
-
+	}
 	return ret;
 }

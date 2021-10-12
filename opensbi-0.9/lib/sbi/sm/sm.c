@@ -129,6 +129,18 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
   return retval;
 }
 
+uintptr_t sm_attest_enclave(uintptr_t eid, uintptr_t report, uintptr_t nonce)
+{
+  uintptr_t retval;
+  printm("[Penglai Monitor] %s invoked, eid:%ld\r\n",__func__, eid);
+
+  retval = attest_enclave(eid, report, nonce);
+
+  printm("[Penglai Monitor] %s return: %ld\r\n",__func__, retval);
+
+  return retval;
+}
+
 uintptr_t sm_run_enclave(uintptr_t* regs, unsigned long eid)
 {
   uintptr_t retval;

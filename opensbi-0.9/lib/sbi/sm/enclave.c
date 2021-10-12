@@ -8,6 +8,7 @@
 #include <sm/platform/pmp/platform.h>
 #include <sm/utils.h>
 #include <sbi/sbi_timer.h>
+#include <sm/attest.h>
 
 static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
 
@@ -423,6 +424,8 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 			enclave->untrusted_ptr, enclave->host_ptbr, enclave->root_page_table,
 			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
 
+	// Calculate the enclave's measurement
+	hash_enclave(enclave, (void*)(enclave->hash), 0);
 	retval = copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
 	if(retval != 0)
 	{
@@ -677,6 +680,47 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 resume_enclave_out:
 	spin_unlock(&enclave_metadata_lock);
 	return retval;
+}
+
+uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
+{
+	struct enclave_t* enclave = NULL;
+	int attestable = 1;
+	struct report_t report;
+	enclave_state_t old_state = INVALID;
+	enclave = get_enclave(eid);
+	spin_lock(&enclave_metadata_lock);
+	if(!enclave || (enclave->state != FRESH && enclave->state != STOPPED)
+		|| enclave->host_ptbr != csr_read(CSR_SATP))	attestable = 0;
+	else
+	{
+		old_state = enclave->state;
+		enclave->state = ATTESTING;
+	}
+	spin_unlock(&enclave_metadata_lock);
+
+	if(!attestable)
+	{
+		sbi_printf("M mode: attest_enclave: enclave%ld is not attestable\n", eid);
+		return -1UL;
+	}
+
+	sbi_memcpy((void*)(report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
+	sbi_memcpy((void*)(report.sm.hash), (void*)SM_HASH, HASH_SIZE);
+	sbi_memcpy((void*)(report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
+	sbi_memcpy((void*)(report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
+
+
+	update_enclave_hash((char *)(report.enclave.hash), (char *)enclave->hash, nonce);
+	sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
+	report.enclave.nonce = nonce;
+
+	copy_to_host((void*)report_ptr, (void*)(&report), sizeof(struct report_t));
+
+	spin_lock(&enclave_metadata_lock);
+	enclave->state = old_state;
+	spin_unlock(&enclave_metadata_lock);
+	return 0;
 }
 
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
