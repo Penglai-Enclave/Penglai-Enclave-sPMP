@@ -1,3 +1,8 @@
+/************************************************************************
+ * gm algorithms used by Penglai Monitor
+ * This file is copied from https://github.com/Penglai-Enclave/gm.git
+ ************************************************************************/
+
 #include "sm/gm/random.h"
 
 int vli_get_random(u8 *data, u32 len)

@@ -1,3 +1,8 @@
+/************************************************************************
+ * gm algorithms used by Penglai Monitor
+ * This file is copied from https://github.com/Penglai-Enclave/gm.git
+ ************************************************************************/
+
 #include "sm/gm/sm3.h"
 #include "sbi/sbi_string.h"
 

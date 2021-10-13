@@ -1,3 +1,8 @@
+/************************************************************************
+ * gm algorithms used by Penglai Monitor
+ * This file is copied from https://github.com/Penglai-Enclave/gm.git
+ ************************************************************************/
+
 #ifndef _SM3_H
 #define _SM3_H
 

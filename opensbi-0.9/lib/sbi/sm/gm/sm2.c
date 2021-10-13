@@ -1,3 +1,8 @@
+/************************************************************************
+ * gm algorithms used by Penglai Monitor
+ * This file is copied from https://github.com/Penglai-Enclave/gm.git
+ ************************************************************************/
+
 #include "sm/gm/random.h"
 #include "sm/gm/big.h"
 #include "sm/gm/ecc.h"
