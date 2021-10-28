@@ -208,7 +208,7 @@ uintptr_t sm_enclave_ocall(uintptr_t* regs, uintptr_t ocall_id, uintptr_t arg0, 
       ret = enclave_sys_write(regs);
       break;
     case OCALL_USER_DEFINED:
-      ret = enclave_custom_ocall(regs, arg0);
+      ret = enclave_user_defined_ocall(regs, arg0);
       break;
     default:
       printm_err("[Penglai Monitor@%s] wrong ocall_id(%ld)\r\n", __func__, ocall_id);
