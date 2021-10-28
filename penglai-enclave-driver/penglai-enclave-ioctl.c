@@ -554,7 +554,7 @@ int penglai_enclave_resume(struct file * filep, unsigned long args)
 					ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL);
 				}
 			}
-		}	
+		}
 	}
 
 	/* Use untrusted mem as in_out_buf*/

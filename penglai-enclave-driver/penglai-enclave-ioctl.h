@@ -38,7 +38,7 @@ struct penglai_enclave_user_param
 	unsigned long untrusted_mem_ptr;
 	long untrusted_mem_size;
 	long ocall_buf_size;
-  	int resume_type;
+	int resume_type;
 };
 
 struct penglai_enclave_sbi_param
