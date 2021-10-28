@@ -46,19 +46,19 @@ Follow the instructions in openeuler riscv gitee to compile openEuler kernel.
 
 For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
 
-	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
 	./scripts/build_euler_kernel.sh
 
 ### Build OpenSBI (with Penglai supports)
 
-	docker run --rm -it -v $(pwd):/env ddnirvana/penglai-enclave:v0.5 /bin/bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
-	cd /env/opensbi-0.9
+	cd /home/penglai/penglai-enclave/opensbi-0.9
 	mkdir -p build-oe/qemu-virt
-	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/env/Image
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 
-Note: the /env/Image is the image compiled openEuler Kernel Image.
+Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Kernel Image.
 
 A simpler way:
 
@@ -172,6 +172,17 @@ To cite Penglai, please consider using the following bibtex:
 	month = jul,
 }
 ```
+## Collaborators
+
+We thank all of our collaborators (companies, organizations, and communities).
+
+[<img alt="Huawei" src="./docs/collaborator-logos/huawei.png" width="146">](https://www.huawei.com/) |[<img alt="nuclei" src="./docs/collaborator-logos/nuclei.png" width="146">](https://www.nucleisys.com/) |[<img alt="StarFive" src="./docs/collaborator-logos/starfive.jpeg" width="146">](https://starfivetech.com/) |[<img alt="ISCAS" src="./docs/collaborator-logos/ISCAS.svg" width="146">](http://www.is.cas.cn/) |
+:---: |:---: |:---: |:---: |
+[Huawei (华为)](https://www.huawei.com/) |[Nuclei (芯来科技)](https://www.nucleisys.com/) |[StarFive (赛昉科技)](https://starfivetech.com/) |[ISCAS(中科院软件所)](http://www.is.cas.cn/) |
+
+[<img alt="openEuler" src="./docs/collaborator-logos/openeuler.png" width="146">](https://openeuler.org/) |[<img alt="OpenHarmony" src="./docs/collaborator-logos/OpenHarmony.svg" width="146">](https://www.openharmony.cn/) |[<img alt="secGear" src="./docs/collaborator-logos/secGear.png" width="146">](https://gitee.com/openeuler/secGear) |
+:---: |:---: |:---: |
+[openEuler community](https://openeuler.org/) |[OpenHarmony community](https://www.openharmony.cn/) |[secGear framework](https://gitee.com/openeuler/secGear)|
 
 ## Acknowledgements
 
