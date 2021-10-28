@@ -788,7 +788,7 @@ out:
 	return ret;
 }
 
-uintptr_t enclave_custom_ocall(uintptr_t* regs, uintptr_t ocall_buf_size)
+uintptr_t enclave_user_defined_ocall(uintptr_t* regs, uintptr_t ocall_buf_size)
 {
 	uintptr_t ret = 0;
 	int eid = get_enclave_id();
