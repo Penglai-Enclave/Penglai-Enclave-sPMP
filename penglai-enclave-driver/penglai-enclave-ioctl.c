@@ -281,6 +281,8 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	unsigned long eid = enclave_param ->eid;
 	unsigned int enclave_eid; //this eid is not equal to eid
 	enclave_t * enclave;
+	long untrusted_mem_size = enclave_param->untrusted_mem_size;
+	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;
 	unsigned long ocall_func_id;
 	struct sbiret ret = {0};
 	int retval = 0;
@@ -303,6 +305,16 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 
 	release_big_lock(__func__);
 
+	/* Use untrusted mem as in_out_buf*/
+	if((void*)untrusted_mem_ptr != NULL && untrusted_mem_size > 0){
+		if(untrusted_mem_size > enclave->untrusted_mem->size){
+			printk("KERNEL MODULE: untrusted memory is not big enough \n");
+			return -EINVAL;
+		}
+		memset((void*)enclave->untrusted_mem->addr, 0, enclave->untrusted_mem->size);
+		if(copy_from_user((void*)enclave->untrusted_mem->addr, (void*)untrusted_mem_ptr, untrusted_mem_size))
+			return -EFAULT;
+	}
 
 	printk("[Penglai Driver@%s] goto infinite run loop\n", __func__);
 	// In the (infinite loop), we do not need to acquire the lock
@@ -341,7 +353,13 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 				}
 			}
 		}	
-		}
+	}
+
+	/* Use untrusted mem as in_out_buf*/
+	if((void*)untrusted_mem_ptr != NULL && untrusted_mem_size > 0){
+		if (copy_to_user((void*)untrusted_mem_ptr, (void*)enclave->untrusted_mem->addr, untrusted_mem_size))
+			return -EFAULT;
+	}
 
 	acquire_big_lock(__func__);
 	//if(ret < 0)
