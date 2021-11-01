@@ -27,6 +27,8 @@
 #define ENCLAVE_DEFAULT_KBUFFER_SIZE              0x1000UL
 #define ENCLAVE_DEFAULT_KBUFFER         0xffffffe000000000UL
 
+#define USER_PARAM_RESUME_FROM_CUSTOM_OCALL		1000
+
 struct penglai_enclave_user_param
 {
 	unsigned long eid;
@@ -35,6 +37,8 @@ struct penglai_enclave_user_param
 	long stack_size;
 	unsigned long untrusted_mem_ptr;
 	long untrusted_mem_size;
+	long ocall_buf_size;
+	int resume_type;
 };
 
 struct penglai_enclave_sbi_param
