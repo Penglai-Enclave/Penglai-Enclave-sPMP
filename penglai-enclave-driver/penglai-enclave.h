@@ -61,7 +61,7 @@
 
 /* OCALL codes */
 #define OCALL_SYS_WRITE                   3
-#define OCALL_USER_DEFINED				  4
+#define OCALL_USER_DEFINED				  9
 
 #define PRE_EXTEND_MONITOR_MEMORY 1
 
