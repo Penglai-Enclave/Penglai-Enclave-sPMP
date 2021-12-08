@@ -283,7 +283,6 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	enclave_t * enclave;
 	long untrusted_mem_size = enclave_param->untrusted_mem_size;
 	long ocall_buf_size = 0;
-
 	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;
 	unsigned long ocall_func_id;
 	struct sbiret ret = {0};
