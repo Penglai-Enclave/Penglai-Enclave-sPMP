@@ -11,12 +11,10 @@
 #include <stdint.h>
 #include <sm/enclave_args.h>
 
-/*
- * Note: the hard-coded SM base and size depends on the M-mode firmware,
- * 	 e.g., in OpenSBI, you should check the firmware range in platform/generic/config.mk
- * */
-#define SM_BASE 0x80000000
-#define SM_SIZE 0x200000
+extern uintptr_t _fw_start[], _fw_end[];
+
+#define SM_BASE ((uintptr_t) _fw_start)
+#define SM_SIZE (((uintptr_t) _fw_end) - ((uintptr_t) _fw_start))
 
 #define MAX_HARTS 8
 
