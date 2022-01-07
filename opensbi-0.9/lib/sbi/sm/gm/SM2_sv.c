@@ -70,10 +70,14 @@ char g_mem_point[MR_ECP_RESERVE(2)];
 
 static void MIRACL_Init()
 {
+#ifdef PENGLAI_DEBUG
 	miracl *mip = mirsys(128, 16);
 	printm("MIRACL: pack: %d, nib: %d, big size: %ld, point size: %ld, workspace ptr: %lx\n",
 			mip->pack, mip->nib, mr_size(mip->nib-1),
 			mr_esize(mr_mip->nib-1), (unsigned long)mip->workspace);
+#else
+	mirsys(128, 16);
+#endif
 }
 
 /****************************************************************
