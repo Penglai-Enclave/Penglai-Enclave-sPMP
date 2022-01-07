@@ -702,7 +702,7 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
 
 	hash_enclave(enclave, (void*)(enclave->hash), 0);
 	update_enclave_hash((char *)(report.enclave.hash), (char *)enclave->hash, nonce);
-	sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
+	sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash), HASH_SIZE);
 	report.enclave.nonce = nonce;
 
 	copy_to_host((void*)report_ptr, (void*)(&report), sizeof(struct report_t));
