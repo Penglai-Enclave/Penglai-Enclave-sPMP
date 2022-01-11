@@ -23,7 +23,7 @@ You can use our SDK and enclave-driver to build your trusted applications, or ev
 - Status: experimental: it's still experimental version now, please refer our TVM version for more features.
 - Hardware requirement: riscv qemu (suggested version: >= 5.2.0) is fine
 - Supported software system: This repo contains resources to run openEuler with Penglai TEE.
-- Real devices: Penglai for Nuclei devices is maintained in [Nuclei SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
+- Real devices: Penglai for Nuclei devices is maintained in [Nuclei Linux SDK](https://github.com/Nuclei-Software/nuclei-linux-sdk/tree/dev_flash_penglai_spmp).
 
 You can turn to BBL-version by switching to the master branch.
 
