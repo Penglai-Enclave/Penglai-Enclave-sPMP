@@ -3,6 +3,7 @@
 #include <sm/sm.h>
 #include <sm/pmp.h>
 #include <sm/enclave.h>
+#include <sm/attest.h>
 #include <sm/math.h>
 #include <sbi/sbi_console.h>
 
@@ -12,6 +13,7 @@
 void sm_init()
 {
   platform_init();
+  attest_init();
 }
 
 uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size)

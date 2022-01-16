@@ -57,6 +57,7 @@ int alloc_untrusted_mem(unsigned long untrusted_mem_size, unsigned long* untrust
 		printk("KERNEL MODULE: can not alloc untrusted mem \n");
 		return -1;
 	}
+	memset((void*)addr, 0, untrusted_mem_size);
 
 	*untrusted_mem_ptr = addr;
 	map_untrusted_mem(enclave -> enclave_mem, DEFAULT_UNTRUSTED_PTR, __pa(addr), untrusted_mem_size);
