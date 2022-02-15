@@ -77,6 +77,8 @@ struct enclave_t
   unsigned long untrusted_size;
   // enclave measurement
   unsigned char hash[HASH_SIZE];
+  // hash of enclave developer's public key
+  unsigned char signer[HASH_SIZE];
 
   //enclave thread context
   //TODO: support multiple threads
@@ -102,6 +104,8 @@ uintptr_t do_timer_irq(uintptr_t* regs, uintptr_t mcause, uintptr_t mepc);
 uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid);
 uintptr_t enclave_sys_write(uintptr_t *regs);
 uintptr_t enclave_user_defined_ocall(uintptr_t *regs, uintptr_t ocall_buf_size);
+uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va,
+                        uintptr_t salt_len, uintptr_t key_buf_va, uintptr_t key_buf_len);
 
 int check_in_enclave_world();
 

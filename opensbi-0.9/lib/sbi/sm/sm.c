@@ -6,6 +6,7 @@
 #include <sm/attest.h>
 #include <sm/math.h>
 #include <sbi/sbi_console.h>
+#include <sbi/sbi_trap.h>
 
 //static int sm_initialized = 0;
 //static spinlock_t sm_init_lock = SPINLOCK_INIT;
@@ -211,6 +212,10 @@ uintptr_t sm_enclave_ocall(uintptr_t* regs, uintptr_t ocall_id, uintptr_t arg0, 
       break;
     case OCALL_USER_DEFINED:
       ret = enclave_user_defined_ocall(regs, arg0);
+      break;
+    case OCALL_DERIVE_SEAL_KEY:
+      ret = enclave_derive_seal_key(regs, regs[SBI_TRAP_REGS_a1], regs[SBI_TRAP_REGS_a2],
+                regs[SBI_TRAP_REGS_a3], regs[SBI_TRAP_REGS_a4]);
       break;
     default:
       printm_err("[Penglai Monitor@%s] wrong ocall_id(%ld)\r\n", __func__, ocall_id);
