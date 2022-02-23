@@ -34,6 +34,7 @@ extern uintptr_t _fw_start[], _fw_end[];
 //Enclave SBI numbers
 #define SBI_EXIT_ENCLAVE        99
 #define SBI_ENCLAVE_OCALL        98
+#define SBI_GET_KEY             88
 
 //Error code of SBI_ALLOC_ENCLAVE_MEM
 #define ENCLAVE_NO_MEMORY       -2
@@ -45,7 +46,6 @@ extern uintptr_t _fw_start[], _fw_end[];
 //ENCLAVE OCALL NUMBERS
 #define OCALL_SYS_WRITE              3
 #define OCALL_USER_DEFINED           9
-#define OCALL_DERIVE_SEAL_KEY        10
 
 //error code of SBI_RESUME_RNCLAVE
 #define RESUME_FROM_TIMER_IRQ    2000
@@ -75,6 +75,9 @@ uintptr_t sm_resume_enclave(uintptr_t *regs, uintptr_t enclave_id);
 uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
 uintptr_t sm_enclave_ocall(uintptr_t *regs, uintptr_t ocall_func_id, uintptr_t arg0, uintptr_t arg1);
+
+uintptr_t sm_enclave_get_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t salt_len,
+                        uintptr_t key_buf_va, uintptr_t key_buf_len);
 
 uintptr_t sm_exit_enclave(uintptr_t *regs, unsigned long retval);
 

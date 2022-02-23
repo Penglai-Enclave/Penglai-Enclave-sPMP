@@ -85,6 +85,9 @@ static int sbi_ecall_penglai_enclave_handler(unsigned long extid, unsigned long 
 		case SBI_ENCLAVE_OCALL:
 			ret = sm_enclave_ocall((uintptr_t *)regs, regs->a0, regs->a1, regs->a2);
 			break;
+        case SBI_GET_KEY:
+            ret = sm_enclave_get_key((uintptr_t *)regs, regs->a0, regs->a1, regs->a2, regs->a3);
+            break;
 		default:
 			sbi_printf("[Penglai@Monitor] enclave interface(funcid:%ld) not supported yet\n", funcid);
 			ret = SBI_ENOTSUPP;
