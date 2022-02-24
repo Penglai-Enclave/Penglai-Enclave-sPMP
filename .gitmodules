@@ -1,3 +1,6 @@
 [submodule "sdk"]
 	path = sdk
 	url = https://github.com/Penglai-Enclave/penglai-sdk.git
+[submodule "qemu"]
+	path = qemu
+	url = git@ipads.se.sjtu.edu.cn:HWsystem/pmptable/qemu.git
