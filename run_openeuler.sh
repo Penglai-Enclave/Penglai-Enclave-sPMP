@@ -1,5 +1,23 @@
 #!/bin/bash
-qemu-system-riscv64 -nographic -machine virt \
+if [ ! -d "./qemu/dd_build"	]; then
+	echo "Qemu is not built yet, building qemu now!"
+	cd ./qemu
+	./build_qemu.sh
+fi
+
+if [ ! -f "./qemu/dd_build/qemu-system-riscv64" ]; then
+	echo "Qemu is not built yet, building qemu now!"
+	cd ./qemu
+	./build_qemu.sh
+fi
+
+if [ ! -f "./qemu/dd_build/qemu-system-riscv64" ]; then
+	echo "Unknown error that we can not build qemu!"
+	echo "exit now for errors"
+	exit -1
+fi
+
+./qemu/dd_build/qemu-system-riscv64 -nographic -machine virt \
 	-smp 1 -m 2G \
 	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
 	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
