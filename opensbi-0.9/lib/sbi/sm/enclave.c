@@ -795,10 +795,18 @@ uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t 
 	uintptr_t ret = 0;
 	int eid = get_enclave_id();
 	struct enclave_t *enclave = NULL;
-	SM3_STATE hash_ctx;
+
 	pte_t *enclave_root_pt;
-	unsigned char salt_local[salt_len];
+	SM3_STATE hash_ctx;
+	unsigned char salt_local[HASH_SIZE];
 	unsigned char hash[HASH_SIZE];
+
+	if(key_buf_len > HASH_SIZE || salt_len > HASH_SIZE)
+	{
+		printm("[Penglai Monitor@%s] Seal key length or Salt length can't bigger then SM3 Hash size(32)\n", __func__);
+		return -1;
+	}
+	
 	if(check_in_enclave_world() < 0)
 	{
 		printm_err("[Penglai Monitor@%s] check enclave world is failed\n", __func__);
@@ -808,23 +816,19 @@ uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t 
 	enclave = get_enclave(eid);
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
-		ret = -1UL;
 		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
-		goto out;
-	}
-
-	if(key_buf_len > HASH_SIZE)
-	{
-		printm("[Penglai Monitor@%s] Seal key length can't bigger then SM3 Hash size\n", __func__);
 		return -1;
 	}
 
 	spin_lock(&enclave_metadata_lock);
 
 	enclave_root_pt = (pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT);
-	int size = copy_from_enclave(enclave_root_pt, salt_local, (void *)salt_va, salt_len);
-	if(size != salt_len){
-		return -1;
+	ret = copy_from_enclave(enclave_root_pt, salt_local, (void *)salt_va, salt_len);
+	if(ret != 0)
+	{
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy from enclave\n", __func__);
+		goto out;
 	}
 
 	SM3_init(&hash_ctx);
@@ -834,9 +838,11 @@ uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t 
 	SM3_process(&hash_ctx, salt_local, salt_len);
 	SM3_done(&hash_ctx, hash);
 
-	size = copy_to_enclave(enclave_root_pt, (void *)key_buf_va, hash, key_buf_len);
-	if(size != salt_len){
-		return -1;
+	ret = copy_to_enclave(enclave_root_pt, (void *)key_buf_va, hash, key_buf_len);
+	if(ret != 0){
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy to enclave\n", __func__);
+		goto out;
 	}
 
 out:
