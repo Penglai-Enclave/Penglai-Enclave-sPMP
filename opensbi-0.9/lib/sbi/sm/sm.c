@@ -221,6 +221,25 @@ uintptr_t sm_enclave_ocall(uintptr_t* regs, uintptr_t ocall_id, uintptr_t arg0, 
 }
 
 /**
+ * \brief Retrun key to enclave.
+ * 
+ * \param regs          The enclave regs.
+ * \param salt_va       Salt pointer in enclave address space.
+ * \param salt_len      Salt length in bytes.
+ * \param key_buf_va    Key buffer pointer in enclave address space.
+ * \param key_buf_len   Key buffer length in bytes.
+ */
+uintptr_t sm_enclave_get_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t salt_len,
+    uintptr_t key_buf_va, uintptr_t key_buf_len)
+{
+  uintptr_t ret = 0;
+
+  ret = enclave_derive_seal_key(regs, salt_va, salt_len, key_buf_va, key_buf_len);
+
+  return ret;
+}
+
+/**
  * \brief This transitional function is used to destroy the enclave.
  *
  * \param regs The host reg.

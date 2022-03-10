@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <sm/pmp.h>
 #include <sm/enclave.h>
+#include <sm/vm.h>
 
 #define N_PMP_REGIONS (NPMP - 3)
 
@@ -53,6 +54,10 @@ uintptr_t copy_from_host(void* dest, void* src, size_t size);
 uintptr_t copy_to_host(void* dest, void* src, size_t size);
 
 int copy_word_to_host(unsigned int* ptr, uintptr_t value);
+
+uintptr_t copy_from_enclave(pte_t *enclave_root_pt, void* dest_pa, void* src_enclave_va, size_t size);
+
+uintptr_t copy_to_enclave(pte_t *enclave_root_pt, void* dest_enclave_va, void* src_pa, size_t size);
 
 int grant_kernel_access(void* paddr, unsigned long size);
 
