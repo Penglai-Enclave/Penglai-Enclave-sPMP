@@ -380,20 +380,21 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 {
 	struct enclave_t* enclave;
+	unsigned int eid;
 	uintptr_t retval = 0;
 
 	enclave = alloc_enclave();
 	if(!enclave)
 	{
 		printm("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
-		return -1UL;
+		sbi_memset((void*)(create_args.paddr), 0, create_args.size);
+		mm_free((void*)(create_args.paddr), create_args.size);
+		return ENCLAVE_ERROR;
 	}
-
-	//TODO: check whether enclave memory is out of bound
-	//TODO: verify enclave page table layout
 
 	spin_lock(&enclave_metadata_lock);
 
+	eid = enclave->eid;
 	enclave->paddr = create_args.paddr;
 	enclave->size = create_args.size;
 	enclave->entry_point = create_args.entry_point;
@@ -417,7 +418,6 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	dump_pt(enclave->root_page_table, 1);
 #endif
 
-	spin_unlock(&enclave_metadata_lock);
 	printm("[Penglai@%s] paddr:0x%lx, size:0x%lx, entry:0x%lx\n"
 			"untrusted ptr:0x%lx host_ptbr:0x%lx, pt:0x%ln\n"
 			"thread_context.encl_ptbr:0x%lx\n cur_satp:0x%lx\n",
@@ -426,19 +426,44 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
 
 	// Calculate the enclave's measurement
-    hash_enclave(enclave, (void*)(enclave->hash), 0);
+	hash_enclave(enclave, (void*)(enclave->hash), 0);
+
+	// TODO: verify hash and whitelist check
+
+	// Check page table mapping secure and not out of bound
+	retval = check_enclave_pt(enclave);
+	if(retval != 0)
+	{
+		printm_err("M mode: create_enclave: check enclave page table failed, create failed\r\n");
+		goto error_out;
+	}
 
 	retval = copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
 	if(retval != 0)
 	{
 		printm_err("M mode: create_enclave: unknown error happended when copy word to host\r\n");
-		return ENCLAVE_ERROR;
+		goto error_out;
 	}
 
 	printm("[Penglai Monitor@%s] return eid:%d\n",
 			__func__, enclave->eid);
 
+	spin_unlock(&enclave_metadata_lock);
 	return 0;
+
+/*
+ * If create failed for above reasons, secure memory and enclave struct
+ * allocated before will never be used. So we need to free these momery.
+ */
+error_out:
+	sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+	mm_free((void*)(enclave->paddr), enclave->size);
+
+	spin_unlock(&enclave_metadata_lock);
+
+	//free enclave struct
+	free_enclave(eid); //the enclave state will be set INVALID here
+	return ENCLAVE_ERROR;
 }
 
 uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
