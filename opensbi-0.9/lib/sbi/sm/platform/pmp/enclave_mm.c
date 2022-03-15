@@ -294,6 +294,15 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
 	struct pmp_config_t pmp_config;
 	uintptr_t paddr = (uintptr_t)req_paddr;
 
+	pmp_config = get_pmp(pmp_idx);
+	if((pmp_config.mode != PMP_OFF))
+	{
+		printm_err(
+			"grant_kernel_access: can't grant kernel access to a new memory"
+			"region if kernel has already access to another one\r\n");
+		return -1;
+	}
+
 	if(check_mem_size(paddr, size) != 0){
 		printm("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
 		return -1;
