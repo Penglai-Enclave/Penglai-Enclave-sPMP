@@ -607,7 +607,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->state != STOPPED)
 	{
-		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
+		printm("[Penglai Monitor@%s] enclave's state is not stopped\r\n", __func__);
 		retval = -1UL;
 		goto resume_from_stop_out;
 	}
