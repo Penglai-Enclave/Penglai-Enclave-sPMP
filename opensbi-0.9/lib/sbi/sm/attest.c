@@ -42,7 +42,7 @@ static int hash_enclave_mem(SM3_STATE *hash_ctx, pte_t* ptes, int level,
                 SM3_process(hash_ctx, (unsigned char*)&curr_va,
                     sizeof(uintptr_t));
                 //update hash with  page attribution
-                SM3_process(hash_ctx, (unsigned char*)pte+7, 1);
+                SM3_process(hash_ctx, (unsigned char*)pte, 1);
                 hash_curr_va = 0;
             }
 
