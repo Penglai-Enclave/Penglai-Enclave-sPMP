@@ -570,6 +570,7 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 	if (enclave->state == FRESH) {
 		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 		mm_free((void*)(enclave->paddr), enclave->size);
+		enclave->state = INVALID;
 
 		spin_unlock(&enclave_metadata_lock);
 
