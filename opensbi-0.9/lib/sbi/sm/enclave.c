@@ -901,9 +901,13 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 
 	spin_lock(&enclave_metadata_lock);
 
-	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
-	{
-		printm("[Penglai Monitor@%s]  Enclave(%d) is not runnable\r\n", __func__, eid);
+	/*
+	 * An enclave trapping into monitor should not have other states.
+	 * This is guaranteed by concurrency control for life cycle management。
+	 */
+	if (enclave->state != RUNNING && enclave->state != DESTROYED &&
+		enclave->state != STOPPED) {
+		printm_err("[Penglai Monitor@%s]  Enclave(%d) state is wrong!\r\n", __func__, eid);
 		retval = -1;
 	}
 
