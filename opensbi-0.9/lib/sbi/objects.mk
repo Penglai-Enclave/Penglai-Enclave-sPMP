@@ -48,6 +48,7 @@ libsbi-objs-y += sbi_pmp.o
 libsbi-objs-y += sbi_ecall_penglai.o
 libsbi-objs-y += sm/enclave.o
 libsbi-objs-y += sm/pmp.o
+libsbi-objs-y += sm/pmptable.o
 libsbi-objs-y += sm/sm.o
 libsbi-objs-y += sm/thread.o
 libsbi-objs-y += sm/utils.o

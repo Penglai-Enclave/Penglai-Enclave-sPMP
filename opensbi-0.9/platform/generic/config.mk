@@ -26,7 +26,7 @@ ifeq ($(PLATFORM_RISCV_XLEN), 32)
   FW_JUMP_ADDR=$(shell printf "0x%X" $$(($(FW_TEXT_START) + 0x400000)))
 else
   # This needs to be 2MB aligned for 64-bit system
-  FW_JUMP_ADDR=$(shell printf "0x%X" $$(($(FW_TEXT_START) + 0x200000)))
+  FW_JUMP_ADDR=$(shell printf "0x%X" $$(($(FW_TEXT_START) + 0x400000)))
 endif
 FW_JUMP_FDT_ADDR=$(shell printf "0x%X" $$(($(FW_TEXT_START) + 0x2200000)))
 FW_PAYLOAD=y
@@ -35,6 +35,6 @@ ifeq ($(PLATFORM_RISCV_XLEN), 32)
   FW_PAYLOAD_OFFSET=0x400000
 else
   # This needs to be 2MB aligned for 64-bit system
-  FW_PAYLOAD_OFFSET=0x200000
+  FW_PAYLOAD_OFFSET=0x400000
 endif
 FW_PAYLOAD_FDT_ADDR=$(FW_JUMP_FDT_ADDR)

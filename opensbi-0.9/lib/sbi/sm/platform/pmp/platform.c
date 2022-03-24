@@ -21,6 +21,12 @@ int platform_init()
   pmp_config.perm = PMP_NO_PERM;
   set_pmp_and_sync(0, pmp_config);
 
+  /* clear all other PMPs */
+  int i;
+  for (i=2;i<NPMP-1;i++)
+	  clear_pmp_and_sync(i);
+
+
   //config the last PMP to allow kernel to access memory
   pmp_config.paddr = 0;
   pmp_config.size = -1UL;
@@ -28,6 +34,12 @@ int platform_init()
   pmp_config.perm = PMP_R | PMP_W | PMP_X;
   //set_pmp(NPMP-1, pmp_config);
   set_pmp_and_sync(NPMP-1, pmp_config);
+
+
+  //The following will override the above PMP configs
+  printm("[Penglai Monitor@%s] before preparing PMPT \n", __func__);
+  init_pmpt();
+  printm("[Penglai Monitor@%s] after preparing PMPT \n", __func__);
 
   printm("[Penglai Monitor@%s] setting initial PMP ready\n", __func__);
   return 0;

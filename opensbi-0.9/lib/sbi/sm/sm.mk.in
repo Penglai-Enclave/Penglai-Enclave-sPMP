@@ -10,6 +10,7 @@ sm_hdrs = \
 sm_c_srcs = \
   ipi.c \
   pmp.c \
+  pmptable.c \
   platform/@TARGET_PLATFORM@/platform.c \
   sm.c \
   enclave.c \

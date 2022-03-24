@@ -68,4 +68,10 @@ void clear_pmp(int pmp_idx);
 struct pmp_config_t get_pmp(int pmp_idx);
 void dump_pmps(void);
 
+void set_pmp_reg(int pmp_idx, uintptr_t* pmp_address, uintptr_t* pmp_config);
+
+// PMPTable here
+#define PMPTE_PPN_SHIFT 5
+void init_pmpt(void);
+
 #endif /* _PMP_H */
