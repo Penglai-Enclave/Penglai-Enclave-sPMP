@@ -18,7 +18,7 @@ if [ ! -f "./qemu/dd_build/qemu-system-riscv64" ]; then
 fi
 
 ./qemu/dd_build/qemu-system-riscv64 -nographic -machine virt \
-	-smp 1 -m 2G \
+	-smp 1 -m 8G \
 	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
 	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
 	-object rng-random,filename=/dev/urandom,id=rng0 \
