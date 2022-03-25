@@ -35,14 +35,14 @@ void init_pmpt(){
 	uintptr_t lower_bound = 0x80000000 >> PMP_SHIFT;
 	uintptr_t upper_bound = (0x80000000 + 0x400000000) >> PMP_SHIFT;
 #define PMP_CONFIG_OFFSET(pmp_idx) ((uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG))
-	uintptr_t pmptable_cfg = (PMP_A_TOR | PMP_R | PMP_W | PMP_X | PMP_T) << PMP_CONFIG_OFFSET(13);
+	uintptr_t pmptable_cfg = (PMP_A_TOR | PMP_R | PMP_W | PMP_X | PMP_T) << PMP_CONFIG_OFFSET(5);
 	uintptr_t invalid_cfg = 0;
 	uintptr_t root_pt_addr = ((uintptr_t)pmpt1_root) >> RISCV_PGSHIFT;
 
 	printm("[Info@%s] lower:0x%lx, upper:0x%lx, table_base:0x%lx\n",
 			__func__, lower_bound, upper_bound, root_pt_addr);
 
-	set_pmp_reg(12, &lower_bound, &invalid_cfg);
-	set_pmp_reg(13, &upper_bound, &pmptable_cfg);
-	set_pmp_reg(14, &root_pt_addr, &invalid_cfg);
+	set_pmp_reg(4, &lower_bound, &invalid_cfg);
+	set_pmp_reg(5, &upper_bound, &pmptable_cfg);
+	set_pmp_reg(6, &root_pt_addr, &invalid_cfg);
 }
