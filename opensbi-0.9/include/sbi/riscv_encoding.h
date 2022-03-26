@@ -141,6 +141,7 @@
 #define PMP_A_TOR			_UL(0x08)
 #define PMP_A_NA4			_UL(0x10)
 #define PMP_A_NAPOT			_UL(0x18)
+#define PMP_T				_UL(0x20)
 #define PMP_L				_UL(0x80)
 
 #define PMP_SHIFT			2

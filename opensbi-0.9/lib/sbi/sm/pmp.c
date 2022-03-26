@@ -175,7 +175,9 @@ void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
 	uintptr_t pmp_address = 0;
 	//uintptr_t old_config = 0;
 #define PMP_CONFIG_OFFSET(pmp_idx) ((uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG))
-	uintptr_t pmp_config = ((pmp_cfg_t.mode & PMP_A) | (pmp_cfg_t.perm & (PMP_R|PMP_W|PMP_X)))
+	uintptr_t pmp_config = ( (pmp_cfg_t.mode & PMP_A) |
+			(pmp_cfg_t.perm & (PMP_R|PMP_W|PMP_X)) |
+			(pmp_cfg_t.perm & PMP_T) )
 		<< PMP_CONFIG_OFFSET(pmp_idx);
 
 	switch(pmp_cfg_t.mode)
@@ -192,7 +194,7 @@ void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
 		case PMP_A_NA4:
 			pmp_address = pmp_cfg_t.paddr;
 		case PMP_OFF:
-			pmp_address = 0;
+			pmp_address = pmp_cfg_t.paddr;
 			break;
 		default:
 			pmp_address = 0;

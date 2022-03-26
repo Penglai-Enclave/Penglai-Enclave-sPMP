@@ -27,6 +27,7 @@ int platform_init()
 	  clear_pmp_and_sync(i);
 
 
+#if 0
   //config the last PMP to allow kernel to access memory
   pmp_config.paddr = 0;
   pmp_config.size = -1UL;
@@ -34,6 +35,7 @@ int platform_init()
   pmp_config.perm = PMP_R | PMP_W | PMP_X;
   //set_pmp(NPMP-1, pmp_config);
   set_pmp_and_sync(NPMP-1, pmp_config);
+#endif
 
 
   //The following will override the above PMP configs
