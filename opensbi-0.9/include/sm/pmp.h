@@ -8,7 +8,7 @@
 #include <sbi/sbi_hartmask.h>
 
 //number of PMP registers
-#define NPMP 8
+#define NPMP 16
 
 #define PMP_OFF   0x00
 #define PMP_NO_PERM  0
