@@ -272,6 +272,14 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		rc  = sbi_ecall_handler(regs);
 		msg = "ecall handler failed";
 		break;
+	case CAUSE_FETCH_ACCESS:
+	case CAUSE_LOAD_ACCESS:
+	case CAUSE_STORE_ACCESS:
+		sbi_printf("[PMPFault] cause:0x%lx, mtval:0x%lx, mtval2:0x%lx, mtinst:0x%lx\n",
+				mcause, mtval, mtval2, mtinst);
+		sbi_printf("[Bug] goto haning");
+		while (1) {}
+
 	default:
 		/* If the trap came from S or U mode, redirect it there */
 		trap.epc = regs->mepc;
