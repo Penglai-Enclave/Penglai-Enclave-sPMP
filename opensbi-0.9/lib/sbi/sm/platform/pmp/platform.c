@@ -22,9 +22,9 @@ int platform_init()
   set_pmp_and_sync(0, pmp_config);
 
   /* clear all other PMPs */
-  int i;
-  for (i=2;i<NPMP-1;i++)
-	  clear_pmp_and_sync(i);
+//  int i;
+//  for (i=2;i<NPMP-1;i++)
+//	  clear_pmp_and_sync(i);
 
 
 #if 0
@@ -39,10 +39,12 @@ int platform_init()
 #endif
 
 
+#if 1
   //The following will override the above PMP configs
   printm("[Penglai Monitor@%s] before preparing PMPT \n", __func__);
   init_pmpt();
   printm("[Penglai Monitor@%s] after preparing PMPT \n", __func__);
+#endif
 
   printm("[Penglai Monitor@%s] setting initial PMP ready\n", __func__);
   return 0;

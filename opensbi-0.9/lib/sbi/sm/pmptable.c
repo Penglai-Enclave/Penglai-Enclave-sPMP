@@ -56,29 +56,29 @@ void init_pmpt(){
   	pmp_config.size = 0UL;
   	pmp_config.mode = PMP_OFF;
   	pmp_config.perm = 0UL; //PMP_R | PMP_W | PMP_X;
-  	set_pmp_and_sync(4, pmp_config);
+  	set_pmp_and_sync(2, pmp_config);
 
   	pmp_config.paddr = lower_bound2;
-  	set_pmp_and_sync(7, pmp_config);
+  	set_pmp_and_sync(5, pmp_config);
 
 	/* For table base register */
   	pmp_config.paddr = root_pt_addr;
   	pmp_config.size = 0UL;
   	pmp_config.mode = PMP_OFF;
   	pmp_config.perm = 0UL; //PMP_R | PMP_W | PMP_X;
-  	set_pmp_and_sync(6, pmp_config);
+  	set_pmp_and_sync(4, pmp_config);
 
-  	set_pmp_and_sync(9, pmp_config);
+  	set_pmp_and_sync(7, pmp_config);
 
 	/* For PMPTable register */
   	pmp_config.paddr = upper_bound;
   	pmp_config.size = 0UL;
   	pmp_config.mode = PMP_A_TOR;
   	pmp_config.perm = PMP_R | PMP_W | PMP_X | PMP_T;
-  	set_pmp_and_sync(5, pmp_config);
+  	set_pmp_and_sync(3, pmp_config);
 
   	pmp_config.paddr = upper_bound2;
-  	set_pmp_and_sync(8, pmp_config);
+  	set_pmp_and_sync(6, pmp_config);
 
 	//set_pmp_reg(4, &lower_bound, &invalid_cfg);
 	//set_pmp_reg(5, &upper_bound, &pmptable_cfg);
