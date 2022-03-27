@@ -40,7 +40,7 @@ void init_pmpt(){
 	uintptr_t lower_bound = 0x400000000 >> PMP_SHIFT;
 	uintptr_t upper_bound = (0x400000000 + 0x400000000) >> PMP_SHIFT;
 	uintptr_t lower_bound2 = 0x0 >> PMP_SHIFT;
-	uintptr_t upper_bound2 = (0x0 + 0x400000000) >> PMP_SHIFT;
+	//uintptr_t upper_bound2 = (0x0 + 0x400000000) >> PMP_SHIFT;
 #define PMP_CONFIG_OFFSET(pmp_idx) ((uintptr_t)PMPCFG_BIT_NUM * (pmp_idx % PMP_PER_CFG_REG))
 	//uintptr_t pmptable_cfg = (PMP_A_TOR | PMP_R | PMP_W | PMP_X | PMP_T) << PMP_CONFIG_OFFSET(5);
 	//uintptr_t invalid_cfg = 0;
@@ -77,8 +77,12 @@ void init_pmpt(){
   	pmp_config.perm = PMP_R | PMP_W | PMP_X | PMP_T;
   	set_pmp_and_sync(3, pmp_config);
 
-  	pmp_config.paddr = upper_bound2;
+  	pmp_config.paddr = 0; //upper_bound2;
+  	pmp_config.size = -1UL; //upper_bound2;
+	pmp_config.mode = PMP_A_NAPOT;
+  	pmp_config.perm = PMP_R | PMP_W | PMP_X | PMP_T;
   	set_pmp_and_sync(6, pmp_config);
+
 
 	//set_pmp_reg(4, &lower_bound, &invalid_cfg);
 	//set_pmp_reg(5, &upper_bound, &pmptable_cfg);
