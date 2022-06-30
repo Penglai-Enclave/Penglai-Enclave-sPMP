@@ -17,7 +17,7 @@ static uintptr_t pmpt1_leaf[RISCV_PGSIZE / sizeof(uintptr_t)][RISCV_PGSIZE / siz
 static u64 dd_get_ticks(void)
 {
 	unsigned long n;
-	__asm__ __volatile__("rdtime %0" : "=r"(n));
+	__asm__ __volatile__("rdcycle %0" : "=r"(n));
 	return n;
 }
 
@@ -32,6 +32,12 @@ void init_pmpt(){
 	int i,j;
 
 	pmpt_microbench();
+
+	/* Enable HPM counters */
+	csr_write(CSR_MCOUNTEREN, 0xffffffffffffffff);
+	csr_write(CSR_SCOUNTEREN, -1);
+
+
 
 	printm("[Dd@%s] count == %d\n", __func__, count);
 
