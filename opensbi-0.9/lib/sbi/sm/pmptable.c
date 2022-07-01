@@ -36,6 +36,13 @@ void init_pmpt(){
 	/* Enable HPM counters */
 	csr_write(CSR_MCOUNTEREN, 0xffffffffffffffff);
 	csr_write(CSR_SCOUNTEREN, -1);
+	/*
+	 * Details about HPM counters;
+	 * 	https://static.dev.sifive.com/U54-MC-RVCoreIP.pdf
+	 * 	https://github.com/haoozi/Rocket-chip-HPM/tree/da59e7cc9fc9f81f7361eaff56dc1b1eb5f8373c
+	 * */
+	csr_write(CSR_MHPMEVENT3, 0x802); // iTLB misses
+	csr_write(CSR_MHPMEVENT4, 0x1002); // dTLB misses
 
 
 
