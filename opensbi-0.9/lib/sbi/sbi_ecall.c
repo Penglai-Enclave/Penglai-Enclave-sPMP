@@ -13,8 +13,8 @@
 #include <sbi/sbi_error.h>
 #include <sbi/sbi_trap.h>
 
-#include <sbi/riscv_asm.h>
-#include <sbi/riscv_encoding.h>
+// #include <sbi/riscv_asm.h>
+// #include <sbi/riscv_encoding.h>
 
 u16 sbi_ecall_version_major(void)
 {

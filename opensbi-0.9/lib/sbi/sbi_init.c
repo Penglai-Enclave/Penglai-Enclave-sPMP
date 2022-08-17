@@ -23,7 +23,7 @@
 #include <sbi/sbi_string.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_tlb.h>
-#include <sbi/sbi_pmp.h>
+// #include <sbi/sbi_pmp.h>
 #include <sbi/sbi_version.h>
 
 #define BANNER                                              \
@@ -42,9 +42,9 @@ static void sbi_boot_print_banner(struct sbi_scratch *scratch)
 		return;
 
 #ifdef OPENSBI_VERSION_GIT
-	sbi_printf("\nOpenSBI %s (with Penglai TEE)\n", OPENSBI_VERSION_GIT);
+	sbi_printf("\nOpenSBI %s\n", OPENSBI_VERSION_GIT);
 #else
-	sbi_printf("\nOpenSBI v%d.%d (with Penglai TEE)\n", OPENSBI_VERSION_MAJOR,
+	sbi_printf("\nOpenSBI v%d.%d\n", OPENSBI_VERSION_MAJOR,
 		   OPENSBI_VERSION_MINOR);
 #endif
 
@@ -310,7 +310,7 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 
 	sbi_boot_print_hart(scratch, hartid);
 
-	sbi_printf("[Penglai] Penglai Enclave Preparing\n");
+	// sbi_printf("[Penglai] Penglai Enclave Preparing\n");
 
 	wake_coldboot_harts(scratch, hartid);
 

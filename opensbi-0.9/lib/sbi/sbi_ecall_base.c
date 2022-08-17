@@ -15,7 +15,7 @@
 #include <sbi/sbi_version.h>
 #include <sbi/riscv_asm.h>
 
-#include <sbi/sbi_console.h>
+// #include <sbi/sbi_console.h>
 
 static int sbi_ecall_base_probe(unsigned long extid, unsigned long *out_val)
 {
