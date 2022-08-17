@@ -13,6 +13,9 @@
 #include <sbi/sbi_error.h>
 #include <sbi/sbi_trap.h>
 
+// #include <sbi/riscv_asm.h>
+// #include <sbi/riscv_encoding.h>
+
 u16 sbi_ecall_version_major(void)
 {
 	return SBI_ECALL_VERSION_MAJOR;
@@ -102,6 +105,15 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 	unsigned long out_val = 0;
 	bool is_0_1_spec = 0;
 
+	// if (extension_id == SBI_EXT_BASE && func_id>80){
+	// 	/* FIXME(DD): hacking, when extension id is base, put regs into last args
+	// 	 * * currently this reg will not be used by any base functions
+	// 	 */
+	// 	sbi_printf("[PenglaiMonitor@%s] begin with mepc: 0x%x\n", __func__, regs->mepc);
+	// 	//args[5] = (unsigned long) regs;
+	// 	regs->mepc += 4;
+	// }
+
 	ext = sbi_ecall_find_extension(extension_id);
 	if (ext && ext->handle) {
 		ret = ext->handle(extension_id, func_id,
@@ -116,6 +128,11 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 	if (ret == SBI_ETRAP) {
 		trap.epc = regs->mepc;
 		sbi_trap_redirect(regs, &trap);
+	// } else if (extension_id == SBI_EXT_BASE && func_id>80){
+	// 	regs->a0 = ret;
+	// 	if (!is_0_1_spec)
+	// 		regs->a1 = out_val;
+
 	} else {
 		if (ret < SBI_LAST_ERR) {
 			sbi_printf("%s: Invalid error %d for ext=0x%lx "
@@ -137,6 +154,13 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 		if (!is_0_1_spec)
 			regs->a1 = out_val;
 	}
+
+	// if (extension_id == SBI_EXT_BASE && func_id>80){
+	// 	/* FIXME(DD): hacking, when extension id is base, put regs into last args
+	// 	 * * currently this reg will not be used by any base functions
+	// 	 */
+	// 	sbi_printf("[PenglaiMonitor@%s] end with mepc: 0x%x\n", __func__, regs->mepc);
+	// }
 
 	return 0;
 }
