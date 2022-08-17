@@ -253,11 +253,11 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 		sbi_hart_hang();
 	}
 
-	rc = sbi_pmp_init(scratch, TRUE);
-	if (rc) {
-		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
-		sbi_hart_hang();
-	}
+	// rc = sbi_pmp_init(scratch, TRUE);
+	// if (rc) {
+	// 	sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
+	// 	sbi_hart_hang();
+	// }
 
 	rc = sbi_timer_init(scratch, TRUE);
 	if (rc) {
@@ -288,14 +288,14 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 
 	sbi_boot_print_domains(scratch);
 
-#if 0 /*FIXME(DD): handle this */
+// #if 0 /*FIXME(DD): handle this */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc) {
 		sbi_printf("%s: PMP configure failed (error %d)\n",
 			   __func__, rc);
 		sbi_hart_hang();
 	}
-#endif
+// #endif
 
 	/*
 	 * Note: Platform final initialization should be last so that
@@ -357,21 +357,21 @@ static void __noreturn init_warmboot(struct sbi_scratch *scratch, u32 hartid)
 	if (rc)
 		sbi_hart_hang();
 
-	rc = sbi_pmp_init(scratch, FALSE);
-	if (rc) {
-		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
-		sbi_hart_hang();
-	}
+	// rc = sbi_pmp_init(scratch, FALSE);
+	// if (rc) {
+	// 	sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
+	// 	sbi_hart_hang();
+	// }
 
 	rc = sbi_timer_init(scratch, FALSE);
 	if (rc)
 		sbi_hart_hang();
 
-#if 0 /*FIXME(DD): handle this */
+// #if 0 /*FIXME(DD): handle this */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc)
 		sbi_hart_hang();
-#endif
+// #endif
 
 	rc = sbi_platform_final_init(plat, FALSE);
 	if (rc)
