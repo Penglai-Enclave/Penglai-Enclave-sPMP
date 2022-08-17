@@ -46,9 +46,13 @@ RISC-V Platforms Using Generic Platform
 ---------------------------------------
 
 * **QEMU RISC-V Virt Machine** (*[qemu_virt.md]*)
-* **Spike** (*[spike.md]*)
 * **Shakti C-class SoC Platform** (*[shakti_cclass.md]*)
+* **SiFive HiFive Unleashed** (*[sifive_fu540.md]*)
+* **Spike** (*[spike.md]*)
+* **T-HEAD C9xx series Processors** (*[thead-c9xx.md]*)
 
 [qemu_virt.md]: qemu_virt.md
-[spike.md]: spike.md
 [shakti_cclass.md]: shakti_cclass.md
+[sifive_fu540.md]: sifive_fu540.md
+[spike.md]: spike.md
+[thead-c9xx.md]: thead-c9xx.md

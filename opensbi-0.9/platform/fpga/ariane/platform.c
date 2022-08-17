@@ -11,10 +11,12 @@
 #include <sbi/sbi_const.h>
 #include <sbi/sbi_hart.h>
 #include <sbi/sbi_platform.h>
+#include <sbi_utils/fdt/fdt_helper.h>
 #include <sbi_utils/fdt/fdt_fixup.h>
+#include <sbi_utils/ipi/aclint_mswi.h>
 #include <sbi_utils/irqchip/plic.h>
 #include <sbi_utils/serial/uart8250.h>
-#include <sbi_utils/sys/clint.h>
+#include <sbi_utils/timer/aclint_mtimer.h>
 
 #define ARIANE_UART_ADDR			0x10000000
 #define ARIANE_UART_FREQ			50000000
@@ -25,14 +27,32 @@
 #define ARIANE_PLIC_NUM_SOURCES			3
 #define ARIANE_HART_COUNT			1
 #define ARIANE_CLINT_ADDR			0x2000000
+#define ARIANE_ACLINT_MTIMER_FREQ		1000000
+#define ARIANE_ACLINT_MSWI_ADDR			(ARIANE_CLINT_ADDR + \
+						 CLINT_MSWI_OFFSET)
+#define ARIANE_ACLINT_MTIMER_ADDR		(ARIANE_CLINT_ADDR + \
+						 CLINT_MTIMER_OFFSET)
 
 static struct plic_data plic = {
 	.addr = ARIANE_PLIC_ADDR,
 	.num_src = ARIANE_PLIC_NUM_SOURCES,
 };
 
-static struct clint_data clint = {
-	.addr = ARIANE_CLINT_ADDR,
+static struct aclint_mswi_data mswi = {
+	.addr = ARIANE_ACLINT_MSWI_ADDR,
+	.size = ACLINT_MSWI_SIZE,
+	.first_hartid = 0,
+	.hart_count = ARIANE_HART_COUNT,
+};
+
+static struct aclint_mtimer_data mtimer = {
+	.mtime_freq = ARIANE_ACLINT_MTIMER_FREQ,
+	.mtime_addr = ARIANE_ACLINT_MTIMER_ADDR +
+		      ACLINT_DEFAULT_MTIME_OFFSET,
+	.mtime_size = ACLINT_DEFAULT_MTIME_SIZE,
+	.mtimecmp_addr = ARIANE_ACLINT_MTIMER_ADDR +
+			 ACLINT_DEFAULT_MTIMECMP_OFFSET,
+	.mtimecmp_size = ACLINT_DEFAULT_MTIMECMP_SIZE,
 	.first_hartid = 0,
 	.hart_count = ARIANE_HART_COUNT,
 	.has_64bit_mmio = TRUE,
@@ -57,7 +77,7 @@ static int ariane_final_init(bool cold_boot)
 	if (!cold_boot)
 		return 0;
 
-	fdt = sbi_scratch_thishart_arg1_ptr();
+	fdt = fdt_get_address();
 	fdt_fixups(fdt);
 
 	return 0;
@@ -123,12 +143,12 @@ static int ariane_ipi_init(bool cold_boot)
 	int ret;
 
 	if (cold_boot) {
-		ret = clint_cold_ipi_init(&clint);
+		ret = aclint_mswi_cold_init(&mswi);
 		if (ret)
 			return ret;
 	}
 
-	return clint_warm_ipi_init();
+	return aclint_mswi_warm_init();
 }
 
 /*
@@ -139,12 +159,12 @@ static int ariane_timer_init(bool cold_boot)
 	int ret;
 
 	if (cold_boot) {
-		ret = clint_cold_timer_init(&clint, NULL);
+		ret = aclint_mtimer_cold_init(&mtimer, NULL);
 		if (ret)
 			return ret;
 	}
 
-	return clint_warm_timer_init();
+	return aclint_mtimer_warm_init();
 }
 
 /*
@@ -154,16 +174,9 @@ const struct sbi_platform_operations platform_ops = {
 	.early_init = ariane_early_init,
 	.final_init = ariane_final_init,
 	.console_init = ariane_console_init,
-	.console_putc = uart8250_putc,
-	.console_getc = uart8250_getc,
 	.irqchip_init = ariane_irqchip_init,
 	.ipi_init = ariane_ipi_init,
-	.ipi_send = clint_ipi_send,
-	.ipi_clear = clint_ipi_clear,
 	.timer_init = ariane_timer_init,
-	.timer_value = clint_timer_value,
-	.timer_event_start = clint_timer_event_start,
-	.timer_event_stop = clint_timer_event_stop,
 };
 
 const struct sbi_platform platform = {

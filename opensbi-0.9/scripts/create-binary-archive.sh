@@ -95,18 +95,15 @@ build_opensbi() {
 	case "${BUILD_RISCV_XLEN}" in
 	32)
 		# Setup 32-bit platform list
-		BUILD_PLATFORM_SUBDIR=("sifive/fu540")
 		BUILD_PLATFORM_SUBDIR+=("generic")
 		;;
 	64)
 		# Setup 64-bit platform list
-		BUILD_PLATFORM_SUBDIR=("sifive/fu540")
 		BUILD_PLATFORM_SUBDIR+=("nuclei/ux600")
 		BUILD_PLATFORM_SUBDIR+=("kendryte/k210")
 		BUILD_PLATFORM_SUBDIR+=("fpga/ariane")
 		BUILD_PLATFORM_SUBDIR+=("fpga/openpiton")
 		BUILD_PLATFORM_SUBDIR+=("andes/ae350")
-		BUILD_PLATFORM_SUBDIR+=("thead/c910")
 		BUILD_PLATFORM_SUBDIR+=("generic")
 		;;
 	*)

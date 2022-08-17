@@ -8,7 +8,7 @@
  */
 
 	. = FW_TEXT_START;
-
+	/* Don't add any section between FW_TEXT_START and _fw_start */
 	PROVIDE(_fw_start = .);
 
 	. = ALIGN(0x1000); /* Need this to create proper sections */
@@ -59,6 +59,19 @@
 		. = ALIGN(8);
 
 		PROVIDE(_data_end = .);
+	}
+
+	.dynsym : {
+		PROVIDE(__dyn_sym_start = .);
+		*(.dynsym)
+		PROVIDE(__dyn_sym_end = .);
+	}
+
+	.rela.dyn : {
+		PROVIDE(__rel_dyn_start = .);
+		*(.rela*)
+		. = ALIGN(8);
+		PROVIDE(__rel_dyn_end = .);
 	}
 
 	. = ALIGN(0x1000); /* Ensure next section is page aligned */

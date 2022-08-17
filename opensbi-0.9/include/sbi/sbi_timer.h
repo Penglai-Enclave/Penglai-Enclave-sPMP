@@ -12,7 +12,41 @@
 
 #include <sbi/sbi_types.h>
 
+/** Timer hardware device */
+struct sbi_timer_device {
+	/** Name of the timer operations */
+	char name[32];
+
+	/** Frequency of timer in HZ */
+	unsigned long timer_freq;
+
+	/** Get free-running timer value */
+	u64 (*timer_value)(void);
+
+	/** Start timer event for current HART */
+	void (*timer_event_start)(u64 next_event);
+
+	/** Stop timer event for current HART */
+	void (*timer_event_stop)(void);
+};
+
 struct sbi_scratch;
+
+/** Generic delay loop of desired granularity */
+void sbi_timer_delay_loop(ulong units, u64 unit_freq,
+			  void (*delay_fn)(void *), void *opaque);
+
+/** Provide delay in terms of milliseconds */
+static inline void sbi_timer_mdelay(ulong msecs)
+{
+	sbi_timer_delay_loop(msecs, 1000, NULL, NULL);
+}
+
+/** Provide delay in terms of microseconds */
+static inline void sbi_timer_udelay(ulong usecs)
+{
+	sbi_timer_delay_loop(usecs, 1000000, NULL, NULL);
+}
 
 /** Get timer value for current HART */
 u64 sbi_timer_value(void);
@@ -34,6 +68,12 @@ void sbi_timer_event_start(u64 next_event);
 
 /** Process timer event for current HART */
 void sbi_timer_process(void);
+
+/** Get current timer device */
+const struct sbi_timer_device *sbi_timer_get_device(void);
+
+/** Register timer device */
+void sbi_timer_set_device(const struct sbi_timer_device *dev);
 
 /* Initialize timer */
 int sbi_timer_init(struct sbi_scratch *scratch, bool cold_boot);

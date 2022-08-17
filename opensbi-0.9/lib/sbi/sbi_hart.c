@@ -33,6 +33,7 @@ struct hart_features {
 	unsigned int pmp_addr_bits;
 	unsigned long pmp_gran;
 	unsigned int mhpm_count;
+	unsigned int mhpm_bits;
 };
 static unsigned long hart_features_offset;
 
@@ -50,12 +51,22 @@ static void mstatus_init(struct sbi_scratch *scratch)
 
 	csr_write(CSR_MSTATUS, mstatus_val);
 
-	/* Enable user/supervisor use of perf counters */
+	/* Disable user mode usage of all perf counters except default ones (CY, TM, IR) */
 	if (misa_extension('S') &&
 	    sbi_hart_has_feature(scratch, SBI_HART_HAS_SCOUNTEREN))
-		csr_write(CSR_SCOUNTEREN, -1);
+		csr_write(CSR_SCOUNTEREN, 7);
+
+	/**
+	 * OpenSBI doesn't use any PMU counters in M-mode.
+	 * Supervisor mode usage for all counters are enabled by default
+	 * But counters will not run until mcountinhibit is set.
+	 */
 	if (sbi_hart_has_feature(scratch, SBI_HART_HAS_MCOUNTEREN))
 		csr_write(CSR_MCOUNTEREN, -1);
+
+	/* All programmable counters will start running at runtime after S-mode request */
+	if (sbi_hart_has_feature(scratch, SBI_HART_HAS_MCOUNTINHIBIT))
+		csr_write(CSR_MCOUNTINHIBIT, 0xFFFFFFF8);
 
 	/* Disable all interrupts */
 	csr_write(CSR_MIE, 0);
@@ -97,6 +108,9 @@ static int delegate_traps(struct sbi_scratch *scratch)
 
 	/* Send M-mode interrupts and most exceptions to S-mode */
 	interrupts = MIP_SSIP | MIP_STIP | MIP_SEIP;
+	if (sbi_hart_has_feature(scratch, SBI_HART_HAS_SSCOFPMF))
+		interrupts |= MIP_LCOFIP;
+
 	exceptions = (1U << CAUSE_MISALIGNED_FETCH) | (1U << CAUSE_BREAKPOINT) |
 		     (1U << CAUSE_USER_ECALL);
 	if (sbi_platform_has_mfaults_delegation(plat))
@@ -132,17 +146,10 @@ void sbi_hart_delegation_dump(struct sbi_scratch *scratch,
 		/* No delegation possible as mideleg does not exist*/
 		return;
 
-#if __riscv_xlen == 32
-	sbi_printf("%sMIDELEG%s: 0x%08lx\n",
+	sbi_printf("%sMIDELEG%s: 0x%" PRILX "\n",
 		   prefix, suffix, csr_read(CSR_MIDELEG));
-	sbi_printf("%sMEDELEG%s: 0x%08lx\n",
+	sbi_printf("%sMEDELEG%s: 0x%" PRILX "\n",
 		   prefix, suffix, csr_read(CSR_MEDELEG));
-#else
-	sbi_printf("%sMIDELEG%s: 0x%016lx\n",
-		   prefix, suffix, csr_read(CSR_MIDELEG));
-	sbi_printf("%sMEDELEG%s: 0x%016lx\n",
-		   prefix, suffix, csr_read(CSR_MEDELEG));
-#endif
 }
 
 unsigned int sbi_hart_mhpm_count(struct sbi_scratch *scratch)
@@ -175,6 +182,14 @@ unsigned int sbi_hart_pmp_addrbits(struct sbi_scratch *scratch)
 			sbi_scratch_offset_ptr(scratch, hart_features_offset);
 
 	return hfeatures->pmp_addr_bits;
+}
+
+unsigned int sbi_hart_mhpm_bits(struct sbi_scratch *scratch)
+{
+	struct hart_features *hfeatures =
+			sbi_scratch_offset_ptr(scratch, hart_features_offset);
+
+	return hfeatures->mhpm_bits;
 }
 
 int sbi_hart_pmp_configure(struct sbi_scratch *scratch)
@@ -211,7 +226,7 @@ int sbi_hart_pmp_configure(struct sbi_scratch *scratch)
 			pmp_set(pmp_idx++, pmp_flags, reg->base, reg->order);
 		else {
 			sbi_printf("Can not configure pmp for domain %s", dom->name);
-			sbi_printf("because memory region address %lx or size %lx is not in range\n",
+			sbi_printf(" because memory region address %lx or size %lx is not in range\n",
 				    reg->base, reg->order);
 		}
 	}
@@ -258,6 +273,12 @@ static inline char *sbi_hart_feature_id2string(unsigned long feature)
 		break;
 	case SBI_HART_HAS_MCOUNTEREN:
 		fstr = "mcounteren";
+		break;
+	case SBI_HART_HAS_MCOUNTINHIBIT:
+		fstr = "mcountinhibit";
+		break;
+	case SBI_HART_HAS_SSCOFPMF:
+		fstr = "sscofpmf";
 		break;
 	case SBI_HART_HAS_TIME:
 		fstr = "time";
@@ -317,7 +338,11 @@ static unsigned long hart_pmp_get_allowed_addr(void)
 	unsigned long val = 0;
 	struct sbi_trap_info trap = {0};
 
-	csr_write_allowed(CSR_PMPADDR0, (ulong)&trap, PMP_ADDR_MASK);			\
+	csr_write_allowed(CSR_PMPCFG0, (ulong)&trap, 0);
+	if (trap.cause)
+		return 0;
+
+	csr_write_allowed(CSR_PMPADDR0, (ulong)&trap, PMP_ADDR_MASK);
 	if (!trap.cause) {
 		val = csr_read_allowed(CSR_PMPADDR0, (ulong)&trap);
 		if (trap.cause)
@@ -325,6 +350,37 @@ static unsigned long hart_pmp_get_allowed_addr(void)
 	}
 
 	return val;
+}
+
+static int hart_pmu_get_allowed_bits(void)
+{
+	unsigned long val = ~(0UL);
+	struct sbi_trap_info trap = {0};
+	int num_bits = 0;
+
+	/**
+	 * It is assumed that platforms will implement same number of bits for
+	 * all the performance counters including mcycle/minstret.
+	 */
+	csr_write_allowed(CSR_MHPMCOUNTER3, (ulong)&trap, val);
+	if (!trap.cause) {
+		val = csr_read_allowed(CSR_MHPMCOUNTER3, (ulong)&trap);
+		if (trap.cause)
+			return 0;
+	}
+	num_bits = __fls(val) + 1;
+#if __riscv_xlen == 32
+	csr_write_allowed(CSR_MHPMCOUNTER3H, (ulong)&trap, val);
+	if (!trap.cause) {
+		val = csr_read_allowed(CSR_MHPMCOUNTER3H, (ulong)&trap);
+		if (trap.cause)
+			return num_bits;
+	}
+	num_bits += __fls(val) + 1;
+
+#endif
+
+	return num_bits;
 }
 
 static void hart_detect_features(struct sbi_scratch *scratch)
@@ -392,9 +448,17 @@ __pmp_skip:
 
 	/* Detect number of MHPM counters */
 	__check_csr(CSR_MHPMCOUNTER3, 0, 1UL, mhpm_count, __mhpm_skip);
+	hfeatures->mhpm_bits = hart_pmu_get_allowed_bits();
+
 	__check_csr_4(CSR_MHPMCOUNTER4, 0, 1UL, mhpm_count, __mhpm_skip);
 	__check_csr_8(CSR_MHPMCOUNTER8, 0, 1UL, mhpm_count, __mhpm_skip);
 	__check_csr_16(CSR_MHPMCOUNTER16, 0, 1UL, mhpm_count, __mhpm_skip);
+
+	/**
+	 * No need to check for MHPMCOUNTERH for RV32 as they are expected to be
+	 * implemented if MHPMCOUNTER is implemented.
+	 */
+
 __mhpm_skip:
 
 #undef __check_csr_64
@@ -406,7 +470,6 @@ __mhpm_skip:
 #undef __check_csr
 
 	/* Detect if hart supports SCOUNTEREN feature */
-	trap.cause = 0;
 	val = csr_read_allowed(CSR_SCOUNTEREN, (unsigned long)&trap);
 	if (!trap.cause) {
 		csr_write_allowed(CSR_SCOUNTEREN, (unsigned long)&trap, val);
@@ -415,7 +478,6 @@ __mhpm_skip:
 	}
 
 	/* Detect if hart supports MCOUNTEREN feature */
-	trap.cause = 0;
 	val = csr_read_allowed(CSR_MCOUNTEREN, (unsigned long)&trap);
 	if (!trap.cause) {
 		csr_write_allowed(CSR_MCOUNTEREN, (unsigned long)&trap, val);
@@ -423,29 +485,32 @@ __mhpm_skip:
 			hfeatures->features |= SBI_HART_HAS_MCOUNTEREN;
 	}
 
+	/* Detect if hart supports MCOUNTINHIBIT feature */
+	val = csr_read_allowed(CSR_MCOUNTINHIBIT, (unsigned long)&trap);
+	if (!trap.cause) {
+		csr_write_allowed(CSR_MCOUNTINHIBIT, (unsigned long)&trap, val);
+		if (!trap.cause)
+			hfeatures->features |= SBI_HART_HAS_MCOUNTINHIBIT;
+	}
+
+	/* Counter overflow/filtering is not useful without mcounter/inhibit */
+	if (hfeatures->features & SBI_HART_HAS_MCOUNTINHIBIT &&
+	    hfeatures->features & SBI_HART_HAS_MCOUNTEREN) {
+		/* Detect if hart supports sscofpmf */
+		csr_read_allowed(CSR_SCOUNTOVF, (unsigned long)&trap);
+		if (!trap.cause)
+			hfeatures->features |= SBI_HART_HAS_SSCOFPMF;
+	}
+
 	/* Detect if hart supports time CSR */
-	trap.cause = 0;
 	csr_read_allowed(CSR_TIME, (unsigned long)&trap);
 	if (!trap.cause)
 		hfeatures->features |= SBI_HART_HAS_TIME;
 }
 
-int sbi_hart_init(struct sbi_scratch *scratch, bool cold_boot)
+int sbi_hart_reinit(struct sbi_scratch *scratch)
 {
 	int rc;
-
-	if (cold_boot) {
-		if (misa_extension('H'))
-			sbi_hart_expected_trap = &__sbi_expected_trap_hext;
-
-		hart_features_offset = sbi_scratch_alloc_offset(
-						sizeof(struct hart_features),
-						"HART_FEATURES");
-		if (!hart_features_offset)
-			return SBI_ENOMEM;
-	}
-
-	hart_detect_features(scratch);
 
 	mstatus_init(scratch);
 
@@ -458,6 +523,23 @@ int sbi_hart_init(struct sbi_scratch *scratch, bool cold_boot)
 		return rc;
 
 	return 0;
+}
+
+int sbi_hart_init(struct sbi_scratch *scratch, bool cold_boot)
+{
+	if (cold_boot) {
+		if (misa_extension('H'))
+			sbi_hart_expected_trap = &__sbi_expected_trap_hext;
+
+		hart_features_offset = sbi_scratch_alloc_offset(
+						sizeof(struct hart_features));
+		if (!hart_features_offset)
+			return SBI_ENOMEM;
+	}
+
+	hart_detect_features(scratch);
+
+	return sbi_hart_reinit(scratch);
 }
 
 void __attribute__((noreturn)) sbi_hart_hang(void)

@@ -14,7 +14,7 @@
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_string.h>
 
-u32 last_hartid_having_scratch = SBI_HARTMASK_MAX_BITS;
+u32 last_hartid_having_scratch = SBI_HARTMASK_MAX_BITS - 1;
 struct sbi_scratch *hartid_to_scratch_table[SBI_HARTMASK_MAX_BITS] = { 0 };
 
 static spinlock_t extra_lock = SPIN_LOCK_INITIALIZER;
@@ -40,7 +40,7 @@ int sbi_scratch_init(struct sbi_scratch *scratch)
 	return 0;
 }
 
-unsigned long sbi_scratch_alloc_offset(unsigned long size, const char *owner)
+unsigned long sbi_scratch_alloc_offset(unsigned long size)
 {
 	u32 i;
 	void *ptr;
@@ -74,7 +74,7 @@ done:
 	spin_unlock(&extra_lock);
 
 	if (ret) {
-		for (i = 0; i < sbi_scratch_last_hartid(); i++) {
+		for (i = 0; i <= sbi_scratch_last_hartid(); i++) {
 			rscratch = sbi_hartid_to_scratch(i);
 			if (!rscratch)
 				continue;

@@ -12,8 +12,10 @@
 #include <sbi/riscv_encoding.h>
 #include <sbi/sbi_console.h>
 #include <sbi/sbi_const.h>
+#include <sbi/sbi_ipi.h>
 #include <sbi/sbi_platform.h>
 #include <sbi/sbi_trap.h>
+#include <sbi_utils/fdt/fdt_helper.h>
 #include <sbi_utils/fdt/fdt_fixup.h>
 #include <sbi_utils/irqchip/plic.h>
 #include <sbi_utils/serial/uart8250.h>
@@ -54,7 +56,7 @@ static int ae350_final_init(bool cold_boot)
 	if (!cold_boot)
 		return 0;
 
-	fdt = sbi_scratch_thishart_arg1_ptr();
+	fdt = fdt_get_address();
 	fdt_fixups(fdt);
 
 	return 0;
@@ -85,6 +87,12 @@ static int ae350_irqchip_init(bool cold_boot)
 	return plic_warm_irqchip_init(&plic, 2 * hartid, 2 * hartid + 1);
 }
 
+static struct sbi_ipi_device plicsw_ipi = {
+	.name = "ae350_plicsw",
+	.ipi_send = plicsw_ipi_send,
+	.ipi_clear = plicsw_ipi_clear
+};
+
 /* Initialize IPI for current HART. */
 static int ae350_ipi_init(bool cold_boot)
 {
@@ -95,6 +103,8 @@ static int ae350_ipi_init(bool cold_boot)
 					   AE350_HART_COUNT);
 		if (ret)
 			return ret;
+
+		sbi_ipi_set_device(&plicsw_ipi);
 	}
 
 	return plicsw_warm_ipi_init();
@@ -164,19 +174,12 @@ const struct sbi_platform_operations platform_ops = {
 	.final_init = ae350_final_init,
 
 	.console_init = ae350_console_init,
-	.console_putc = uart8250_putc,
-	.console_getc = uart8250_getc,
 
 	.irqchip_init = ae350_irqchip_init,
 
 	.ipi_init     = ae350_ipi_init,
-	.ipi_send     = plicsw_ipi_send,
-	.ipi_clear    = plicsw_ipi_clear,
 
 	.timer_init	   = ae350_timer_init,
-	.timer_value	   = plmt_timer_value,
-	.timer_event_start = plmt_timer_event_start,
-	.timer_event_stop  = plmt_timer_event_stop,
 
 	.vendor_ext_provider = ae350_vendor_ext_provider
 };

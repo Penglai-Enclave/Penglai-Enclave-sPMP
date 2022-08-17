@@ -16,9 +16,9 @@ static int sifive_test_reset_init(void *fdt, int nodeoff,
 				  const struct fdt_match *match)
 {
 	int rc;
-	unsigned long addr;
+	uint64_t addr;
 
-	rc = fdt_get_node_addr_size(fdt, nodeoff, &addr, NULL);
+	rc = fdt_get_node_addr_size(fdt, nodeoff, 0, &addr, NULL);
 	if (rc)
 		return rc;
 
@@ -30,9 +30,7 @@ static const struct fdt_match sifive_test_reset_match[] = {
 	{ },
 };
 
-struct fdt_reset fdt_reset_sifive = {
+struct fdt_reset fdt_reset_sifive_test = {
 	.match_table = sifive_test_reset_match,
 	.init = sifive_test_reset_init,
-	.system_reset_check = sifive_test_system_reset_check,
-	.system_reset = sifive_test_system_reset
 };

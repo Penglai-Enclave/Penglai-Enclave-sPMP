@@ -9,6 +9,13 @@ OpenSBI generic library code. The supported firmwares type will differ in how
 the arguments passed by the platform early boot stage are handled, as well as
 how the boot stage following the firmware will be handled and executed.
 
+The previous booting stage will pass information via the following registers
+of RISC-V CPU:
+
+* hartid via *a0* register
+* device tree blob address in memory via *a1* register. The address must
+  be aligned to 8 bytes.
+
 OpenSBI currently supports three different types of firmwares.
 
 Firmware with Dynamic Information (*FW_DYNAMIC*)
@@ -62,6 +69,12 @@ parameters:
   argument by the prior booting stage.
 * **FW_FDT_PADDING** - Optional zero bytes padding to the embedded flattened
   device tree binary file specified by **FW_FDT_PATH** option.
+* **FW_PIC** - "FW_PIC=y" generates position independent executable firmware
+  images. OpenSBI can run at arbitrary address with appropriate alignment.
+  Therefore, the original relocation mechanism ("FW_PIC=n") will be skipped.
+  In other words, OpenSBI will directly run at the load address without any
+  code movement. This option requires a toolchain with PIE support, and it
+  is on by default.
 
 Additionally, each firmware type as a set of type specific configuration
 parameters. Detailed information for each firmware type can be found in the

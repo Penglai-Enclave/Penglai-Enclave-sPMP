@@ -76,26 +76,54 @@ OPENSBI_VERSION_MINOR=`grep "define OPENSBI_VERSION_MINOR" $(include_dir)/sbi/sb
 OPENSBI_VERSION_GIT=$(shell if [ -d $(src_dir)/.git ]; then git describe 2> /dev/null; fi)
 
 # Setup compilation commands
+ifneq ($(LLVM),)
+CC		=	clang
+AR		=	llvm-ar
+LD		=	ld.lld
+OBJCOPY		=	llvm-objcopy
+else
 ifdef CROSS_COMPILE
 CC		=	$(CROSS_COMPILE)gcc
-CPP		=	$(CROSS_COMPILE)cpp
 AR		=	$(CROSS_COMPILE)ar
 LD		=	$(CROSS_COMPILE)ld
 OBJCOPY		=	$(CROSS_COMPILE)objcopy
 else
 CC		?=	gcc
-CPP		?=	cpp
 AR		?=	ar
 LD		?=	ld
 OBJCOPY		?=	objcopy
 endif
+endif
+CPP		=	$(CC) -E
 AS		=	$(CC)
 DTC		=	dtc
 
-# Guess the compillers xlen
-OPENSBI_CC_XLEN := $(shell TMP=`$(CC) -dumpmachine | sed 's/riscv\([0-9][0-9]\).*/\1/'`; echo $${TMP})
+ifneq ($(shell $(CC) --version 2>&1 | head -n 1 | grep clang),)
+CC_IS_CLANG	=	y
+else
+CC_IS_CLANG	=	n
+endif
+
+ifneq ($(shell $(LD) --version 2>&1 | head -n 1 | grep LLD),)
+LD_IS_LLD	=	y
+else
+LD_IS_LLD	=	n
+endif
+
+ifeq ($(CC_IS_CLANG),y)
+ifneq ($(CROSS_COMPILE),)
+CLANG_TARGET	=	--target=$(notdir $(CROSS_COMPILE:%-=%))
+endif
+endif
+
+# Guess the compiler's XLEN
+OPENSBI_CC_XLEN := $(shell TMP=`$(CC) $(CLANG_TARGET) -dumpmachine | sed 's/riscv\([0-9][0-9]\).*/\1/'`; echo $${TMP})
+
+# Guess the compiler's ABI and ISA
+ifneq ($(CC_IS_CLANG),y)
 OPENSBI_CC_ABI := $(shell TMP=`$(CC) -v 2>&1 | sed -n 's/.*\(with\-abi=\([a-zA-Z0-9]*\)\).*/\2/p'`; echo $${TMP})
 OPENSBI_CC_ISA := $(shell TMP=`$(CC) -v 2>&1 | sed -n 's/.*\(with\-arch=\([a-zA-Z0-9]*\)\).*/\2/p'`; echo $${TMP})
+endif
 
 # Setup platform XLEN
 ifndef PLATFORM_RISCV_XLEN
@@ -104,6 +132,44 @@ ifndef PLATFORM_RISCV_XLEN
   else
     PLATFORM_RISCV_XLEN = 64
   endif
+endif
+
+ifeq ($(CC_IS_CLANG),y)
+ifeq ($(CROSS_COMPILE),)
+CLANG_TARGET	=	--target=riscv$(PLATFORM_RISCV_XLEN)-unknown-elf
+endif
+endif
+
+ifeq ($(LD_IS_LLD),y)
+RELAX_FLAG	=	-mno-relax
+USE_LD_FLAG	=	-fuse-ld=lld
+else
+USE_LD_FLAG	=	-fuse-ld=bfd
+endif
+
+# Check whether the linker supports creating PIEs
+OPENSBI_LD_PIE := $(shell $(CC) $(CLANG_TARGET) $(RELAX_FLAG) $(USE_LD_FLAG) -fPIE -nostdlib -Wl,-pie -x c /dev/null -o /dev/null >/dev/null 2>&1 && echo y || echo n)
+
+# Check whether the compiler supports -m(no-)save-restore
+CC_SUPPORT_SAVE_RESTORE := $(shell $(CC) $(CLANG_TARGET) $(RELAX_FLAG) -nostdlib -mno-save-restore -x c /dev/null -o /dev/null 2>&1 | grep "\-save\-restore" >/dev/null && echo n || echo y)
+
+# Build Info:
+# OPENSBI_BUILD_TIME_STAMP -- the compilation time stamp
+# OPENSBI_BUILD_COMPILER_VERSION -- the compiler version info
+BUILD_INFO ?= n
+ifeq ($(BUILD_INFO),y)
+OPENSBI_BUILD_DATE_FMT = +%Y-%m-%d %H:%M:%S %z
+ifdef SOURCE_DATE_EPOCH
+	OPENSBI_BUILD_TIME_STAMP ?= $(shell date -u -d "@$(SOURCE_DATE_EPOCH)" \
+		"$(OPENSBI_BUILD_DATE_FMT)" 2>/dev/null || \
+		date -u -r "$(SOURCE_DATE_EPOCH)" \
+		"$(OPENSBI_BUILD_DATE_FMT)" 2>/dev/null || \
+		date -u "$(OPENSBI_BUILD_DATE_FMT)")
+else
+	OPENSBI_BUILD_TIME_STAMP ?= $(shell date "$(OPENSBI_BUILD_DATE_FMT)")
+endif
+OPENSBI_BUILD_COMPILER_VERSION=$(shell $(CC) -v 2>&1 | grep ' version ' | \
+	sed 's/[[:space:]]*$$//')
 endif
 
 # Setup list of objects.mk files
@@ -194,46 +260,72 @@ else
 endif
 
 # Setup compilation commands flags
-GENFLAGS	=	-I$(platform_src_dir)/include
+ifeq ($(CC_IS_CLANG),y)
+GENFLAGS	+=	$(CLANG_TARGET)
+GENFLAGS	+=	-Wno-unused-command-line-argument
+endif
+GENFLAGS	+=	-I$(platform_src_dir)/include
 GENFLAGS	+=	-I$(include_dir)
 ifneq ($(OPENSBI_VERSION_GIT),)
 GENFLAGS	+=	-DOPENSBI_VERSION_GIT="\"$(OPENSBI_VERSION_GIT)\""
+endif
+ifeq ($(BUILD_INFO),y)
+GENFLAGS	+=	-DOPENSBI_BUILD_TIME_STAMP="\"$(OPENSBI_BUILD_TIME_STAMP)\""
+GENFLAGS	+=	-DOPENSBI_BUILD_COMPILER_VERSION="\"$(OPENSBI_BUILD_COMPILER_VERSION)\""
 endif
 GENFLAGS	+=	$(libsbiutils-genflags-y)
 GENFLAGS	+=	$(platform-genflags-y)
 GENFLAGS	+=	$(firmware-genflags-y)
 
-CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-strict-aliasing -O2
-CFLAGS		+=	-fno-omit-frame-pointer -fno-optimize-sibling-calls
-CFLAGS		+=	-mno-save-restore -mstrict-align
+CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing -O2
+CFLAGS		+=	-fno-omit-frame-pointer -fno-optimize-sibling-calls -mstrict-align
+# enable -m(no-)save-restore option by CC_SUPPORT_SAVE_RESTORE
+ifeq ($(CC_SUPPORT_SAVE_RESTORE),y)
+CFLAGS		+=	-mno-save-restore
+endif
 CFLAGS		+=	-mabi=$(PLATFORM_RISCV_ABI) -march=$(PLATFORM_RISCV_ISA)
 CFLAGS		+=	-mcmodel=$(PLATFORM_RISCV_CODE_MODEL)
+CFLAGS		+=	$(RELAX_FLAG)
 CFLAGS		+=	$(GENFLAGS)
 CFLAGS		+=	$(platform-cflags-y)
-CFLAGS		+=	$(firmware-cflags-y)
 CFLAGS		+=	-fno-pie -no-pie
+CFLAGS		+=	$(firmware-cflags-y)
 
 CPPFLAGS	+=	$(GENFLAGS)
 CPPFLAGS	+=	$(platform-cppflags-y)
 CPPFLAGS	+=	$(firmware-cppflags-y)
 
-ASFLAGS		=	-g -Wall -nostdlib -D__ASSEMBLY__
-ASFLAGS		+=	-fno-omit-frame-pointer -fno-optimize-sibling-calls
-ASFLAGS		+=	-mno-save-restore -mstrict-align
+ASFLAGS		=	-g -Wall -nostdlib
+ASFLAGS		+=	-fno-omit-frame-pointer -fno-optimize-sibling-calls -mstrict-align
+# enable -m(no-)save-restore option by CC_SUPPORT_SAVE_RESTORE
+ifeq ($(CC_SUPPORT_SAVE_RESTORE),y)
+ASFLAGS		+=	-mno-save-restore
+endif
 ASFLAGS		+=	-mabi=$(PLATFORM_RISCV_ABI) -march=$(PLATFORM_RISCV_ISA)
 ASFLAGS		+=	-mcmodel=$(PLATFORM_RISCV_CODE_MODEL)
+ASFLAGS		+=	$(RELAX_FLAG)
+ifneq ($(CC_IS_CLANG),y)
+ifneq ($(RELAX_FLAG),)
+ASFLAGS		+=	-Wa,$(RELAX_FLAG)
+endif
+endif
 ASFLAGS		+=	$(GENFLAGS)
 ASFLAGS		+=	$(platform-asflags-y)
 ASFLAGS		+=	$(firmware-asflags-y)
 
 ARFLAGS		=	rcs
 
-ELFFLAGS	+=	-Wl,--build-id=none -N -static-libgcc -lgcc
+ELFFLAGS	+=	$(USE_LD_FLAG)
+ELFFLAGS	+=	-Wl,--build-id=none -Wl,-N
 ELFFLAGS	+=	$(platform-ldflags-y)
 ELFFLAGS	+=	$(firmware-ldflags-y)
 
 MERGEFLAGS	+=	-r
+ifeq ($(LD_IS_LLD),y)
+MERGEFLAGS	+=	-b elf
+else
 MERGEFLAGS	+=	-b elf$(PLATFORM_RISCV_XLEN)-littleriscv
+endif
 MERGEFLAGS	+=	-m elf$(PLATFORM_RISCV_XLEN)lriscv
 
 DTSCPPFLAGS	=	$(CPPFLAGS) -nostdinc -nostdlib -fno-builtin -D__DTS__ -x assembler-with-cpp
@@ -337,6 +429,11 @@ $(build_dir)/%.dep: $(src_dir)/%.c
 
 $(build_dir)/%.o: $(src_dir)/%.c
 	$(call compile_cc,$@,$<)
+
+ifeq ($(BUILD_INFO),y)
+$(build_dir)/lib/sbi/sbi_init.o: $(libsbi_dir)/sbi_init.c FORCE
+	$(call compile_cc,$@,$<)
+endif
 
 $(build_dir)/%.dep: $(src_dir)/%.S
 	$(call compile_as_dep,$@,$<)
@@ -491,3 +588,6 @@ ifeq ($(install_root_dir),$(install_root_dir_default)/usr)
 	$(if $(V), @echo " RM        $(install_root_dir_default)")
 	$(CMD_PREFIX)rm -rf $(install_root_dir_default)
 endif
+
+.PHONY: FORCE
+FORCE:

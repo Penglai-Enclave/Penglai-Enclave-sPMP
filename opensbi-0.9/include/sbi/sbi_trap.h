@@ -110,7 +110,7 @@
 /** Size (in bytes) of sbi_trap_info */
 #define SBI_TRAP_INFO_SIZE SBI_TRAP_INFO_OFFSET(last)
 
-#ifndef __ASSEMBLY__
+#ifndef __ASSEMBLER__
 
 #include <sbi/sbi_types.h>
 
@@ -205,7 +205,7 @@ struct sbi_trap_info {
 int sbi_trap_redirect(struct sbi_trap_regs *regs,
 		      struct sbi_trap_info *trap);
 
-void sbi_trap_handler(struct sbi_trap_regs *regs);
+struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs);
 
 void __noreturn sbi_trap_exit(const struct sbi_trap_regs *regs);
 

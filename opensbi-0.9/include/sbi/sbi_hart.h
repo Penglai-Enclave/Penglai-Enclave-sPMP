@@ -18,8 +18,12 @@ enum sbi_hart_features {
 	SBI_HART_HAS_SCOUNTEREN = (1 << 0),
 	/** Hart has M-mode counter enable */
 	SBI_HART_HAS_MCOUNTEREN = (1 << 1),
+	/** Hart has counter inhibit CSR */
+	SBI_HART_HAS_MCOUNTINHIBIT = (1 << 2),
+	/** Hart has sscofpmf extension */
+	SBI_HART_HAS_SSCOFPMF = (1 << 3),
 	/** HART has timer csr implementation in hardware */
-	SBI_HART_HAS_TIME = (1 << 2),
+	SBI_HART_HAS_TIME = (1 << 4),
 
 	/** Last index of Hart features*/
 	SBI_HART_HAS_LAST_FEATURE = SBI_HART_HAS_TIME,
@@ -27,6 +31,7 @@ enum sbi_hart_features {
 
 struct sbi_scratch;
 
+int sbi_hart_reinit(struct sbi_scratch *scratch);
 int sbi_hart_init(struct sbi_scratch *scratch, bool cold_boot);
 
 extern void (*sbi_hart_expected_trap)(void);
@@ -41,6 +46,7 @@ void sbi_hart_delegation_dump(struct sbi_scratch *scratch,
 unsigned int sbi_hart_pmp_count(struct sbi_scratch *scratch);
 unsigned long sbi_hart_pmp_granularity(struct sbi_scratch *scratch);
 unsigned int sbi_hart_pmp_addrbits(struct sbi_scratch *scratch);
+unsigned int sbi_hart_mhpm_bits(struct sbi_scratch *scratch);
 int sbi_hart_pmp_configure(struct sbi_scratch *scratch);
 bool sbi_hart_has_feature(struct sbi_scratch *scratch, unsigned long feature);
 void sbi_hart_get_features_str(struct sbi_scratch *scratch,

@@ -86,6 +86,7 @@
 #define IRQ_VS_EXT			10
 #define IRQ_M_EXT			11
 #define IRQ_S_GEXT			12
+#define IRQ_PMU_OVF			13
 
 #define MIP_SSIP			(_UL(1) << IRQ_S_SOFT)
 #define MIP_VSSIP			(_UL(1) << IRQ_VS_SOFT)
@@ -97,6 +98,7 @@
 #define MIP_VSEIP			(_UL(1) << IRQ_VS_EXT)
 #define MIP_MEIP			(_UL(1) << IRQ_M_EXT)
 #define MIP_SGEIP			(_UL(1) << IRQ_S_GEXT)
+#define MIP_LCOFIP			(_UL(1) << IRQ_PMU_OVF)
 
 #define SIP_SSIP			MIP_SSIP
 #define SIP_STIP			MIP_STIP
@@ -170,6 +172,31 @@
 #define HGATP_VMID_MASK			HGATP32_VMID_MASK
 #define HGATP_MODE_SHIFT		HGATP32_MODE_SHIFT
 #endif
+
+#if __riscv_xlen == 64
+#define MHPMEVENT_OF			(_UL(1) << 63)
+#define MHPMEVENT_MINH			(_UL(1) << 62)
+#define MHPMEVENT_SINH			(_UL(1) << 61)
+#define MHPMEVENT_UINH			(_UL(1) << 60)
+#define MHPMEVENT_VSINH			(_UL(1) << 59)
+#define MHPMEVENT_VUINH			(_UL(1) << 58)
+#else
+#define MHPMEVENTH_OF			(_UL(1) << 31)
+#define MHPMEVENTH_MINH			(_ULL(1) << 30)
+#define MHPMEVENTH_SINH			(_ULL(1) << 29)
+#define MHPMEVENTH_UINH			(_ULL(1) << 28)
+#define MHPMEVENTH_VSINH		(_ULL(1) << 27)
+#define MHPMEVENTH_VUINH		(_ULL(1) << 26)
+
+#define MHPMEVENT_MINH			(MHPMEVENTH_MINH << 32)
+#define MHPMEVENT_SINH			(MHPMEVENTH_SINH << 32)
+#define MHPMEVENT_UINH			(MHPMEVENTH_UINH << 32)
+#define MHPMEVENT_VSINH			(MHPMEVENTH_VSINH << 32)
+#define MHPMEVENT_VUINH			(MHPMEVENTH_VUINH << 32)
+
+#endif
+
+#define MHPMEVENT_SSCOF_MASK		_ULL(0xFFFF000000000000)
 
 /* ===== User-level CSRs ===== */
 
@@ -515,6 +542,40 @@
 #define CSR_MHPMEVENT29			0x33d
 #define CSR_MHPMEVENT30			0x33e
 #define CSR_MHPMEVENT31			0x33f
+
+/* For RV32 */
+#define CSR_MHPMEVENT3H			0x723
+#define CSR_MHPMEVENT4H			0x724
+#define CSR_MHPMEVENT5H			0x725
+#define CSR_MHPMEVENT6H			0x726
+#define CSR_MHPMEVENT7H			0x727
+#define CSR_MHPMEVENT8H			0x728
+#define CSR_MHPMEVENT9H			0x729
+#define CSR_MHPMEVENT10H		0x72a
+#define CSR_MHPMEVENT11H		0x72b
+#define CSR_MHPMEVENT12H		0x72c
+#define CSR_MHPMEVENT13H		0x72d
+#define CSR_MHPMEVENT14H		0x72e
+#define CSR_MHPMEVENT15H		0x72f
+#define CSR_MHPMEVENT16H		0x730
+#define CSR_MHPMEVENT17H		0x731
+#define CSR_MHPMEVENT18H		0x732
+#define CSR_MHPMEVENT19H		0x733
+#define CSR_MHPMEVENT20H		0x734
+#define CSR_MHPMEVENT21H		0x735
+#define CSR_MHPMEVENT22H		0x736
+#define CSR_MHPMEVENT23H		0x737
+#define CSR_MHPMEVENT24H		0x738
+#define CSR_MHPMEVENT25H		0x739
+#define CSR_MHPMEVENT26H		0x73a
+#define CSR_MHPMEVENT27H		0x73b
+#define CSR_MHPMEVENT28H		0x73c
+#define CSR_MHPMEVENT29H		0x73d
+#define CSR_MHPMEVENT30H		0x73e
+#define CSR_MHPMEVENT31H		0x73f
+
+/* Counter Overflow CSR */
+#define CSR_SCOUNTOVF			0xda0
 
 /* Debug/Trace Registers */
 #define CSR_TSELECT			0x7a0

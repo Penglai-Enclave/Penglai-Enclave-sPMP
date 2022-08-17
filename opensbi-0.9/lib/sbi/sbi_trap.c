@@ -16,6 +16,7 @@
 #include <sbi/sbi_illegal_insn.h>
 #include <sbi/sbi_ipi.h>
 #include <sbi/sbi_misaligned_ldst.h>
+#include <sbi/sbi_pmu.h>
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
@@ -210,7 +211,7 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
  *
  * @param regs pointer to register state
  */
-void sbi_trap_handler(struct sbi_trap_regs *regs)
+struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 {
 	int rc = SBI_ENOTSUPP;
 	const char *msg = "trap handler failed";
@@ -236,7 +237,7 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 			msg = "unhandled external interrupt";
 			goto trap_error;
 		};
-		return;
+		return regs;
 	}
 
 	switch (mcause) {
@@ -257,6 +258,11 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		rc  = sbi_ecall_handler(regs);
 		msg = "ecall handler failed";
 		break;
+	case CAUSE_LOAD_ACCESS:
+	case CAUSE_STORE_ACCESS:
+		sbi_pmu_ctr_incr_fw(mcause == CAUSE_LOAD_ACCESS ?
+			SBI_PMU_FW_ACCESS_LOAD : SBI_PMU_FW_ACCESS_STORE);
+		/* fallthrough */
 	default:
 		/* If the trap came from S or U mode, redirect it there */
 		trap.epc = regs->mepc;
@@ -271,6 +277,7 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 trap_error:
 	if (rc)
 		sbi_trap_error(msg, rc, mcause, mtval, mtval2, mtinst, regs);
+	return regs;
 }
 
 typedef void (*trap_exit_t)(const struct sbi_trap_regs *regs);

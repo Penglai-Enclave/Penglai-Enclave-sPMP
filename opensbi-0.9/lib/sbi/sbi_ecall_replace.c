@@ -54,8 +54,8 @@ static int sbi_ecall_rfence_handler(unsigned long extid, unsigned long funcid,
 	struct sbi_tlb_info tlb_info;
 	u32 source_hart = current_hartid();
 
-	if (funcid >= SBI_EXT_RFENCE_REMOTE_HFENCE_GVMA &&
-	    funcid <= SBI_EXT_RFENCE_REMOTE_HFENCE_VVMA_ASID)
+	if (funcid >= SBI_EXT_RFENCE_REMOTE_HFENCE_GVMA_VMID &&
+	    funcid <= SBI_EXT_RFENCE_REMOTE_HFENCE_VVMA)
 		if (!misa_extension('H'))
 			return SBI_ENOTSUPP;
 
@@ -151,7 +151,7 @@ static int sbi_ecall_srst_handler(unsigned long extid, unsigned long funcid,
 		case SBI_SRST_RESET_TYPE_WARM_REBOOT:
 			break;
 		default:
-			return SBI_ENOTSUPP;
+			return SBI_EINVAL;
 		}
 
 		switch (regs->a1) {
@@ -159,7 +159,7 @@ static int sbi_ecall_srst_handler(unsigned long extid, unsigned long funcid,
 		case SBI_SRST_RESET_REASON_SYSFAIL:
 			break;
 		default:
-			return SBI_ENOTSUPP;
+			return SBI_EINVAL;
 		}
 
 		if (sbi_system_reset_supported(regs->a0, regs->a1))

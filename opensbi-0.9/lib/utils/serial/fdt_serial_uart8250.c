@@ -28,12 +28,11 @@ static int serial_uart8250_init(void *fdt, int nodeoff,
 static const struct fdt_match serial_uart8250_match[] = {
 	{ .compatible = "ns16550" },
 	{ .compatible = "ns16550a" },
+	{ .compatible = "snps,dw-apb-uart" },
 	{ },
 };
 
 struct fdt_serial fdt_serial_uart8250 = {
 	.match_table = serial_uart8250_match,
 	.init = serial_uart8250_init,
-	.getc = uart8250_getc,
-	.putc = uart8250_putc
 };
