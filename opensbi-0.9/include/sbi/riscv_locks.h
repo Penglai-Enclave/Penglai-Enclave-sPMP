@@ -14,7 +14,7 @@ typedef struct {
 	volatile long lock;
 } spinlock_t;
 
-// #define SPINLOCK_INIT {0}
+#define SPINLOCK_INIT {0}
 
 #define __RISCV_SPIN_UNLOCKED 0
 
