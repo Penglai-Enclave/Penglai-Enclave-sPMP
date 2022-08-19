@@ -36,8 +36,8 @@ fi
 
 # build penglai
 if [[ $1 == *"qemu"* ]]; then
-	echo "Run: run penglai demo image in sPMP-supported Qemu"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/run-qemu.sh
+	echo "Run: run penglai demo image in Qemu (built with openEuler)"
+	./run_openeuler.sh
 	exit 0
 fi
 
@@ -45,7 +45,7 @@ fi
 if [[ $1 == *"docker"* ]]; then
 	echo "Run: run docker"
 	#sudo docker run --privileged --cap-add=ALL  -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --network=host --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	exit 0
 fi
 

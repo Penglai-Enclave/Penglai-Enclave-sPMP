@@ -20,6 +20,8 @@
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
 
+#include <sm/sm.h>
+
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
 				      ulong mtinst, struct sbi_trap_regs *regs)
@@ -194,7 +196,6 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 	return 0;
 }
 
-extern int check_in_enclave_world();
 /**
  * Handle trap/interrupt
  *
@@ -228,7 +229,11 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		mcause &= ~(1UL << (__riscv_xlen - 1));
 		switch (mcause) {
 		case IRQ_M_TIMER:
-			sbi_timer_process();
+			if (check_in_enclave_world() >= 0) { //handle timer for enclaves
+				sm_do_timer_irq((uintptr_t *)regs, mcause, regs->mepc);
+			}else{
+				sbi_timer_process();
+			}
 			break;
 		case IRQ_M_SOFT:
 			sbi_ipi_process();
@@ -253,18 +258,21 @@ void sbi_trap_handler(struct sbi_trap_regs *regs)
 		rc  = sbi_misaligned_store_handler(mtval, mtval2, mtinst, regs);
 		msg = "misaligned store handler failed";
 		break;
+	case CAUSE_USER_ECALL:
+		//The only case for USER_ECALL is issued by Penglai Enclave now
+		if (check_in_enclave_world() <0) {
+			sbi_printf("[Penglai] Error, user ecall not in enclaves\n");
+			rc = -1;
+			break;
+		} else {// continue to sbi_ecall_handler
+			//sbi_printf("[Penglai] ecall from enclaves\n");
+		}
 	case CAUSE_SUPERVISOR_ECALL:
 	case CAUSE_MACHINE_ECALL:
 		rc  = sbi_ecall_handler(regs);
 		msg = "ecall handler failed";
 		break;
 	default:
-		if (check_in_enclave_world() >=0) {
-			sbi_printf("[Penglai] ecall from enclaves\n");
-			rc = sbi_ecall_handler(regs);
-			msg = "ecall handler failed";
-			break;
-		}
 		/* If the trap came from S or U mode, redirect it there */
 		trap.epc = regs->mepc;
 		trap.cause = mcause;

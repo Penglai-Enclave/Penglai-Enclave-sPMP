@@ -30,23 +30,24 @@ typedef unsigned long pt_entry_t;
 #define ENCLAVE_USER_PAGE PTE_D | PTE_A | PTE_R | PTE_X | PTE_W | PTE_U
 #define ENCLAVE_STACK_PAGE PTE_D | PTE_A | PTE_R | PTE_W | PTE_U
 #define ENCLAVE_UNTRUSTED_PAGE PTE_D | PTE_A | PTE_R | PTE_W | PTE_U
+#define ENCLAVE_KBUFFER_PAGE PTE_D | PTE_A | PTE_R | PTE_W | PTE_U
 
 /* Abstract for enclave memory (secure memory) */
 struct enclave_mem
 {
-  pt_entry_t* enclave_root_pt;
-  struct list_head free_mem;
-  unsigned long size;
-  vaddr_t vaddr;
-  paddr_t paddr;
+	pt_entry_t* enclave_root_pt;
+	struct list_head free_mem;
+	unsigned long size;
+	vaddr_t vaddr;
+	paddr_t paddr;
 };
 
 typedef struct enclave_mem enclave_mem_t;
 
 struct untrusted_mem
 {
-  vaddr_t addr;
-  long size;
+	vaddr_t addr;
+	long size;
 };
 
 typedef struct untrusted_mem untrusted_mem_t;
@@ -54,8 +55,8 @@ typedef struct untrusted_mem untrusted_mem_t;
 /* Free memory list in-enclave */
 struct free_mem_t 
 {
-  vaddr_t vaddr;
-  struct list_head  free_mem_list;
+	vaddr_t vaddr;
+	struct list_head  free_mem_list;
 };
 
 vaddr_t enclave_alloc_page(enclave_mem_t* enclave_mem, vaddr_t vaddr, unsigned long flags);

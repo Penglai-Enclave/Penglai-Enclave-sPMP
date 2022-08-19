@@ -253,6 +253,7 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 		sbi_hart_hang();
 	}
 
+	/* Penglai PMP init for synchronize PMP settings among Harts */
 	rc = sbi_pmp_init(scratch, TRUE);
 	if (rc) {
 		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
@@ -288,14 +289,17 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 
 	sbi_boot_print_domains(scratch);
 
-#if 0 /*FIXME(DD): handle this */
+	/*
+	 * Note (DD):
+	 * 	In our case, the PMP set by domain will be erased, as penglai
+	 * 	will take control of PMP
+	 * */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc) {
 		sbi_printf("%s: PMP configure failed (error %d)\n",
 			   __func__, rc);
 		sbi_hart_hang();
 	}
-#endif
 
 	/*
 	 * Note: Platform final initialization should be last so that
@@ -367,11 +371,14 @@ static void __noreturn init_warmboot(struct sbi_scratch *scratch, u32 hartid)
 	if (rc)
 		sbi_hart_hang();
 
-#if 0 /*FIXME(DD): handle this */
+	/*
+	 * Note (DD):
+	 * 	In our case, the PMP set by domain will be erased, as penglai
+	 * 	will take control of PMP
+	 * */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc)
 		sbi_hart_hang();
-#endif
 
 	rc = sbi_platform_final_init(plat, FALSE);
 	if (rc)

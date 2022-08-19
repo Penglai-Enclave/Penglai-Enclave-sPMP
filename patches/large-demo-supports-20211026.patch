@@ -1,0 +1,13 @@
+diff --git a/openeuler-kernel/include/linux/mmzone.h b/openeuler-kernel/include/linux/mmzone.h
+index 9d0c454d2..c01ad30bb 100644
+--- a/openeuler-kernel/include/linux/mmzone.h
++++ b/openeuler-kernel/include/linux/mmzone.h
+@@ -24,7 +24,7 @@
+ 
+ /* Free memory management - zoned buddy allocator.  */
+ #ifndef CONFIG_FORCE_MAX_ZONEORDER
+-#define MAX_ORDER 11
++#define MAX_ORDER 18
+ #else
+ #define MAX_ORDER CONFIG_FORCE_MAX_ZONEORDER
+ #endif

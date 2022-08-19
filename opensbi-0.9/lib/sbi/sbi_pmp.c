@@ -1,5 +1,4 @@
-#include "sbi/sbi_pmp.h"
-#include "sm/ipi.h"
+#include <sbi/sbi_pmp.h>
 #include <sbi/riscv_asm.h>
 #include <sbi/riscv_atomic.h>
 #include <sbi/riscv_barrier.h>
@@ -49,7 +48,7 @@ static int sbi_update_pmp(struct sbi_scratch *scratch,
 	if (remote_hartid == curr_hartid) {
 		//update the pmp register locally
 		struct pmp_config_t pmp_config = *(struct pmp_config_t*)(data);
-		pmp_idx = pmp_data->pmp_idx_arg;
+		pmp_idx = ((struct pmp_data_t *)data)->pmp_idx_arg;
 		set_pmp(pmp_idx, pmp_config);
 		return -1;
 	}

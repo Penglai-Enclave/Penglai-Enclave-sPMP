@@ -1,18 +1,15 @@
 void platform_enter_enclave_world()
 {
-  //TODO: add register to indicate whether in encalve world or not
   return;
 }
 
 void platform_exit_enclave_world()
 {
-  //TODO: add register to indicate whether in encalve world or not
   return;
 }
 
 int platform_check_in_enclave_world()
 {
-  //TODO: add register to indicate whether in encalve world or not
   return 0;
 }
 

@@ -54,7 +54,7 @@
 
 static inline void flush_tlb(void)
 {
-  asm volatile ("sfence.vma");
+	asm volatile ("sfence.vma");
 }
 
 #endif

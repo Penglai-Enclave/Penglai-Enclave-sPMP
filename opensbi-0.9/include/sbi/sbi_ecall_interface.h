@@ -29,6 +29,10 @@
 #define SBI_EXT_HSM				0x48534D
 #define SBI_EXT_SRST				0x53525354
 
+//Penglai
+#define SBI_EXT_PENGLAI_HOST            0x100100
+#define SBI_EXT_PENGLAI_ENCLAVE     0x100101
+
 /* SBI function IDs for BASE extension*/
 #define SBI_EXT_BASE_GET_SPEC_VERSION		0x0
 #define SBI_EXT_BASE_GET_IMP_ID			0x1
@@ -37,20 +41,6 @@
 #define SBI_EXT_BASE_GET_MVENDORID		0x4
 #define SBI_EXT_BASE_GET_MARCHID		0x5
 #define SBI_EXT_BASE_GET_MIMPID			0x6
-
-// SBI CALL NUMBERS for Penglai Enclave
-#define SBI_MM_INIT            100
-#define SBI_CREATE_ENCLAVE      99
-#define SBI_ATTEST_ENCLAVE      98
-#define SBI_RUN_ENCLAVE         97
-#define SBI_STOP_ENCLAVE        96
-#define SBI_RESUME_ENCLAVE      95
-#define SBI_DESTROY_ENCLAVE     94
-#define SBI_ALLOC_ENCLAVE_MM    93
-#define SBI_MEMORY_EXTEND       92
-#define SBI_MEMORY_RECLAIM      91
-#define SBI_ENCLAVE_OCALL       90
-#define SBI_EXIT_ENCLAVE        89
 
 /* SBI function IDs for TIME extension*/
 #define SBI_EXT_TIME_SET_TIMER			0x0
