@@ -1,7 +1,7 @@
 #ifndef __SBI_PMP_H__
 #define __SBI_PMP_H__
 
-#include "sm/pmp.h"
+#include <sm/pmp.h>
 #include <sbi/sbi_types.h>
 #include <sbi/sbi_hartmask.h>
 struct sbi_scratch;

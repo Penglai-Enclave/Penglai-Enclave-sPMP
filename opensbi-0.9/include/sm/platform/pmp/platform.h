@@ -2,7 +2,6 @@
 #define _PLATFORM_H
 
 #include "enclave_mm.h"
-#include "ipi_handler.h"
 #include "platform_thread.h"
 
 int platform_init();

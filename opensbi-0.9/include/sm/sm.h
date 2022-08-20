@@ -7,17 +7,18 @@
 
 //#include TARGET_PLATFORM_HEADER
 #include <sm/print.h>
-#include <sm/platform/spmp/platform.h>
+#include <sm/platform/pmp/platform.h>
 #include <stdint.h>
 #include <sm/enclave_args.h>
-#include <sm/ipi.h>
 
-#define SM_BASE 0x80000000
-#define SM_SIZE 0x200000
+extern uintptr_t _fw_start[], _fw_end[];
+
+#define SM_BASE ((uintptr_t) _fw_start)
+#define SM_SIZE (((uintptr_t) _fw_end) - ((uintptr_t) _fw_start))
 
 #define MAX_HARTS 8
 
-//SBI_CALL NUMBERS
+//Host SBI numbers
 #define SBI_MM_INIT            100
 #define SBI_CREATE_ENCLAVE      99
 #define SBI_ATTEST_ENCLAVE      98
@@ -28,19 +29,28 @@
 #define SBI_ALLOC_ENCLAVE_MM    93
 #define SBI_MEMORY_EXTEND       92
 #define SBI_MEMORY_RECLAIM      91
-#define SBI_ENCLAVE_OCALL       90
-#define SBI_EXIT_ENCLAVE        89
 #define SBI_DEBUG_PRINT         88
+
+//Enclave SBI numbers
+#define SBI_EXIT_ENCLAVE        99
+#define SBI_ENCLAVE_OCALL        98
+#define SBI_GET_KEY             88
 
 //Error code of SBI_ALLOC_ENCLAVE_MEM
 #define ENCLAVE_NO_MEMORY       -2
 #define ENCLAVE_ERROR           -1
 #define ENCLAVE_SUCCESS          0
 #define ENCLAVE_TIMER_IRQ        1
+#define ENCLAVE_OCALL            2
+
+//ENCLAVE OCALL NUMBERS
+#define OCALL_SYS_WRITE              3
+#define OCALL_USER_DEFINED           9
 
 //error code of SBI_RESUME_RNCLAVE
 #define RESUME_FROM_TIMER_IRQ    2000
 #define RESUME_FROM_STOP         2003
+#define RESUME_FROM_OCALL        2
 
 void sm_init();
 
@@ -62,9 +72,12 @@ uintptr_t sm_stop_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
 uintptr_t sm_resume_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
-uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id, uintptr_t destroy_flag);
+uintptr_t sm_destroy_enclave(uintptr_t *regs, uintptr_t enclave_id);
 
-uintptr_t sm_enclave_ocall(uintptr_t *regs, uintptr_t ocall_func_id, uintptr_t arg);
+uintptr_t sm_enclave_ocall(uintptr_t *regs, uintptr_t ocall_func_id, uintptr_t arg0, uintptr_t arg1);
+
+uintptr_t sm_enclave_get_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t salt_len,
+                        uintptr_t key_buf_va, uintptr_t key_buf_len);
 
 uintptr_t sm_exit_enclave(uintptr_t *regs, unsigned long retval);
 
