@@ -597,6 +597,7 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 	if (enclave->state == FRESH) {
 		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 		mm_free((void*)(enclave->paddr), enclave->size);
+		enclave->state = INVALID;
 
 		spin_unlock(&enclave_metadata_lock);
 
@@ -634,7 +635,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->state != STOPPED)
 	{
-		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
+		printm("[Penglai Monitor@%s] enclave's state is not stopped\r\n", __func__);
 		retval = -1UL;
 		goto resume_from_stop_out;
 	}
@@ -740,10 +741,8 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
 
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 {
-
-	struct enclave_t *enclave;
-	int eid;
-
+	int eid = get_enclave_id();
+	struct enclave_t *enclave = NULL;
 	if(check_in_enclave_world() < 0)
 	{
 		printm_err("[Penglai Monitor@%s] cpu is not in enclave world now\r\n", __func__);
@@ -751,17 +750,11 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	}
 	printm_err("[Penglai Monitor@%s] retval of enclave is %lx\r\n", __func__, retval);
 
-	eid = get_enclave_id();
 	enclave = get_enclave(eid);
-	if(!enclave)
-	{
-		printm("[Penglai Monitor@%s] didn't find eid%d 's corresponding enclave\r\n", __func__, eid);
-		return -1UL;
-	}
 
 	spin_lock(&enclave_metadata_lock);
 
-	if(check_enclave_authentication(enclave) < 0)
+	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		printm_err("[Penglai Monitor@%s] current enclave's eid is not %d\r\n", __func__, eid);
 		spin_unlock(&enclave_metadata_lock);
@@ -795,14 +788,15 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	}
 
 	enclave = get_enclave(eid);
+
+	spin_lock(&enclave_metadata_lock);
+
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		ret = -1UL;
 		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
 		goto out;
 	}
-
-	spin_lock(&enclave_metadata_lock);
 
 	uintptr_t ocall_func_id = OCALL_SYS_WRITE;
 	copy_to_host((uintptr_t*)enclave->ocall_func_id, &ocall_func_id, sizeof(uintptr_t));
@@ -840,13 +834,15 @@ uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t 
 	}
 
 	enclave = get_enclave(eid);
-	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
-	{
-		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
-		return -1;
-	}
 
 	spin_lock(&enclave_metadata_lock);
+
+	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
+	{
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
+		goto out;
+	}
 
 	enclave_root_pt = (pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT);
 	ret = copy_from_enclave(enclave_root_pt, salt_local, (void *)salt_va, salt_len);
@@ -888,14 +884,15 @@ uintptr_t enclave_user_defined_ocall(uintptr_t* regs, uintptr_t ocall_buf_size)
 	}
 
 	enclave = get_enclave(eid);
+
+	spin_lock(&enclave_metadata_lock);
+
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		ret = -1UL;
 		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
 		goto out;
 	}
-
-	spin_lock(&enclave_metadata_lock);
 
 	uintptr_t ocall_func_id = OCALL_USER_DEFINED;
 	copy_to_host((uintptr_t*)enclave->ocall_func_id, &ocall_func_id, sizeof(uintptr_t));
@@ -931,9 +928,13 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 
 	spin_lock(&enclave_metadata_lock);
 
-	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
-	{
-		printm("[Penglai Monitor@%s]  Enclave(%d) is not runnable\r\n", __func__, eid);
+	/*
+	 * An enclave trapping into monitor should not have other states.
+	 * This is guaranteed by concurrency control for life cycle management。
+	 */
+	if (enclave->state != RUNNING && enclave->state != DESTROYED &&
+		enclave->state != STOPPED) {
+		printm_err("[Penglai Monitor@%s]  Enclave(%d) state is wrong!\r\n", __func__, eid);
 		retval = -1;
 	}
 

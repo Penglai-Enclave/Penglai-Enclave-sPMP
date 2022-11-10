@@ -164,6 +164,32 @@ void get_pmp_reg(int pmp_idx, uintptr_t* pmp_address, uintptr_t* pmp_config)
 	*pmp_config = tmp_pmp_config;
 }
 
+/*
+ * Check the validness of the paddr and size
+ * */
+static int check_pmp_region_protectable(uintptr_t paddr, unsigned long size)
+{
+	if((size == 0) || (size & (size - 1)))
+	{
+		printm_err("pmp size should be 2^power!\r\n");
+		return -1;
+	}
+
+	if(size < RISCV_PGSIZE)
+	{
+		printm_err("pmp size should be no less than one page!\r\n");
+		return -1;
+	}
+
+	if(paddr & (size - 1))
+	{
+		printm_err("pmp size should be %ld aligned!\r\n", size);
+		return -1;
+	}
+
+	return 0;
+}
+
 /**
  * \brief set current hart's pmp
  *
@@ -183,8 +209,14 @@ void set_pmp(int pmp_idx, struct pmp_config_t pmp_cfg_t)
 		case PMP_A_NAPOT:
 			if(pmp_cfg_t.paddr == 0 && pmp_cfg_t.size == -1UL)
 				pmp_address = -1UL;
-			else
+			else {
+				if(check_pmp_region_protectable(pmp_cfg_t.paddr, pmp_cfg_t.size) != 0){
+					printm_err(
+						"Warning: PMP region with paddr: 0x%lx and size: 0x%lx, can't be protected by pmp registers in NAPOT mode\n",
+						pmp_cfg_t.paddr, pmp_cfg_t.size);
+				}
 				pmp_address = (pmp_cfg_t.paddr | ((pmp_cfg_t.size>>1)-1)) >> 2;
+			}
 			break;
 		case PMP_A_TOR:
 			pmp_address = pmp_cfg_t.paddr;

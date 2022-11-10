@@ -428,6 +428,15 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
 	struct pmp_config_t pmp_config;
 	uintptr_t paddr = (uintptr_t)req_paddr;
 
+	pmp_config = get_pmp(pmp_idx);
+	if((pmp_config.mode != PMP_OFF))
+	{
+		printm_err(
+			"grant_kernel_access: can't grant kernel access to a new memory"
+			"region if kernel has already access to another one\r\n");
+		return -1;
+	}
+
 	if(check_mem_size(paddr, size) != 0){
 		printm("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
 		return -1;
@@ -497,12 +506,19 @@ int grant_enclave_access(struct enclave_t* enclave)
 
 	pmp_idx = REGION_TO_PMP(region_idx);
 #if 0
-	pmp_config.paddr = mm_regions[region_idx].paddr;
-	pmp_config.size = mm_regions[region_idx].size;
-#else
-	//this enclave memory region could be less than the mm_region size
 	pmp_config.paddr = enclave->paddr;
 	pmp_config.size = enclave->size;
+#else
+	/* Even if we set this PMP region only contain the enclave's secure memory,
+	 * the enclave still have access to the secure memory of other enclaves,
+	 * which using the same pmp to protect their memory from OS access before.
+	 * That's because the last pmp makes all momery accessible.
+	 * And we rule out this possibility by checking the enclave page table.
+	 *
+	 * So we just make this PMP region readable, writable and executable.
+	 */
+	pmp_config.paddr = mm_regions[region_idx].paddr;
+	pmp_config.size = mm_regions[region_idx].size;
 #endif
 	pmp_config.perm = PMP_R | PMP_W | PMP_X;
 	pmp_config.mode = PMP_A_NAPOT;
@@ -526,7 +542,7 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 {
 	int region_idx = 0;
 	int pmp_idx = 0;
-	//struct pmp_config_t pmp_config;
+	struct pmp_config_t pmp_config;
 
 	//set pmp permission, ensure that enclave's paddr and size is pmp legal
 	//TODO: support multiple memory regions
@@ -559,8 +575,14 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	pmp_idx = REGION_TO_PMP(region_idx);
 
-	// we can simply clear the PMP to retrieve the permission
-	clear_pmp(pmp_idx);
+	// set PMP to protect the entire PMP region
+	pmp_config.paddr = mm_regions[region_idx].paddr;
+	pmp_config.size = mm_regions[region_idx].size;
+	pmp_config.perm = PMP_NO_PERM;
+	pmp_config.mode = PMP_A_NAPOT;
+
+	/* Note: here we only set the PMP regions in local Hart*/
+	set_pmp(pmp_idx, pmp_config);
 
 	return 0;
 }
