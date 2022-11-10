@@ -431,12 +431,12 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	// TODO: verify hash and whitelist check
 
 	// Check page table mapping secure and not out of bound
-	retval = check_enclave_pt(enclave);
-	if(retval != 0)
-	{
-		printm_err("M mode: create_enclave: check enclave page table failed, create failed\r\n");
-		goto error_out;
-	}
+	// retval = check_enclave_pt(enclave);
+	// if(retval != 0)
+	// {
+	// 	printm_err("M mode: create_enclave: check enclave page table failed, create failed\r\n");
+	// 	goto error_out;
+	// }
 
 	retval = copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
 	if(retval != 0)
