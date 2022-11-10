@@ -75,7 +75,17 @@ void hash_enclave(struct enclave_t *enclave, void* hash, uintptr_t nonce_arg)
 
     SM3_init(&hash_ctx);
     
+    // entry point
     SM3_process(&hash_ctx, (unsigned char*)(&(enclave->entry_point)),
+        sizeof(unsigned long));
+    // configuration parameters
+    SM3_process(&hash_ctx, (unsigned char*)(&(enclave->untrusted_ptr)),
+        sizeof(unsigned long));
+    SM3_process(&hash_ctx, (unsigned char*)(&(enclave->untrusted_size)),
+        sizeof(unsigned long));
+    SM3_process(&hash_ctx, (unsigned char*)(&(enclave->kbuffer)),
+        sizeof(unsigned long));
+    SM3_process(&hash_ctx, (unsigned char*)(&(enclave->kbuffer_size)),
         sizeof(unsigned long));
     hash_enclave_mem(
         &hash_ctx,

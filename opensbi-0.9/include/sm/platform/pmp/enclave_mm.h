@@ -59,6 +59,8 @@ uintptr_t copy_from_enclave(pte_t *enclave_root_pt, void* dest_pa, void* src_enc
 
 uintptr_t copy_to_enclave(pte_t *enclave_root_pt, void* dest_enclave_va, void* src_pa, size_t size);
 
+int check_enclave_pt(struct enclave_t *enclave);
+
 int grant_kernel_access(void* paddr, unsigned long size);
 
 int grant_enclave_access(struct enclave_t* enclave);
