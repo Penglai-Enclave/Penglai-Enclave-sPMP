@@ -14,7 +14,7 @@ This repo maintains OpenSBI version of Penglai Enclave based on PMP.
 
 **How to use?**
 
-Simply replace the OpenSBI used in your system with opensbi-0.9 in the top directory in the repo.
+Simply replace the OpenSBI used in your system with opensbi-1.0 in the top directory in the repo.
 
 You can use our SDK and enclave-driver to build your trusted applications, or even write your own SDKs.
 
@@ -54,7 +54,7 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 
 	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
-	cd /home/penglai/penglai-enclave/opensbi-0.9
+	cd /home/penglai/penglai-enclave/opensbi-1.0
 	mkdir -p build-oe/qemu-virt
 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 
@@ -94,7 +94,7 @@ You should download the disk image of openEuler (i.e., openEuler-preview.riscv64
 
 	qemu-system-riscv64 -nographic -machine virt \
 	-smp 4 -m 2G \
-	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
+	-kernel  ./opensbi-1.0/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
 	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
 	-object rng-random,filename=/dev/urandom,id=rng0 \
 	-device virtio-rng-device,rng=rng0 \
@@ -143,7 +143,7 @@ Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 
 ## Code Structures
 
-- opensbi-0.9: The Penglai-equipped OpenSBI, version 0.9
+- opensbi-1.0: The Penglai-equipped OpenSBI, version 1.0
 - openeuler-kernel: openEuler Kernel
 - riscv-qemu: The modified qemu (4.1) to support sPMP (you can also use the standard qemu)
 - scripts: some scripts to build/run Penglai demo
