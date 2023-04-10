@@ -91,13 +91,11 @@ int sbi_pmp_init(struct sbi_scratch *scratch, bool cold_boot)
 
 	if (cold_boot) {
         //Define the pmp data offset in the scratch
-		pmp_data_offset = sbi_scratch_alloc_offset(sizeof(*pmpdata),
-							    "PMP_DATA");
+		pmp_data_offset = sbi_scratch_alloc_offset(sizeof(*pmpdata));
 		if (!pmp_data_offset)
 			return SBI_ENOMEM;
 
-		pmp_sync_offset = sbi_scratch_alloc_offset(sizeof(*pmp_sync),
-							    "PMP_SYNC");
+		pmp_sync_offset = sbi_scratch_alloc_offset(sizeof(*pmp_sync));
 		if (!pmp_sync_offset)
 			return SBI_ENOMEM;
 
