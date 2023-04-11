@@ -43,6 +43,17 @@ struct report_t
   unsigned char dev_pub_key[PUBLIC_KEY_SIZE];
 };
 
+struct prikey_t
+{
+  unsigned char dA[PRIVATE_KEY_SIZE];
+};
+
+struct pubkey_t
+{
+  unsigned char xA[PUBLIC_KEY_SIZE/2];
+  unsigned char yA[PUBLIC_KEY_SIZE/2];
+};
+
 struct signature_t
 {
   unsigned char r[PUBLIC_KEY_SIZE/2];

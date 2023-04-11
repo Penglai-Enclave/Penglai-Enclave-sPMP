@@ -9,6 +9,7 @@
 #include <sm/utils.h>
 #include <sbi/sbi_timer.h>
 #include <sm/attest.h>
+#include <sm/gm/SM3.h>
 
 static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
 
@@ -379,20 +380,21 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 {
 	struct enclave_t* enclave;
+	unsigned int eid;
 	uintptr_t retval = 0;
 
 	enclave = alloc_enclave();
 	if(!enclave)
 	{
 		printm("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
-		return -1UL;
+		sbi_memset((void*)(create_args.paddr), 0, create_args.size);
+		mm_free((void*)(create_args.paddr), create_args.size);
+		return ENCLAVE_ERROR;
 	}
-
-	//TODO: check whether enclave memory is out of bound
-	//TODO: verify enclave page table layout
 
 	spin_lock(&enclave_metadata_lock);
 
+	eid = enclave->eid;
 	enclave->paddr = create_args.paddr;
 	enclave->size = create_args.size;
 	enclave->entry_point = create_args.entry_point;
@@ -416,7 +418,6 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	dump_pt(enclave->root_page_table, 1);
 #endif
 
-	spin_unlock(&enclave_metadata_lock);
 	printm("[Penglai@%s] paddr:0x%lx, size:0x%lx, entry:0x%lx\n"
 			"untrusted ptr:0x%lx host_ptbr:0x%lx, pt:0x%ln\n"
 			"thread_context.encl_ptbr:0x%lx\n cur_satp:0x%lx\n",
@@ -425,17 +426,44 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 			enclave->thread_context.encl_ptbr, csr_read(CSR_SATP));
 
 	// Calculate the enclave's measurement
+	hash_enclave(enclave, (void*)(enclave->hash), 0);
+
+	// TODO: verify hash and whitelist check
+
+	// Check page table mapping secure and not out of bound
+	retval = check_enclave_pt(enclave);
+	if(retval != 0)
+	{
+		printm_err("M mode: create_enclave: check enclave page table failed, create failed\r\n");
+		goto error_out;
+	}
+
 	retval = copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
 	if(retval != 0)
 	{
 		printm_err("M mode: create_enclave: unknown error happended when copy word to host\r\n");
-		return ENCLAVE_ERROR;
+		goto error_out;
 	}
 
 	printm("[Penglai Monitor@%s] return eid:%d\n",
 			__func__, enclave->eid);
 
+	spin_unlock(&enclave_metadata_lock);
 	return 0;
+
+/*
+ * If create failed for above reasons, secure memory and enclave struct
+ * allocated before will never be used. So we need to free these momery.
+ */
+error_out:
+	sbi_memset((void*)(enclave->paddr), 0, enclave->size);
+	mm_free((void*)(enclave->paddr), enclave->size);
+
+	spin_unlock(&enclave_metadata_lock);
+
+	//free enclave struct
+	free_enclave(eid); //the enclave state will be set INVALID here
+	return ENCLAVE_ERROR;
 }
 
 uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
@@ -569,6 +597,7 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 	if (enclave->state == FRESH) {
 		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 		mm_free((void*)(enclave->paddr), enclave->size);
+		enclave->state = INVALID;
 
 		spin_unlock(&enclave_metadata_lock);
 
@@ -606,7 +635,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 
 	if(enclave->state != STOPPED)
 	{
-		printm("[Penglai Monitor@%s]  enclave doesn't belong to current host process\r\n", __func__);
+		printm("[Penglai Monitor@%s] enclave's state is not stopped\r\n", __func__);
 		retval = -1UL;
 		goto resume_from_stop_out;
 	}
@@ -700,9 +729,8 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
 	sbi_memcpy((void*)(report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
 	sbi_memcpy((void*)(report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
 
-	hash_enclave(enclave, (void*)(enclave->hash), 0);
 	update_enclave_hash((char *)(report.enclave.hash), (char *)enclave->hash, nonce);
-	sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
+	sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash), HASH_SIZE);
 	report.enclave.nonce = nonce;
 
 	copy_to_host((void*)report_ptr, (void*)(&report), sizeof(struct report_t));
@@ -713,10 +741,8 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
 
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 {
-
-	struct enclave_t *enclave;
-	int eid;
-
+	int eid = get_enclave_id();
+	struct enclave_t *enclave = NULL;
 	if(check_in_enclave_world() < 0)
 	{
 		printm_err("[Penglai Monitor@%s] cpu is not in enclave world now\r\n", __func__);
@@ -724,17 +750,11 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	}
 	printm_err("[Penglai Monitor@%s] retval of enclave is %lx\r\n", __func__, retval);
 
-	eid = get_enclave_id();
 	enclave = get_enclave(eid);
-	if(!enclave)
-	{
-		printm("[Penglai Monitor@%s] didn't find eid%d 's corresponding enclave\r\n", __func__, eid);
-		return -1UL;
-	}
 
 	spin_lock(&enclave_metadata_lock);
 
-	if(check_enclave_authentication(enclave) < 0)
+	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		printm_err("[Penglai Monitor@%s] current enclave's eid is not %d\r\n", __func__, eid);
 		spin_unlock(&enclave_metadata_lock);
@@ -768,6 +788,9 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	}
 
 	enclave = get_enclave(eid);
+
+	spin_lock(&enclave_metadata_lock);
+
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		ret = -1UL;
@@ -775,14 +798,75 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 		goto out;
 	}
 
-	spin_lock(&enclave_metadata_lock);
-
 	uintptr_t ocall_func_id = OCALL_SYS_WRITE;
 	copy_to_host((uintptr_t*)enclave->ocall_func_id, &ocall_func_id, sizeof(uintptr_t));
 
 	swap_from_enclave_to_host(regs, enclave);
 	enclave->state = RUNNABLE;
 	ret = ENCLAVE_OCALL;
+out:
+	spin_unlock(&enclave_metadata_lock);
+	return ret;
+}
+
+uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t salt_len,
+	uintptr_t key_buf_va, uintptr_t key_buf_len)
+{
+	uintptr_t ret = 0;
+	int eid = get_enclave_id();
+	struct enclave_t *enclave = NULL;
+
+	pte_t *enclave_root_pt;
+	SM3_STATE hash_ctx;
+	unsigned char salt_local[HASH_SIZE];
+	unsigned char hash[HASH_SIZE];
+
+	if(key_buf_len > HASH_SIZE || salt_len > HASH_SIZE)
+	{
+		printm("[Penglai Monitor@%s] Seal key length or Salt length can't bigger then SM3 Hash size(32)\n", __func__);
+		return -1;
+	}
+	
+	if(check_in_enclave_world() < 0)
+	{
+		printm_err("[Penglai Monitor@%s] check enclave world is failed\n", __func__);
+		return -1;
+	}
+
+	enclave = get_enclave(eid);
+
+	spin_lock(&enclave_metadata_lock);
+
+	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
+	{
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
+		goto out;
+	}
+
+	enclave_root_pt = (pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT);
+	ret = copy_from_enclave(enclave_root_pt, salt_local, (void *)salt_va, salt_len);
+	if(ret != 0)
+	{
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy from enclave\n", __func__);
+		goto out;
+	}
+
+	SM3_init(&hash_ctx);
+	SM3_process(&hash_ctx, (unsigned char*)DEV_PRI_KEY, PRIVATE_KEY_SIZE);
+	SM3_process(&hash_ctx, enclave->hash, HASH_SIZE);
+	SM3_process(&hash_ctx, enclave->signer, HASH_SIZE);
+	SM3_process(&hash_ctx, salt_local, salt_len);
+	SM3_done(&hash_ctx, hash);
+
+	ret = copy_to_enclave(enclave_root_pt, (void *)key_buf_va, hash, key_buf_len);
+	if(ret != 0){
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy to enclave\n", __func__);
+		goto out;
+	}
+
 out:
 	spin_unlock(&enclave_metadata_lock);
 	return ret;
@@ -800,14 +884,15 @@ uintptr_t enclave_user_defined_ocall(uintptr_t* regs, uintptr_t ocall_buf_size)
 	}
 
 	enclave = get_enclave(eid);
+
+	spin_lock(&enclave_metadata_lock);
+
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		ret = -1UL;
 		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
 		goto out;
 	}
-
-	spin_lock(&enclave_metadata_lock);
 
 	uintptr_t ocall_func_id = OCALL_USER_DEFINED;
 	copy_to_host((uintptr_t*)enclave->ocall_func_id, &ocall_func_id, sizeof(uintptr_t));
@@ -843,9 +928,13 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 
 	spin_lock(&enclave_metadata_lock);
 
-	if (enclave->state != RUNNING && enclave->state != RUNNABLE)
-	{
-		printm("[Penglai Monitor@%s]  Enclave(%d) is not runnable\r\n", __func__, eid);
+	/*
+	 * An enclave trapping into monitor should not have other states.
+	 * This is guaranteed by concurrency control for life cycle management。
+	 */
+	if (enclave->state != RUNNING && enclave->state != DESTROYED &&
+		enclave->state != STOPPED) {
+		printm_err("[Penglai Monitor@%s]  Enclave(%d) state is wrong!\r\n", __func__, eid);
 		retval = -1;
 	}
 

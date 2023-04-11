@@ -36,11 +36,11 @@ int create_sbi_param(enclave_t* enclave, struct penglai_enclave_sbi_param * encl
 	enclave_sbi_param -> paddr = paddr;
 	enclave_sbi_param -> size = size;
 	enclave_sbi_param -> entry_point = entry_point;
-	enclave_sbi_param -> untrusted_ptr = untrusted_ptr ;
+	enclave_sbi_param -> untrusted_ptr = untrusted_ptr;
 	enclave_sbi_param -> untrusted_size = untrusted_size;
 	enclave_sbi_param -> free_mem = free_mem;
 	//enclave share mem with kernel
-	enclave_sbi_param->kbuffer = __pa(enclave->kbuffer);
+	enclave_sbi_param->kbuffer = ENCLAVE_DEFAULT_KBUFFER;
 	enclave_sbi_param->kbuffer_size = enclave->kbuffer_size;
 	return 0;
 }
@@ -57,6 +57,7 @@ int alloc_untrusted_mem(unsigned long untrusted_mem_size, unsigned long* untrust
 		printk("KERNEL MODULE: can not alloc untrusted mem \n");
 		return -1;
 	}
+	memset((void*)addr, 0, untrusted_mem_size);
 
 	*untrusted_mem_ptr = addr;
 	map_untrusted_mem(enclave -> enclave_mem, DEFAULT_UNTRUSTED_PTR, __pa(addr), untrusted_mem_size);
@@ -159,7 +160,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	create_sbi_param(enclave, &enclave_sbi_param,
 			(unsigned long)(enclave->enclave_mem->paddr),
-			enclave->enclave_mem->size, elf_entry, __pa(untrusted_mem_ptr),
+			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
 			untrusted_mem_size, __pa(free_mem));
 
 	printk("[Penglai Driver@%s] enclave_mem->paddr:0x%lx, size:0x%lx\n",
