@@ -291,6 +291,7 @@ int Test_Range(big x)
  */
 static void SM2_make_prikey(unsigned char prikey[])
 {
+#ifdef PENGLAI_RANDOM_PRIKEY
 	big x, one, decr_n2;
 	char mem[MR_BIG_RESERVE(3)];
 
@@ -306,6 +307,13 @@ static void SM2_make_prikey(unsigned char prikey[])
 	}while((mr_compare(x, one) < 0) | (mr_compare(x, decr_n2) > 0));
 
 	big_to_bytes(SM2_NUMWORD, x, (char *)prikey, TRUE);
+#else
+	unsigned char dA[32] = {
+		0x39, 0x45, 0x20, 0x8f, 0x7b, 0x21, 0x44, 0xb1, 0x3f, 0x36, 0xe3, 0x8a, 0xc6, 0xd3, 0x9f, 0x95,
+		0x88, 0x93, 0x93, 0x69, 0x28, 0x60, 0xb5, 0x1a, 0x42, 0xfb, 0x81, 0xef, 0x4d, 0xf7, 0xc5, 0xb8};
+
+	sbi_memcpy(prikey, dA, 32);
+#endif
 }
 
 /****************************************************************
