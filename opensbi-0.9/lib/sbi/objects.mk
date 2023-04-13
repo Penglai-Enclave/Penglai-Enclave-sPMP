@@ -64,6 +64,7 @@ libsbi-objs-y += sm/gm/miracl/mrarth3.o
 libsbi-objs-y += sm/gm/miracl/mrjack.o
 libsbi-objs-y += sm/gm/miracl/mrbits.o
 libsbi-objs-y += sm/gm/miracl/mrmonty.o
+libsbi-objs-y += sm/gm/miracl/mrrand.o
 libsbi-objs-y += sm/gm/miracl/mrsroot.o
 libsbi-objs-y += sm/gm/miracl/mrlucas.o
 libsbi-objs-y += sm/gm/SM2_sv.o
