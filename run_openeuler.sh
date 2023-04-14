@@ -11,6 +11,8 @@ qemu-system-riscv64 -nographic -machine virt \
 	-append 'root=/dev/vda1 rw console=ttyS0 systemd.default_timeout_start_sec=600 selinux=0 highres=off mem=4096M earlycon' \
 	-bios none
 
+## For v1.0, use the following path
+	#-kernel  ./opensbi-1.0/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
 
 ## For v0.9, use the following path
 	#-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
