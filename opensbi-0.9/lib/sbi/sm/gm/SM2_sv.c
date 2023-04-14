@@ -36,6 +36,7 @@
 #include <sm/print.h>
 #include <sbi/sbi_string.h>
 #include <sbi/riscv_asm.h>
+#include <sbi/sbi_timer.h>
 
 #define MAX_MESSAGE_SIZE 1024
 
@@ -70,6 +71,10 @@ char g_mem_point[MR_ECP_RESERVE(2)];
 
 static void MIRACL_Init()
 {
+    unsigned long seed;
+
+    seed = sbi_timer_value();
+	printm("Initialize Penglai's random system with seed 0x%lx (sbi_timer_value)\n", seed);
 #ifdef PENGLAI_DEBUG
 	miracl *mip = mirsys(128, 16);
 	printm("MIRACL: pack: %d, nib: %d, big size: %ld, point size: %ld, workspace ptr: %lx\n",
@@ -78,6 +83,7 @@ static void MIRACL_Init()
 #else
 	mirsys(128, 16);
 #endif
+    irand((unsigned int)seed);
 }
 
 /****************************************************************
@@ -280,16 +286,34 @@ int Test_Range(big x)
 	return 0;
 }
 
-/* the private key, a big number lies in[1,n-2]
- * FIX ME: generate a random private key, now it's a fixed plaintext.
+/* 
+ * the private key, a big number lies in[1,n-2]
  */
 static void SM2_make_prikey(unsigned char prikey[])
 {
+#ifdef PENGLAI_RANDOM_PRIKEY
+	big x, one, decr_n2;
+	char mem[MR_BIG_RESERVE(3)];
+
+	sbi_memset(mem, 0, MR_BIG_RESERVE(3));
+	x 		= mirvar_mem(mem, 0);
+	one 	= mirvar_mem(mem, 1);
+	decr_n2 = mirvar_mem(mem, 2);
+
+	convert(1, one);
+	decr(n, 2, decr_n2);
+	do{
+		bigrand(n, x); // generate a big random number 0<=x<n
+	}while((mr_compare(x, one) < 0) | (mr_compare(x, decr_n2) > 0));
+
+	big_to_bytes(SM2_NUMWORD, x, (char *)prikey, TRUE);
+#else
 	unsigned char dA[32] = {
 		0x39, 0x45, 0x20, 0x8f, 0x7b, 0x21, 0x44, 0xb1, 0x3f, 0x36, 0xe3, 0x8a, 0xc6, 0xd3, 0x9f, 0x95,
 		0x88, 0x93, 0x93, 0x69, 0x28, 0x60, 0xb5, 0x1a, 0x42, 0xfb, 0x81, 0xef, 0x4d, 0xf7, 0xc5, 0xb8};
 
 	sbi_memcpy(prikey, dA, 32);
+#endif
 }
 
 /****************************************************************
@@ -360,16 +384,26 @@ int SM2_KeyGeneration(unsigned char PriKey[], unsigned char Px[], unsigned char 
 	return 0;
 }
 
-/* random, a random number K lies in [1,n-1]
- * FIX ME: generate a random number, now function gen_random just generate a fixed number.
+/* 
+ * random, a random number K lies in [1,n-1]
  */
 static void SM2_gen_random(unsigned char rand[])
 {
-	unsigned char temp[32] = {
-		0x59, 0x27, 0x6E, 0x27, 0xD5, 0x06, 0x86, 0x1A, 0x16, 0x68, 0x0F, 0x3A, 0xD9, 0xC0, 0x2D, 0xCC,
-		0xEF, 0x3C, 0xC1, 0xFA, 0x3C, 0xDB, 0xE4, 0xCE, 0x6D, 0x54, 0xB8, 0x0D, 0xEA, 0xC1, 0xBC, 0x21};
-	
-	sbi_memcpy(rand, temp, 32);
+	big x, one, decr_n1;
+	char mem[MR_BIG_RESERVE(3)];
+
+	sbi_memset(mem, 0, MR_BIG_RESERVE(3));
+	x 		= mirvar_mem(mem, 0);
+	one 	= mirvar_mem(mem, 1);
+	decr_n1 = mirvar_mem(mem, 2);
+
+	convert(1, one);
+	decr(n, 1, decr_n1);
+	do{
+		bigrand(n, x); // generate a big random number 0<=x<n
+	}while((mr_compare(x, one) < 0) | (mr_compare(x, decr_n1) > 0));
+
+	big_to_bytes(SM2_NUMWORD, x, (char *)rand, TRUE);
 }
 
 /****************************************************************

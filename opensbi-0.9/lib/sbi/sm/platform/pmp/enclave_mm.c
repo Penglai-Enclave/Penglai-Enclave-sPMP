@@ -139,6 +139,140 @@ static pte_t* walk_enclave_pt(pte_t *enclave_root_pt, uintptr_t vaddr)
 	return &pgdir[get_pt_index(vaddr , level - 1)];
 }
 
+static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
+					int (*check)(uintptr_t, uintptr_t, int))
+{
+	uintptr_t pte_per_page = RISCV_PGSIZE/sizeof(pte_t);
+	pte_t *pte;
+	uintptr_t i = 0;
+
+	//should never happen
+	if(level <= 0)
+		return 1;
+
+	for(pte = ptes, i = 0; i < pte_per_page; pte += 1, i += 1)
+	{
+		if(!(*pte & PTE_V))
+		{
+			continue;
+		}
+
+		uintptr_t curr_va = 0;
+		if(level == ((VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS))
+			curr_va = (uintptr_t)(-1UL << VA_BITS) +
+				(i << (VA_BITS - RISCV_PGLEVEL_BITS));
+		else
+			curr_va = va +
+				(i << ((level-1) * RISCV_PGLEVEL_BITS + RISCV_PGSHIFT));
+		uintptr_t pa = (*pte >> PTE_PPN_SHIFT) << RISCV_PGSHIFT;
+
+		//found leaf pte
+		if ((*pte & PTE_R) || (*pte & PTE_X)) {
+			//4K page
+			if (level == 1) {
+				if (check(curr_va, pa, 1 << RISCV_PGSHIFT) != 0)
+					return -1;
+			}
+			//2M page
+			else if (level == 2) {
+				if (check(curr_va, pa, 1 << (RISCV_PGSHIFT +
+						RISCV_PGLEVEL_BITS)) != 0)
+					return -1;
+			}
+		} else {
+			if (iterate_over_enclave_pages((pte_t *)pa, level - 1,
+							   curr_va, check) != 0)
+				return -1;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * \brief This function check the enclave page table set up by
+ * kernel driver. Check two things:
+ *  1. Enclave's trusted memory pages are mapped to its own secure
+ *	 memory, falling within a pmp region and not out of bound to
+ *	 other enclave's memory.
+ *  2. Untrusted memory and kbuffer are mapped to normal kernel
+ *	 memory that doesn't belong to any existing pmp regions.
+ * 
+ * Note: 
+ *   Need invocate hash_verify() and whitelist_check() first to
+ * guarantee the validness of enclave vaddr and the authenticity
+ * of untrusted memory and kbuffer which were passed by kernel
+ * driver. 
+ *   When SM hash an enclave, it will take into account configuration
+ * parameters such as untrusted memory and kbuffer (each has two
+ * part: a start vaddr in enclave address space and a size).
+ */
+int check_enclave_pt(struct enclave_t *enclave)
+{
+	uintptr_t retval = 0;
+	// umem and kbuffer pointer specified by user may only specify
+	// low-order VA_BITS bits, but without high-order 1s.
+	unsigned long enclave_untrusted_vaddr =
+		(uintptr_t)(-1UL << VA_BITS) | enclave->untrusted_ptr;
+	unsigned long enclave_kbuffer_vaddr =
+		(uintptr_t)(-1UL << VA_BITS) | enclave->kbuffer;
+	unsigned long page_mask = (1 << RISCV_PGSHIFT) - 1;
+
+	// check umem and kbuffer pointer and size, align by page.
+	if ((enclave_untrusted_vaddr & page_mask) != 0 ||
+		(enclave->untrusted_size & page_mask) != 0 ||
+		(enclave_kbuffer_vaddr & page_mask) != 0 ||
+		(enclave->kbuffer_size & page_mask) != 0) {
+		printm_err(
+			"[Penglai Monitor@%s] Error: Enclave untrusted mem or "
+			"kbuffer are not aligned by page.\r\n",
+			__func__);
+		return -1;
+	}
+
+	/* For Debug */
+	printm("Enclave's own secure momery: pa: 0x%lx, size: 0x%lx\r\n",
+		enclave->paddr, enclave->size);
+
+	// check trusted mem, untrusted mem and kbuffer
+	int check_page(uintptr_t va, uintptr_t pa, int page_size)
+	{
+		if (region_contain(enclave_untrusted_vaddr,
+				   enclave->untrusted_size, va, page_size) ||
+			region_contain(enclave_kbuffer_vaddr, enclave->kbuffer_size, va,
+				   page_size)) {
+			if (!data_is_nonsecure(pa, page_size)) {
+				printm_err("Error: untrusted memory pages fall within "
+					"secure region! va: 0x:%lx, pa: 0x%lx, size: 0x%x\r\n",
+					va, pa, page_size);
+				return -1;
+			}
+		} else {
+			if (!region_contain(enclave->paddr, enclave->size, pa,
+						page_size)) {
+				printm_err(
+					"Error: trusted memory pages fall out of enclave's "
+					"own secure momery! va: 0x%lx, pa: 0x%lx, size: 0x%x\r\n",
+					va, pa, page_size);
+				return -1;
+			}
+		}
+
+		return 0;
+	}
+	retval = iterate_over_enclave_pages(
+		(pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT),
+		(VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS, 0, check_page
+	);
+	if(retval != 0){
+		printm_err("[Penglai Monitor@%s] Error: Enclave page table check failed, retval %d.\n",
+			__func__, (int)retval);
+		return -1;
+	}
+
+	return 0;
+}
+
 uintptr_t get_enclave_paddr_from_va(pte_t *enclave_root_pt, uintptr_t vaddr)
 {
 	pte_t *pte = walk_enclave_pt(enclave_root_pt, vaddr);
@@ -294,6 +428,15 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
 	struct pmp_config_t pmp_config;
 	uintptr_t paddr = (uintptr_t)req_paddr;
 
+	pmp_config = get_pmp(pmp_idx);
+	if((pmp_config.mode != PMP_OFF))
+	{
+		printm_err(
+			"grant_kernel_access: can't grant kernel access to a new memory"
+			"region if kernel has already access to another one\r\n");
+		return -1;
+	}
+
 	if(check_mem_size(paddr, size) != 0){
 		printm("[Penglai Monitor@%s] check_mem_size failed\n", __func__);
 		return -1;
@@ -363,12 +506,19 @@ int grant_enclave_access(struct enclave_t* enclave)
 
 	pmp_idx = REGION_TO_PMP(region_idx);
 #if 0
-	pmp_config.paddr = mm_regions[region_idx].paddr;
-	pmp_config.size = mm_regions[region_idx].size;
-#else
-	//this enclave memory region could be less than the mm_region size
 	pmp_config.paddr = enclave->paddr;
 	pmp_config.size = enclave->size;
+#else
+	/* Even if we set this PMP region only contain the enclave's secure memory,
+	 * the enclave still have access to the secure memory of other enclaves,
+	 * which using the same pmp to protect their memory from OS access before.
+	 * That's because the last pmp makes all momery accessible.
+	 * And we rule out this possibility by checking the enclave page table.
+	 *
+	 * So we just make this PMP region readable, writable and executable.
+	 */
+	pmp_config.paddr = mm_regions[region_idx].paddr;
+	pmp_config.size = mm_regions[region_idx].size;
 #endif
 	pmp_config.perm = PMP_R | PMP_W | PMP_X;
 	pmp_config.mode = PMP_A_NAPOT;
@@ -392,7 +542,7 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 {
 	int region_idx = 0;
 	int pmp_idx = 0;
-	//struct pmp_config_t pmp_config;
+	struct pmp_config_t pmp_config;
 
 	//set pmp permission, ensure that enclave's paddr and size is pmp legal
 	//TODO: support multiple memory regions
@@ -425,8 +575,14 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	pmp_idx = REGION_TO_PMP(region_idx);
 
-	// we can simply clear the PMP to retrieve the permission
-	clear_pmp(pmp_idx);
+	// set PMP to protect the entire PMP region
+	pmp_config.paddr = mm_regions[region_idx].paddr;
+	pmp_config.size = mm_regions[region_idx].size;
+	pmp_config.perm = PMP_NO_PERM;
+	pmp_config.mode = PMP_A_NAPOT;
+
+	/* Note: here we only set the PMP regions in local Hart*/
+	set_pmp(pmp_idx, pmp_config);
 
 	return 0;
 }
