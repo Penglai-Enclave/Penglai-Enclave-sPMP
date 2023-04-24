@@ -493,95 +493,101 @@ int penglai_enclave_resume(struct file * filep, unsigned long args)
 	switch(enclave_param->resume_type){
 		case USER_PARAM_RESUME_FROM_CUSTOM_OCALL:
 		{
+			// In the (infinite loop), we do not need to acquire the lock
+			// Situation is like when we handle penglai_enclave_run()
+			release_big_lock(__func__);
+
 			/* Use untrusted mem as in_out_buf*/
 			if((void*)untrusted_mem_ptr != NULL && ocall_buf_size > 0){
 				if(ocall_buf_size > enclave->untrusted_mem->size){
 					printk("KERNEL MODULE: untrusted memory is not big enough \n");
-					retval = -EINVAL;
-					goto out;
+					return -EINVAL;
 				}
 				memset((void*)enclave->untrusted_mem->addr, 0, enclave->untrusted_mem->size);
 				if(copy_from_user((void*)enclave->untrusted_mem->addr, (void*)untrusted_mem_ptr, ocall_buf_size)){
 					retval = -EFAULT;
-					goto out;
+					return -EFAULT;
 				}
 			}
 			ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_OCALL, OCALL_USER_DEFINED);
+			resume_id = enclave->eid;
+
+			while((ret.value == ENCLAVE_TIMER_IRQ) || (ret.value == ENCLAVE_OCALL))
+			{
+				if (ret.value == ENCLAVE_TIMER_IRQ)
+				{
+					schedule();
+					ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_TIMER_IRQ, get_cycles64() + DEFAULT_CLOCK_DELAY);
+				}
+				else
+				{
+					ocall_func_id = enclave->ocall_func_id;
+					switch(ocall_func_id)
+					{
+						case OCALL_SYS_WRITE:
+						{
+							((char*)(enclave->kbuffer))[511] = '\0';
+							printk((void*)(enclave->kbuffer));
+							ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL, OCALL_SYS_WRITE);
+							break;
+						}
+						case OCALL_USER_DEFINED:
+						{
+							ocall_buf_size = enclave->ocall_arg0;
+							if((void*)untrusted_mem_ptr != NULL && ocall_buf_size > 0){
+								if(ocall_buf_size > enclave->untrusted_mem->size){
+									printk("KERNEL MODULE: untrusted memory is not big enough \n");
+									return -EINVAL;
+								}
+								if (copy_to_user((void*)untrusted_mem_ptr, (void*)enclave->untrusted_mem->addr, ocall_buf_size))
+									return -EFAULT;
+							}
+							printk("[Penglai Driver@%s] return user for ocall \n", __func__);
+							return RETURN_USER_FOR_OCALL;
+						}
+						default:
+						{
+							ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL);
+						}
+					}
+				}
+			}
+			/* Use untrusted mem as in_out_buf*/
+			if((void*)untrusted_mem_ptr != NULL && untrusted_mem_size > 0){
+				if (copy_to_user((void*)untrusted_mem_ptr, (void*)enclave->untrusted_mem->addr, untrusted_mem_size))
+					return -EFAULT;
+			}
+
+			acquire_big_lock(__func__);
+			if(ret.error)
+			{
+				printk("KERNEL MODULE: sbi call run enclave is failed \n");
+				retval = -EFAULT;
+			}else{
+				// Make its return look like penglai_enclave_run() return
+				printk("[Penglai Driver@%s] run returned successfully\n", __func__);
+				retval = ret.value;
+			}
+			//free_enclave:
+			destroy_enclave(enclave);
+			enclave_idr_remove(eid);
 			break;
 		}
 		default:
 		{
 			ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_STOP);
+			if (ret.error)
+			{
+				printk("KERNEL MODULE: sbi call resume enclave is failed \n");
+			}
+			retval = ret.value;
 			break;
 		}
 	}
-	resume_id = enclave->eid;
-
-	while((ret.value == ENCLAVE_TIMER_IRQ) || (ret.value == ENCLAVE_OCALL))
-	{
-		if (ret.value == ENCLAVE_TIMER_IRQ)
-		{
-			schedule();
-			ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, enclave->eid, RESUME_FROM_TIMER_IRQ, get_cycles64() + DEFAULT_CLOCK_DELAY);
-		}
-		else
-		{
-			ocall_func_id = enclave->ocall_func_id;
-			switch(ocall_func_id)
-			{
-				case OCALL_SYS_WRITE:
-				{
-					((char*)(enclave->kbuffer))[511] = '\0';
-					printk((void*)(enclave->kbuffer));
-					ret = SBI_CALL_3(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL, OCALL_SYS_WRITE);
-					break;
-				}
-				case OCALL_USER_DEFINED:
-				{
-					ocall_buf_size = enclave->ocall_arg0;
-					if((void*)untrusted_mem_ptr != NULL && ocall_buf_size > 0){
-						if(ocall_buf_size > enclave->untrusted_mem->size){
-							printk("KERNEL MODULE: untrusted memory is not big enough \n");
-							return -EINVAL;
-						}
-						if (copy_to_user((void*)untrusted_mem_ptr, (void*)enclave->untrusted_mem->addr, ocall_buf_size))
-							return -EFAULT;
-					}
-					printk("[Penglai Driver@%s] return user for ocall \n", __func__);
-					return RETURN_USER_FOR_OCALL;
-				}
-				default:
-				{
-					ret = SBI_CALL_2(SBI_SM_RESUME_ENCLAVE, resume_id, RESUME_FROM_OCALL);
-				}
-			}
-		}
-	}
-
-	/* Use untrusted mem as in_out_buf*/
-	if((void*)untrusted_mem_ptr != NULL && untrusted_mem_size > 0){
-		if (copy_to_user((void*)untrusted_mem_ptr, (void*)enclave->untrusted_mem->addr, untrusted_mem_size)){
-			retval = -EINVAL;
-			goto out;
-		}
-	}
-
-	if (ret.error)
-	{
-		printk("KERNEL MODULE: sbi call resume enclave is failed \n");
-	}
-	retval = ret.value;
 
 out:
 	release_big_lock(__func__);
 	return retval;
-
-#if 0
-destroy_enclave:
-	destroy_enclave(enclave);
-	enclave_idr_remove(eid);
-	return -EFAULT;
-#endif
 }
 
 long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long args)
