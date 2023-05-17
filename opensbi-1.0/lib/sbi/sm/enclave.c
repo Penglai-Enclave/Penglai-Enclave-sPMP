@@ -52,9 +52,9 @@ int check_in_enclave_world()
 	return 0;
 }
 
-static int check_enclave_authentication()
+static int check_enclave_authentication(struct enclave_t* enclave)
 {
-	if(platform_check_enclave_authentication() < 0)
+	if(platform_check_enclave_authentication(enclave) < 0)
 		return -1;
 
 	return 0;
