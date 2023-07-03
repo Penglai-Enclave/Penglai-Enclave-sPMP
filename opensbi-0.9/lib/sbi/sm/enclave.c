@@ -325,7 +325,7 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 
 	//mark that cpu is in enclave world now
 	enter_enclave_world(enclave->eid);
-
+	//flush TLB
 	__asm__ __volatile__ ("sfence.vma" : : : "memory");
 
 	return 0;

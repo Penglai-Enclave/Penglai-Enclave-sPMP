@@ -119,7 +119,7 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
 
   void* paddr = (void*)enclave_sbi_param_local.paddr;
   unsigned long size = (unsigned long)enclave_sbi_param_local.size;
-  if(retrieve_kernel_access(paddr, size) != 0)
+  if(retrieve_kernel_access(paddr, size) != 0)//we always allow kernel access the memory now
   {
     mm_free(paddr, size);
     return -1UL;

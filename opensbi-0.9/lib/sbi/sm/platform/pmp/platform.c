@@ -13,7 +13,7 @@ int platform_init()
   //hart will execute this function.
   //clear_pmp(1);
   clear_pmp_and_sync(1);
-
+  printm("[Penglai Monitor@%s] init platfrom and prepare PMP\n", __func__);
   //config the PMP 0 to protect security monitor
   pmp_config.paddr = (uintptr_t)SM_BASE;
   pmp_config.size = (unsigned long)SM_SIZE;

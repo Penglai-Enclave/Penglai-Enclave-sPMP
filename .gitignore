@@ -10,3 +10,16 @@ copy-files/*
 *.hex
 *.swp
 tags
+backup/
+.vscode/
+
+-append
+-bios
+-device
+-drive
+-kernel
+-netdev
+-object
+-smp
+host.txt
+Image

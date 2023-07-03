@@ -102,9 +102,9 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		printk("KERNEL MODULE: calculate elf_size failed\n");
 		return -1;
 	}
-	long stack_size = enclave_param->stack_size;
-	long untrusted_mem_size = enclave_param->untrusted_mem_size;
-	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;
+	long stack_size = enclave_param->stack_size;						//DEFAULT_STACK_SIZE=1MB
+	long untrusted_mem_size = enclave_param->untrusted_mem_size;		//DEFAULT_UNTRUSTED_SIZE=8KB
+	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;	//0
 	unsigned long kbuffer_ptr = ENCLAVE_DEFAULT_KBUFFER;
 	struct penglai_enclave_sbi_param enclave_sbi_param;
 	enclave_t* enclave;
