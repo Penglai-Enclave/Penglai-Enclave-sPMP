@@ -5,6 +5,7 @@
 
 #Build & install directories
 build/
+build-oe/
 install/
 
 # Development friendly files
