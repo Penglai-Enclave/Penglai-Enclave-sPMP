@@ -139,7 +139,7 @@ static pte_t* walk_enclave_pt(pte_t *enclave_root_pt, uintptr_t vaddr)
 	return &pgdir[get_pt_index(vaddr , level - 1)];
 }
 
-static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
+/*static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
 					int (*check)(uintptr_t, uintptr_t, int))
 {
 	uintptr_t pte_per_page = RISCV_PGSIZE/sizeof(pte_t);
@@ -188,6 +188,7 @@ static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
 
 	return 0;
 }
+*/
 
 /**
  * \brief This function check the enclave page table set up by
@@ -260,9 +261,57 @@ int check_enclave_pt(struct enclave_t *enclave)
 
 		return 0;
 	}
+	int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va)
+{
+	uintptr_t pte_per_page = RISCV_PGSIZE/sizeof(pte_t);
+	pte_t *pte;
+	uintptr_t i = 0;
+
+	//should never happen
+	if(level <= 0)
+		return 1;
+
+	for(pte = ptes, i = 0; i < pte_per_page; pte += 1, i += 1)
+	{
+		if(!(*pte & PTE_V))
+		{
+			continue;
+		}
+
+		uintptr_t curr_va = 0;
+		if(level == ((VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS))
+			curr_va = (uintptr_t)(-1UL << VA_BITS) +
+				(i << (VA_BITS - RISCV_PGLEVEL_BITS));
+		else
+			curr_va = va +
+				(i << ((level-1) * RISCV_PGLEVEL_BITS + RISCV_PGSHIFT));
+		uintptr_t pa = (*pte >> PTE_PPN_SHIFT) << RISCV_PGSHIFT;
+
+		//found leaf pte
+		if ((*pte & PTE_R) || (*pte & PTE_X)) {
+			//4K page
+			if (level == 1) {
+				if (check_page(curr_va, pa, 1 << RISCV_PGSHIFT) != 0)
+					return -1;
+			}
+			//2M page
+			else if (level == 2) {
+				if (check_page(curr_va, pa, 1 << (RISCV_PGSHIFT +
+						RISCV_PGLEVEL_BITS)) != 0)
+					return -1;
+			}
+		} else {
+			if (iterate_over_enclave_pages((pte_t *)pa, level - 1,
+							   curr_va) != 0)
+				return -1;
+		}
+	}
+
+	return 0;
+}
 	retval = iterate_over_enclave_pages(
 		(pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT),
-		(VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS, 0, check_page
+		(VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS, 0
 	);
 	if(retval != 0){
 		printm_err("[Penglai Monitor@%s] Error: Enclave page table check failed, retval %d.\n",
@@ -507,7 +556,7 @@ int grant_enclave_access(struct enclave_t* enclave)
 	pmp_idx = REGION_TO_PMP(region_idx);
 #if 0
 	pmp_config.paddr = enclave->paddr;
-	pmp_config.size = enclave->size;
+	pmp_config.size = enclave->size;   
 #else
 	/* Even if we set this PMP region only contain the enclave's secure memory,
 	 * the enclave still have access to the secure memory of other enclaves,
@@ -527,13 +576,13 @@ int grant_enclave_access(struct enclave_t* enclave)
 	set_pmp(pmp_idx, pmp_config);
 
 	/*FIXME: we should handle the case that the PMP region contains larger region */
-	if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){
+	if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){/*
 		printm("[Penglai Monitor@%s] warning, region != enclave mem\n", __func__);
 		printm("[Penglai Monitor@%s] region: paddr(0x%lx) size(0x%lx)\n",
 				__func__, pmp_config.paddr, pmp_config.size);
 		printm("[Penglai Monitor@%s] enclave mem: paddr(0x%lx) size(0x%lx)\n",
 				__func__, enclave->paddr, enclave->size);
-	}
+	*/}
 
 	return 0;
 }
