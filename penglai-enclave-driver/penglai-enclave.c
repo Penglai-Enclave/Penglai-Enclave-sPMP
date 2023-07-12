@@ -50,7 +50,7 @@ enclave_t* create_enclave(int total_pages)
 	enclave_t* enclave = kmalloc(sizeof(enclave_t), GFP_KERNEL);
 	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_KERNEL);
 	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_KERNEL);
-	require_sec_memory_t  require_sec_memory;
+	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_KERNEL);
 
 	int size;
 	struct sbiret ret;
@@ -65,9 +65,17 @@ enclave_t* create_enclave(int total_pages)
 	printk("[Penglai Driver@%s] total_pages:%d order:%ld\n",
 			__func__, total_pages, order);
 	//Note: SBI_SM_ALLOC_ENCLAVE_MEM's arg is the num of bytes instead of pages
-	require_sec_memory.size = total_pages << RISCV_PGSHIFT;
-	ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, __pa(&require_sec_memory));
-	pa = require_sec_memory.paddr;
+	require_sec_memory->size = total_pages << RISCV_PGSHIFT;
+    printk("[Penglai Driver] before printk\n");
+    printk("[Penglai Driver@%s] require_sec_memory va: %lx, pa: %lx, __va(pa): %lx\n",
+			__func__, (unsigned long)require_sec_memory, __pa(require_sec_memory), (unsigned long)__va(__pa(require_sec_memory)));
+    if(is_linear_mapping((unsigned long)require_sec_memory))
+        printk("[Penglai Driver]: va: %lx is linear mapping\n", (unsigned long)require_sec_memory);
+    else
+        printk("[Penglai Driver]: va: %lx is kernel mapping\n", (unsigned long)require_sec_memory);
+    printk("[Penglai Driver] after printk\n");
+	ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, __pa(require_sec_memory));
+	pa = require_sec_memory->paddr;
 
 	if (ret.error){
 		printk("[Penglai SDK Driver Error@%s] alloc_enclave_mem error\n", __func__);
@@ -90,9 +98,9 @@ enclave_t* create_enclave(int total_pages)
 		}
 
 		//FIXME: use physical address
-		//ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, &require_sec_memory);
-		ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, __pa(&require_sec_memory));
-		pa = require_sec_memory.paddr;
+		//ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, require_sec_memory);
+		ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, __pa(require_sec_memory));
+		pa = require_sec_memory->paddr;
 	}
 
 	//if(ret < 0 && ret != ENCLAVE_NO_MEMORY)
@@ -103,11 +111,13 @@ enclave_t* create_enclave(int total_pages)
 	}
 
 	addr = (vaddr_t)__va(pa);
-	size = require_sec_memory.resp_size;
+	size = require_sec_memory->resp_size;
 	INIT_LIST_HEAD(&enclave_mem->free_mem);
 	enclave_mem_int(enclave_mem, addr, size, __pa(addr));
 	enclave->enclave_mem = enclave_mem;
 	enclave->untrusted_mem = untrusted_mem;
+
+    kfree(untrusted_mem);
 
 	//TODO: create untrusted mem
 
@@ -118,6 +128,7 @@ free_enclave:
 	if(enclave) kfree(enclave);
 	if(enclave_mem) kfree(enclave_mem);
 	if(untrusted_mem) kfree(untrusted_mem);
+    if(require_sec_memory) kfree(untrusted_mem);
 
 	return NULL;
 }

@@ -57,6 +57,12 @@ int enclave_ioctl_init(void)
 	}
 
 #if 1
+    printk("[Penglai KModule] before printk\n");
+    printk("[Penglai KModule]: mm_init addr: va: %lx, pa: %lx, __va(pa): %lx\n", addr, __pa(addr), (unsigned long)__va(__pa(addr)));
+    if(is_linear_mapping(addr))
+        printk("[Penglai KModule]: va: %lx is linear mapping\n", addr);
+    else
+        printk("[Penglai KModule]: va: %lx is kernel mapping\n", addr);
 	sbiret = SBI_CALL_2(SBI_SM_INIT, __pa(addr), 1 << (DEFAULT_SECURE_PAGES_ORDER + RISCV_PGSHIFT));
 	ret = sbiret.value;
 	//if(ret < 0)

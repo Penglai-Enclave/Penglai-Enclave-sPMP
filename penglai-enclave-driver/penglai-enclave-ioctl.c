@@ -1,6 +1,8 @@
 #include "penglai-enclave-ioctl.h"
 #include "syscall.h"
 
+#define PAGE_UP(addr)	(((addr)+((PAGE_SIZE)-1))&(~((PAGE_SIZE)-1)))
+
 //now we just acqure a big lock before allocating enclave mem, and release the lock
 //after initializing mem and returning it back to sm
 DEFINE_SPINLOCK(enclave_big_lock);
@@ -95,7 +97,11 @@ int check_eapp_memory_size(long elf_size, long stack_size, long untrusted_mem_si
 int penglai_enclave_create(struct file * filep, unsigned long args)
 {
 	struct penglai_enclave_user_param* enclave_param = (struct penglai_enclave_user_param*)args;
-	void *elf_ptr = (void*)enclave_param->elf_ptr;
+	printk("KERNEL MODULE: enclave_param->elf_ptr: %lx\n", enclave_param->elf_ptr);
+    printk("KERNEL MODULE: enclave_param->stack_size: %lx\n", enclave_param->stack_size);
+    printk("KERNEL MODULE: enclave_param->untrusted_mem_size: %lx\n", enclave_param->untrusted_mem_size);
+    printk("KERNEL MODULE: enclave_param->untrusted_mem_ptr: %lx\n", enclave_param->untrusted_mem_ptr);
+    void *elf_ptr = (void*)enclave_param->elf_ptr;
 	int elf_size = 0;
 	if(penglai_enclave_elfmemsize(elf_ptr, &elf_size) < 0)
 	{
@@ -106,7 +112,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	long untrusted_mem_size = enclave_param->untrusted_mem_size;		//DEFAULT_UNTRUSTED_SIZE=8KB
 	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;	//0
 	unsigned long kbuffer_ptr = ENCLAVE_DEFAULT_KBUFFER;
-	struct penglai_enclave_sbi_param enclave_sbi_param;
+	struct penglai_enclave_sbi_param *enclave_sbi_param = kmalloc(sizeof(struct penglai_enclave_sbi_param), GFP_KERNEL);
 	enclave_t* enclave;
 	unsigned int total_pages = total_enclave_page(elf_size, stack_size);
 	unsigned long free_mem, elf_entry;
@@ -158,7 +164,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	free_mem = get_free_mem(&(enclave->enclave_mem->free_mem));
 
-	create_sbi_param(enclave, &enclave_sbi_param,
+	create_sbi_param(enclave, enclave_sbi_param,
 			(unsigned long)(enclave->enclave_mem->paddr),
 			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
 			untrusted_mem_size, __pa(free_mem));
@@ -167,7 +173,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 			__func__, (unsigned long)(enclave->enclave_mem->paddr),
 			enclave->enclave_mem->size);
 
-	ret = SBI_CALL_1(SBI_SM_CREATE_ENCLAVE, __pa(&enclave_sbi_param));
+	ret = SBI_CALL_1(SBI_SM_CREATE_ENCLAVE, __pa(enclave_sbi_param));
 
 	//if(ret < 0)
 	if(ret.error)
@@ -181,6 +187,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	enclave->is_running = 0; //clear the flag
 
 	release_big_lock(__func__);
+    kfree(enclave_sbi_param);
 
 	return ret.value;
 
@@ -190,6 +197,7 @@ destroy_enclave:
 		destroy_enclave(enclave);
 	}
 	release_big_lock(__func__);
+    if(enclave_sbi_param) kfree(enclave_sbi_param);
 
 	return -EFAULT;
 }
@@ -410,6 +418,7 @@ destroy_enclave:
 int penglai_enclave_attest(struct file * filep, unsigned long args)
 {
 	struct penglai_enclave_ioctl_attest_enclave * enclave_param = (struct penglai_enclave_ioctl_attest_enclave*) args;
+    struct report_t *report = kmalloc(sizeof(struct report_t), GFP_KERNEL);
 	unsigned long eid = enclave_param->eid;
 	enclave_t * enclave;
 	struct sbiret ret = {0};
@@ -424,11 +433,13 @@ int penglai_enclave_attest(struct file * filep, unsigned long args)
 		goto out;
 	}
 
-	ret = SBI_CALL_3(SBI_SM_ATTEST_ENCLAVE, enclave->eid, __pa(&(enclave_param->report)), enclave_param->nonce);
+	ret = SBI_CALL_3(SBI_SM_ATTEST_ENCLAVE, enclave->eid, __pa(report), enclave_param->nonce);
+    enclave_param->report = *report;
 	retval = ret.value;
 
 out:
 	release_big_lock(__func__);
+    kfree(report);
 	return retval;
 }
 
