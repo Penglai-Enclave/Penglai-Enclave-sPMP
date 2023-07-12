@@ -34,7 +34,7 @@ Devices supporting the SDR transmitter interface set the
 device has an Digital to Analog Converter (DAC), which is a mandatory
 element for the SDR transmitter.
 
-At least one of the read/write, streaming or asynchronous I/O methods
+At least one of the read/write or streaming I/O methods
 must be supported.
 
 
@@ -80,7 +80,7 @@ data transfer, set by the driver in order to inform application.
 
 .. c:type:: v4l2_sdr_format
 
-.. tabularcolumns:: |p{4.4cm}|p{4.4cm}|p{8.7cm}|
+.. tabularcolumns:: |p{4.4cm}|p{4.4cm}|p{8.5cm}|
 
 .. flat-table:: struct v4l2_sdr_format
     :header-rows:  0

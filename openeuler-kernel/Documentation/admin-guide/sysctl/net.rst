@@ -31,17 +31,18 @@ see only some of them, depending on your kernel's configuration.
 
 Table : Subdirectories in /proc/sys/net
 
- ========= =================== = ========== ==================
+ ========= =================== = ========== ===================
  Directory Content               Directory  Content
- ========= =================== = ========== ==================
- core      General parameter     appletalk  Appletalk protocol
- unix      Unix domain sockets   netrom     NET/ROM
- 802       E802 protocol         ax25       AX25
- ethernet  Ethernet protocol     rose       X.25 PLP layer
+ ========= =================== = ========== ===================
+ 802       E802 protocol         mptcp      Multipath TCP
+ appletalk Appletalk protocol    netfilter  Network Filter
+ ax25      AX25                  netrom     NET/ROM
+ bridge    Bridging              rose       X.25 PLP layer
+ core      General parameter     tipc       TIPC
+ ethernet  Ethernet protocol     unix       Unix domain sockets
  ipv4      IP version 4          x25        X.25 protocol
- bridge    Bridging              decnet     DEC net
- ipv6      IP version 6          tipc       TIPC
- ========= =================== = ========== ==================
+ ipv6      IP version 6
+ ========= =================== = ========== ===================
 
 1. /proc/sys/net/core - Network core options
 ============================================
@@ -64,6 +65,7 @@ two flavors of JITs, the newer eBPF JIT currently supported on:
   - arm64
   - arm32
   - ppc64
+  - ppc32
   - sparc64
   - mips64
   - s390x
@@ -73,7 +75,6 @@ two flavors of JITs, the newer eBPF JIT currently supported on:
 And the older cBPF JIT supported on the following archs:
 
   - mips
-  - ppc
   - sparc
 
 eBPF JITs are a superset of cBPF JITs, meaning the kernel will
@@ -100,6 +101,9 @@ Values:
 	- 0 - disable JIT hardening (default value)
 	- 1 - enable JIT hardening for unprivileged users only
 	- 2 - enable JIT hardening for all users
+
+where "privileged user" in this context means a process having
+CAP_BPF or CAP_SYS_ADMIN in the root user name space.
 
 bpf_jit_kallsyms
 ----------------
@@ -271,7 +275,7 @@ poll cycle or the number of packets processed reaches netdev_budget.
 netdev_max_backlog
 ------------------
 
-Maximum number  of  packets,  queued  on  the  INPUT  side, when the interface
+Maximum number of packets, queued on the INPUT side, when the interface
 receives packets faster than kernel can process them.
 
 netdev_rss_key
@@ -310,6 +314,25 @@ permit to distribute the load on several cpus.
 
 If set to 1 (default), timestamps are sampled as soon as possible, before
 queueing.
+
+netdev_unregister_timeout_secs
+------------------------------
+
+Unregister network device timeout in seconds.
+This option controls the timeout (in seconds) used to issue a warning while
+waiting for a network device refcount to drop to 0 during device
+unregistration. A lower value may be useful during bisection to detect
+a leaked reference faster. A larger value may be useful to prevent false
+warnings on slow/loaded systems.
+Default value is 10, minimum 1, maximum 3600.
+
+skb_defer_max
+-------------
+
+Max size (in skbs) of the per-cpu list of skbs being freed
+by the cpu which allocated them. Used by TCP stack so far.
+
+Default: 64
 
 optmem_max
 ----------
@@ -353,6 +376,36 @@ settings are forced to inherit from current ones in the netns where this
 new netns has been created.
 
 Default : 0  (for compatibility reasons)
+
+txrehash
+--------
+
+Controls default hash rethink behaviour on listening socket when SO_TXREHASH
+option is set to SOCK_TXREHASH_DEFAULT (i. e. not overridden by setsockopt).
+
+If set to 1 (default), hash rethink is performed on listening socket.
+If set to 0, hash rethink is not performed.
+
+gro_normal_batch
+----------------
+
+Maximum number of the segments to batch up on output of GRO. When a packet
+exits GRO, either as a coalesced superframe or as an original packet which
+GRO has decided not to coalesce, it is placed on a per-NAPI list. This
+list is then passed to the stack when the number of segments reaches the
+gro_normal_batch limit.
+
+high_order_alloc_disable
+------------------------
+
+By default the allocator for page frags tries to use high order pages (order-3
+on x86). While the default behavior gives good results in most cases, some users
+might have hit a contention in page allocations/freeing. This was especially
+true on older kernels (< 5.14) when high-order pages were not stored on per-cpu
+lists. This allows to opt-in for order-0 allocation instead but is now mostly of
+historical importance.
+
+Default: 0
 
 2. /proc/sys/net/unix - Parameters for Unix domain sockets
 ----------------------------------------------------------

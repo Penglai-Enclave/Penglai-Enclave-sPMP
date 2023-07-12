@@ -37,6 +37,15 @@ Primary Nodes, DRM Master and Authentication
 .. kernel-doc:: include/drm/drm_auth.h
    :internal:
 
+
+.. _drm_leasing:
+
+DRM Display Resource Leasing
+============================
+
+.. kernel-doc:: drivers/gpu/drm/drm_lease.c
+   :doc: drm leasing
+
 Open-Source Userspace Requirements
 ==================================
 
@@ -139,7 +148,9 @@ clients together with the legacy drmAuth authentication procedure.
 If a driver advertises render node support, DRM core will create a
 separate render node called renderD<num>. There will be one render node
 per device. No ioctls except PRIME-related ioctls will be allowed on
-this node. Especially GEM_OPEN will be explicitly prohibited. Render
+this node. Especially GEM_OPEN will be explicitly prohibited. For a
+complete list of driver-independent ioctls that can be used on render
+nodes, see the ioctls marked DRM_RENDER_ALLOW in drm_ioctl.c  Render
 nodes are designed to avoid the buffer-leaks, which occur if clients
 guess the flink names or mmap offsets on the legacy interface.
 Additionally to this basic interface, drivers must mark their
@@ -456,6 +467,22 @@ Userspace API Structures
 
 .. kernel-doc:: include/uapi/drm/drm_mode.h
    :doc: overview
+
+.. _crtc_index:
+
+CRTC index
+----------
+
+CRTC's have both an object ID and an index, and they are not the same thing.
+The index is used in cases where a densely packed identifier for a CRTC is
+needed, for instance a bitmask of CRTC's. The member possible_crtcs of struct
+drm_mode_get_plane is an example.
+
+DRM_IOCTL_MODE_GETRESOURCES populates a structure with an array of CRTC ID's,
+and the CRTC index is its position in this array.
+
+.. kernel-doc:: include/uapi/drm/drm.h
+   :internal:
 
 .. kernel-doc:: include/uapi/drm/drm_mode.h
    :internal:

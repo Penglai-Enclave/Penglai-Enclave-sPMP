@@ -41,7 +41,7 @@ Devices supporting the raw VBI capturing or output API set the
 in the ``capabilities`` field of struct
 :c:type:`v4l2_capability` returned by the
 :ref:`VIDIOC_QUERYCAP` ioctl. At least one of the
-read/write, streaming or asynchronous I/O methods must be supported. VBI
+read/write or streaming I/O methods must be supported. VBI
 devices may or may not have a tuner or modulator.
 
 Supplemental Functions
@@ -97,7 +97,7 @@ VBI devices must implement both the :ref:`VIDIOC_G_FMT <VIDIOC_G_FMT>` and
 and always returns default parameters as :ref:`VIDIOC_G_FMT <VIDIOC_G_FMT>` does.
 :ref:`VIDIOC_TRY_FMT <VIDIOC_G_FMT>` is optional.
 
-.. tabularcolumns:: |p{1.6cm}|p{4.2cm}|p{11.7cm}|
+.. tabularcolumns:: |p{1.6cm}|p{4.2cm}|p{11.5cm}|
 
 .. c:type:: v4l2_vbi_format
 
@@ -180,7 +180,7 @@ and always returns default parameters as :ref:`VIDIOC_G_FMT <VIDIOC_G_FMT>` does
       - This array is reserved for future extensions. Drivers and
 	applications must set it to zero.
 
-.. tabularcolumns:: |p{4.4cm}|p{1.5cm}|p{11.6cm}|
+.. tabularcolumns:: |p{4.4cm}|p{1.5cm}|p{11.4cm}|
 
 .. _vbifmt-flags:
 

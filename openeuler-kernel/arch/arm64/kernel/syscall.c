@@ -5,24 +5,26 @@
 #include <linux/errno.h>
 #include <linux/nospec.h>
 #include <linux/ptrace.h>
+#include <linux/randomize_kstack.h>
 #include <linux/syscalls.h>
 
 #include <asm/daifflags.h>
 #include <asm/debug-monitors.h>
+#include <asm/exception.h>
 #include <asm/fpsimd.h>
 #include <asm/syscall.h>
 #include <asm/thread_info.h>
 #include <asm/unistd.h>
 
-long a32_arm_syscall(struct pt_regs *regs, int scno);
+long compat_arm_syscall(struct pt_regs *regs, int scno);
 long sys_ni_syscall(void);
 
 static long do_ni_syscall(struct pt_regs *regs, int scno)
 {
-#ifdef CONFIG_AARCH32_EL0
+#ifdef CONFIG_COMPAT
 	long ret;
-	if (is_a32_compat_task()) {
-		ret = a32_arm_syscall(regs, scno);
+	if (is_compat_task()) {
+		ret = compat_arm_syscall(regs, scno);
 		if (ret != -ENOSYS)
 			return ret;
 	}
@@ -42,6 +44,8 @@ static void invoke_syscall(struct pt_regs *regs, unsigned int scno,
 {
 	long ret;
 
+	add_random_kstack_offset();
+
 	if (scno < sc_nr) {
 		syscall_fn_t syscall_fn;
 		syscall_fn = syscall_table[array_index_nospec(scno, sc_nr)];
@@ -50,10 +54,20 @@ static void invoke_syscall(struct pt_regs *regs, unsigned int scno,
 		ret = do_ni_syscall(regs, scno);
 	}
 
-	if (is_a32_compat_task())
-		ret = lower_32_bits(ret);
+	syscall_set_return_value(current, regs, 0, ret);
 
-	regs->regs[0] = ret;
+	/*
+	 * Ultimately, this value will get limited by KSTACK_OFFSET_MAX(),
+	 * but not enough for arm64 stack utilization comfort. To keep
+	 * reasonable stack head room, reduce the maximum offset to 9 bits.
+	 *
+	 * The actual entropy will be further reduced by the compiler when
+	 * applying stack alignment constraints: the AAPCS mandates a
+	 * 16-byte (i.e. 4-bit) aligned SP at function boundaries.
+	 *
+	 * The resulting 5 bits of entropy is seen in SP[8:4].
+	 */
+	choose_random_kstack_offset(get_random_u16() & 0x1FF);
 }
 
 static inline bool has_syscall_work(unsigned long flags)
@@ -64,39 +78,10 @@ static inline bool has_syscall_work(unsigned long flags)
 int syscall_trace_enter(struct pt_regs *regs);
 void syscall_trace_exit(struct pt_regs *regs);
 
-#ifdef CONFIG_ARM64_ERRATUM_1463225
-DECLARE_PER_CPU(int, __in_cortex_a76_erratum_1463225_wa);
-
-static void cortex_a76_erratum_1463225_svc_handler(void)
-{
-	u32 reg, val;
-
-	if (!unlikely(test_thread_flag(TIF_SINGLESTEP)))
-		return;
-
-	if (!unlikely(this_cpu_has_cap(ARM64_WORKAROUND_1463225)))
-		return;
-
-	__this_cpu_write(__in_cortex_a76_erratum_1463225_wa, 1);
-	reg = read_sysreg(mdscr_el1);
-	val = reg | DBG_MDSCR_SS | DBG_MDSCR_KDE;
-	write_sysreg(val, mdscr_el1);
-	asm volatile("msr daifclr, #8");
-	isb();
-
-	/* We will have taken a single-step exception by this point */
-
-	write_sysreg(reg, mdscr_el1);
-	__this_cpu_write(__in_cortex_a76_erratum_1463225_wa, 0);
-}
-#else
-static void cortex_a76_erratum_1463225_svc_handler(void) { }
-#endif /* CONFIG_ARM64_ERRATUM_1463225 */
-
 static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 			   const syscall_fn_t syscall_table[])
 {
-	unsigned long flags = current_thread_info()->flags;
+	unsigned long flags = read_thread_flags();
 
 	regs->orig_x0 = regs->regs[0];
 	regs->syscallno = scno;
@@ -119,16 +104,15 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 	 * (Similarly for HVC and SMC elsewhere.)
 	 */
 
-	cortex_a76_erratum_1463225_svc_handler();
 	local_daif_restore(DAIF_PROCCTX);
 
-	if (system_supports_mte() && (flags & _TIF_MTE_ASYNC_FAULT)) {
+	if (flags & _TIF_MTE_ASYNC_FAULT) {
 		/*
 		 * Process the asynchronous tag check fault before the actual
 		 * syscall. do_notify_resume() will send a signal to userspace
 		 * before the syscall is restarted.
 		 */
-		regs->regs[0] = -ERESTARTNOINTR;
+		syscall_set_return_value(current, regs, -ERESTARTNOINTR, 0);
 		return;
 	}
 
@@ -149,7 +133,7 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 		 * anyway.
 		 */
 		if (scno == NO_SYSCALL)
-			regs->regs[0] = -ENOSYS;
+			syscall_set_return_value(current, regs, -ENOSYS, 0);
 		scno = syscall_trace_enter(regs);
 		if (scno == NO_SYSCALL)
 			goto trace_exit;
@@ -164,7 +148,7 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 	 */
 	if (!has_syscall_work(flags) && !IS_ENABLED(CONFIG_DEBUG_RSEQ)) {
 		local_daif_mask();
-		flags = current_thread_info()->flags;
+		flags = read_thread_flags();
 		if (!has_syscall_work(flags) && !(flags & _TIF_SINGLESTEP))
 			return;
 		local_daif_restore(DAIF_PROCCTX);
@@ -174,11 +158,36 @@ trace_exit:
 	syscall_trace_exit(regs);
 }
 
-static inline void sve_user_discard(void)
+/*
+ * As per the ABI exit SME streaming mode and clear the SVE state not
+ * shared with FPSIMD on syscall entry.
+ */
+static inline void fp_user_discard(void)
 {
+	/*
+	 * If SME is active then exit streaming mode.  If ZA is active
+	 * then flush the SVE registers but leave userspace access to
+	 * both SVE and SME enabled, otherwise disable SME for the
+	 * task and fall through to disabling SVE too.  This means
+	 * that after a syscall we never have any streaming mode
+	 * register state to track, if this changes the KVM code will
+	 * need updating.
+	 */
+	if (system_supports_sme() && test_thread_flag(TIF_SME)) {
+		u64 svcr = read_sysreg_s(SYS_SVCR);
+
+		if (svcr & SVCR_SM_MASK)
+			sme_smstop_sm();
+	}
+
 	if (!system_supports_sve())
 		return;
 
+	/*
+	 * If SME is not active then disable SVE, the registers will
+	 * be cleared when userspace next attempts to access them and
+	 * we do not need to track the SVE register state until then.
+	 */
 	clear_thread_flag(TIF_SVE);
 
 	/*
@@ -191,39 +200,16 @@ static inline void sve_user_discard(void)
 	sve_user_disable();
 }
 
-#ifdef CONFIG_ARM64_ILP32
-static inline void delouse_pt_regs(struct pt_regs *regs)
-{
-	regs->regs[0] &= UINT_MAX;
-	regs->regs[1] &= UINT_MAX;
-	regs->regs[2] &= UINT_MAX;
-	regs->regs[3] &= UINT_MAX;
-	regs->regs[4] &= UINT_MAX;
-	regs->regs[5] &= UINT_MAX;
-	regs->regs[6] &= UINT_MAX;
-	regs->regs[7] &= UINT_MAX;
-}
-#endif
-
 void do_el0_svc(struct pt_regs *regs)
 {
-	const syscall_fn_t *t = sys_call_table;
-
-#ifdef CONFIG_ARM64_ILP32
-	if (is_ilp32_compat_task()) {
-		t = ilp32_sys_call_table;
-		delouse_pt_regs(regs);
-	}
-#endif
-
-	sve_user_discard();
-	el0_svc_common(regs, regs->regs[8], __NR_syscalls, t);
+	fp_user_discard();
+	el0_svc_common(regs, regs->regs[8], __NR_syscalls, sys_call_table);
 }
 
-#ifdef CONFIG_AARCH32_EL0
+#ifdef CONFIG_COMPAT
 void do_el0_svc_compat(struct pt_regs *regs)
 {
 	el0_svc_common(regs, regs->regs[7], __NR_compat_syscalls,
-		       a32_sys_call_table);
+		       compat_sys_call_table);
 }
 #endif

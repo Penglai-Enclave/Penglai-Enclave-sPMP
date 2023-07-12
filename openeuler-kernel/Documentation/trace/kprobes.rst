@@ -131,8 +131,7 @@ For example, if the function is non-recursive and is called with a
 spinlock held, maxactive = 1 should be enough.  If the function is
 non-recursive and can never relinquish the CPU (e.g., via a semaphore
 or preemption), NR_CPUS should be enough.  If maxactive <= 0, it is
-set to a default value.  If CONFIG_PREEMPT is enabled, the default
-is max(10, 2*NR_CPUS).  Otherwise, the default is NR_CPUS.
+set to a default value: max(10, 2*NR_CPUS).
 
 It's not a disaster if you set maxactive too low; you'll just miss
 some probes.  In the kretprobe struct, the nmissed field is set to
@@ -328,8 +327,8 @@ Configuring Kprobes
 ===================
 
 When configuring the kernel using make menuconfig/xconfig/oldconfig,
-ensure that CONFIG_KPROBES is set to "y". Under "General setup", look
-for "Kprobes".
+ensure that CONFIG_KPROBES is set to "y", look for "Kprobes" under
+"General architecture-dependent options".
 
 So that you can load and unload Kprobes-based instrumentation modules,
 make sure "Loadable module support" (CONFIG_MODULES) and "Module
@@ -362,14 +361,11 @@ register_kprobe
 	#include <linux/kprobes.h>
 	int register_kprobe(struct kprobe *kp);
 
-Sets a breakpoint at the address kp->addr.  When the breakpoint is
-hit, Kprobes calls kp->pre_handler.  After the probed instruction
-is single-stepped, Kprobe calls kp->post_handler.  If a fault
-occurs during execution of kp->pre_handler or kp->post_handler,
-or during single-stepping of the probed instruction, Kprobes calls
-kp->fault_handler.  Any or all handlers can be NULL. If kp->flags
-is set KPROBE_FLAG_DISABLED, that kp will be registered but disabled,
-so, its handlers aren't hit until calling enable_kprobe(kp).
+Sets a breakpoint at the address kp->addr.  When the breakpoint is hit, Kprobes
+calls kp->pre_handler.  After the probed instruction is single-stepped, Kprobe
+calls kp->post_handler.  Any or all handlers can be NULL. If kp->flags is set
+KPROBE_FLAG_DISABLED, that kp will be registered but disabled, so, its handlers
+aren't hit until calling enable_kprobe(kp).
 
 .. note::
 
@@ -414,17 +410,6 @@ User's post-handler (kp->post_handler)::
 
 p and regs are as described for the pre_handler.  flags always seems
 to be zero.
-
-User's fault-handler (kp->fault_handler)::
-
-	#include <linux/kprobes.h>
-	#include <linux/ptrace.h>
-	int fault_handler(struct kprobe *p, struct pt_regs *regs, int trapnr);
-
-p and regs are as described for the pre_handler.  trapnr is the
-architecture-specific trap number associated with the fault (e.g.,
-on i386, 13 for a general protection fault or 14 for a page fault).
-Returns 1 if it successfully handled the exception.
 
 register_kretprobe
 ------------------
@@ -798,6 +783,6 @@ References
 
 For additional information on Kprobes, refer to the following URLs:
 
-- https://www.ibm.com/developerworks/library/l-kprobes/index.html
+- https://lwn.net/Articles/132196/
 - https://www.kernel.org/doc/ols/2006/ols2006v2-pages-109-124.pdf
 

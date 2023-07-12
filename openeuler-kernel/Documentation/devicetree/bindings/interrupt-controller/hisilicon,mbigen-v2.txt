@@ -10,7 +10,7 @@ Hisilicon designed mbigen to collect and generate interrupt.
 
 
 Non-pci devices can connect to mbigen and generate the
-interrupt by writing GICD or ITS register.
+interrupt by writing ITS register.
 
 The mbigen chip and devices connect to mbigen have the following properties:
 
@@ -64,13 +64,6 @@ Examples:
 				num-pins = <2>;
 				#interrupt-cells = <2>;
 			};
-
-			mbigen_spi_example:spi_example {
-				interrupt-controller;
-				msi-parent = <&gic>;
-				num-pins = <2>;
-				#interrupt-cells = <2>;
-			};
 	};
 
 Devices connect to mbigen required properties:
@@ -88,12 +81,4 @@ Examples:
 		interrupt-parent  = <&mbigen_device_gmac>;
 		interrupts =	<656 1>,
 				<657 1>;
-	};
-
-	spi_example: spi0@0 {
-		compatible = "spi,example";
-		reg = <0 0 0 0>;
-		interrupt-parent = <&mbigen_spi_example>;
-		interrupts = <13 4>,
-			     <14 4>;
 	};

@@ -34,6 +34,8 @@
 #include <linux/random.h>
 #include <linux/stackprotector.h>
 #include <linux/pgtable.h>
+#include <linux/clockchips.h>
+#include <linux/kexec.h>
 
 #include <asm/ptrace.h>
 #include <linux/atomic.h>
@@ -42,7 +44,6 @@
 #include <asm/kvm_ppc.h>
 #include <asm/dbell.h>
 #include <asm/page.h>
-#include <asm/prom.h>
 #include <asm/smp.h>
 #include <asm/time.h>
 #include <asm/machdep.h>
@@ -55,11 +56,10 @@
 #endif
 #include <asm/vdso.h>
 #include <asm/debug.h>
-#include <asm/kexec.h>
-#include <asm/asm-prototypes.h>
 #include <asm/cpu_has_feature.h>
 #include <asm/ftrace.h>
 #include <asm/kup.h>
+#include <asm/fadump.h>
 
 #ifdef DEBUG
 #include <asm/udbg.h>
@@ -76,12 +76,14 @@ static DEFINE_PER_CPU(int, cpu_state) = { 0 };
 struct task_struct *secondary_current;
 bool has_big_cores;
 bool coregroup_enabled;
+bool thread_group_shares_l2;
+bool thread_group_shares_l3;
 
 DEFINE_PER_CPU(cpumask_var_t, cpu_sibling_map);
 DEFINE_PER_CPU(cpumask_var_t, cpu_smallcore_map);
 DEFINE_PER_CPU(cpumask_var_t, cpu_l2_cache_map);
 DEFINE_PER_CPU(cpumask_var_t, cpu_core_map);
-DEFINE_PER_CPU(cpumask_var_t, cpu_coregroup_map);
+static DEFINE_PER_CPU(cpumask_var_t, cpu_coregroup_map);
 
 EXPORT_PER_CPU_SYMBOL(cpu_sibling_map);
 EXPORT_PER_CPU_SYMBOL(cpu_l2_cache_map);
@@ -99,6 +101,7 @@ enum {
 
 #define MAX_THREAD_LIST_SIZE	8
 #define THREAD_GROUP_SHARE_L1   1
+#define THREAD_GROUP_SHARE_L2_L3 2
 struct thread_groups {
 	unsigned int property;
 	unsigned int nr_groups;
@@ -106,11 +109,33 @@ struct thread_groups {
 	unsigned int thread_list[MAX_THREAD_LIST_SIZE];
 };
 
+/* Maximum number of properties that groups of threads within a core can share */
+#define MAX_THREAD_GROUP_PROPERTIES 2
+
+struct thread_groups_list {
+	unsigned int nr_properties;
+	struct thread_groups property_tgs[MAX_THREAD_GROUP_PROPERTIES];
+};
+
+static struct thread_groups_list tgl[NR_CPUS] __initdata;
 /*
- * On big-cores system, cpu_l1_cache_map for each CPU corresponds to
+ * On big-cores system, thread_group_l1_cache_map for each CPU corresponds to
  * the set its siblings that share the L1-cache.
  */
-DEFINE_PER_CPU(cpumask_var_t, cpu_l1_cache_map);
+DEFINE_PER_CPU(cpumask_var_t, thread_group_l1_cache_map);
+
+/*
+ * On some big-cores system, thread_group_l2_cache_map for each CPU
+ * corresponds to the set its siblings within the core that share the
+ * L2-cache.
+ */
+DEFINE_PER_CPU(cpumask_var_t, thread_group_l2_cache_map);
+
+/*
+ * On P10, thread_group_l3_cache_map for each CPU is equal to the
+ * thread_group_l2_cache_map
+ */
+DEFINE_PER_CPU(cpumask_var_t, thread_group_l3_cache_map);
 
 /* SMP operations for this machine */
 struct smp_ops_t *smp_ops;
@@ -386,32 +411,32 @@ static struct cpumask nmi_ipi_pending_mask;
 static bool nmi_ipi_busy = false;
 static void (*nmi_ipi_function)(struct pt_regs *) = NULL;
 
-static void nmi_ipi_lock_start(unsigned long *flags)
+noinstr static void nmi_ipi_lock_start(unsigned long *flags)
 {
 	raw_local_irq_save(*flags);
 	hard_irq_disable();
-	while (atomic_cmpxchg(&__nmi_ipi_lock, 0, 1) == 1) {
+	while (arch_atomic_cmpxchg(&__nmi_ipi_lock, 0, 1) == 1) {
 		raw_local_irq_restore(*flags);
-		spin_until_cond(atomic_read(&__nmi_ipi_lock) == 0);
+		spin_until_cond(arch_atomic_read(&__nmi_ipi_lock) == 0);
 		raw_local_irq_save(*flags);
 		hard_irq_disable();
 	}
 }
 
-static void nmi_ipi_lock(void)
+noinstr static void nmi_ipi_lock(void)
 {
-	while (atomic_cmpxchg(&__nmi_ipi_lock, 0, 1) == 1)
-		spin_until_cond(atomic_read(&__nmi_ipi_lock) == 0);
+	while (arch_atomic_cmpxchg(&__nmi_ipi_lock, 0, 1) == 1)
+		spin_until_cond(arch_atomic_read(&__nmi_ipi_lock) == 0);
 }
 
-static void nmi_ipi_unlock(void)
+noinstr static void nmi_ipi_unlock(void)
 {
 	smp_mb();
-	WARN_ON(atomic_read(&__nmi_ipi_lock) != 1);
-	atomic_set(&__nmi_ipi_lock, 0);
+	WARN_ON(arch_atomic_read(&__nmi_ipi_lock) != 1);
+	arch_atomic_set(&__nmi_ipi_lock, 0);
 }
 
-static void nmi_ipi_unlock_end(unsigned long *flags)
+noinstr static void nmi_ipi_unlock_end(unsigned long *flags)
 {
 	nmi_ipi_unlock();
 	raw_local_irq_restore(*flags);
@@ -420,7 +445,7 @@ static void nmi_ipi_unlock_end(unsigned long *flags)
 /*
  * Platform NMI handler calls this to ack
  */
-int smp_handle_nmi_ipi(struct pt_regs *regs)
+noinstr int smp_handle_nmi_ipi(struct pt_regs *regs)
 {
 	void (*fn)(struct pt_regs *) = NULL;
 	unsigned long flags;
@@ -558,7 +583,7 @@ void tick_broadcast(const struct cpumask *mask)
 #endif
 
 #ifdef CONFIG_DEBUGGER
-void debugger_ipi_callback(struct pt_regs *regs)
+static void debugger_ipi_callback(struct pt_regs *regs)
 {
 	debugger_ipi(regs);
 }
@@ -594,12 +619,42 @@ void crash_send_ipi(void (*crash_ipi_callback)(struct pt_regs *))
 }
 #endif
 
+void crash_smp_send_stop(void)
+{
+	static bool stopped = false;
+
+	/*
+	 * In case of fadump, register data for all CPUs is captured by f/w
+	 * on ibm,os-term rtas call. Skip IPI callbacks to other CPUs before
+	 * this rtas call to avoid tricky post processing of those CPUs'
+	 * backtraces.
+	 */
+	if (should_fadump_crash())
+		return;
+
+	if (stopped)
+		return;
+
+	stopped = true;
+
+#ifdef CONFIG_KEXEC_CORE
+	if (kexec_crash_image) {
+		crash_kexec_prepare();
+		return;
+	}
+#endif
+
+	smp_send_stop();
+}
+
 #ifdef CONFIG_NMI_IPI
 static void nmi_stop_this_cpu(struct pt_regs *regs)
 {
 	/*
 	 * IRQs are already hard disabled by the smp_handle_nmi_ipi.
 	 */
+	set_cpu_online(smp_processor_id(), false);
+
 	spin_begin();
 	while (1)
 		spin_cpu_relax();
@@ -615,6 +670,15 @@ void smp_send_stop(void)
 static void stop_this_cpu(void *dummy)
 {
 	hard_irq_disable();
+
+	/*
+	 * Offlining CPUs in stop_this_cpu can result in scheduler warnings,
+	 * (see commit de6e5d38417e), but printk_safe_flush_on_panic() wants
+	 * to know other CPUs are offline before it breaks locks to flush
+	 * printk buffers, in case we panic()ed while holding the lock.
+	 */
+	set_cpu_online(smp_processor_id(), false);
+
 	spin_begin();
 	while (1)
 		spin_cpu_relax();
@@ -639,12 +703,12 @@ void smp_send_stop(void)
 }
 #endif /* CONFIG_NMI_IPI */
 
-struct task_struct *current_set[NR_CPUS];
+static struct task_struct *current_set[NR_CPUS];
 
 static void smp_store_cpu_info(int id)
 {
 	per_cpu(cpu_pvr, id) = mfspr(SPRN_PVR);
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	per_cpu(next_tlbcam_idx, id)
 		= (mfspr(SPRN_TLB1CFG) & TLBnCFG_N_ENTRY) - 1;
 #endif
@@ -695,81 +759,100 @@ static void or_cpumasks_related(int i, int j, struct cpumask *(*srcmask)(int),
 /*
  * parse_thread_groups: Parses the "ibm,thread-groups" device tree
  *                      property for the CPU device node @dn and stores
- *                      the parsed output in the thread_groups
- *                      structure @tg if the ibm,thread-groups[0]
- *                      matches @property.
+ *                      the parsed output in the thread_groups_list
+ *                      structure @tglp.
  *
  * @dn: The device node of the CPU device.
- * @tg: Pointer to a thread group structure into which the parsed
+ * @tglp: Pointer to a thread group list structure into which the parsed
  *      output of "ibm,thread-groups" is stored.
- * @property: The property of the thread-group that the caller is
- *            interested in.
  *
  * ibm,thread-groups[0..N-1] array defines which group of threads in
  * the CPU-device node can be grouped together based on the property.
  *
- * ibm,thread-groups[0] tells us the property based on which the
+ * This array can represent thread groupings for multiple properties.
+ *
+ * ibm,thread-groups[i + 0] tells us the property based on which the
  * threads are being grouped together. If this value is 1, it implies
- * that the threads in the same group share L1, translation cache.
+ * that the threads in the same group share L1, translation cache. If
+ * the value is 2, it implies that the threads in the same group share
+ * the same L2 cache.
  *
- * ibm,thread-groups[1] tells us how many such thread groups exist.
+ * ibm,thread-groups[i+1] tells us how many such thread groups exist for the
+ * property ibm,thread-groups[i]
  *
- * ibm,thread-groups[2] tells us the number of threads in each such
+ * ibm,thread-groups[i+2] tells us the number of threads in each such
  * group.
+ * Suppose k = (ibm,thread-groups[i+1] * ibm,thread-groups[i+2]), then,
  *
- * ibm,thread-groups[3..N-1] is the list of threads identified by
+ * ibm,thread-groups[i+3..i+k+2] (is the list of threads identified by
  * "ibm,ppc-interrupt-server#s" arranged as per their membership in
  * the grouping.
  *
- * Example: If ibm,thread-groups = [1,2,4,5,6,7,8,9,10,11,12] it
- * implies that there are 2 groups of 4 threads each, where each group
- * of threads share L1, translation cache.
+ * Example:
+ * If "ibm,thread-groups" = [1,2,4,8,10,12,14,9,11,13,15,2,2,4,8,10,12,14,9,11,13,15]
+ * This can be decomposed up into two consecutive arrays:
+ * a) [1,2,4,8,10,12,14,9,11,13,15]
+ * b) [2,2,4,8,10,12,14,9,11,13,15]
  *
- * The "ibm,ppc-interrupt-server#s" of the first group is {5,6,7,8}
- * and the "ibm,ppc-interrupt-server#s" of the second group is {9, 10,
- * 11, 12} structure
+ * where in,
+ *
+ * a) provides information of Property "1" being shared by "2" groups,
+ *  each with "4" threads each. The "ibm,ppc-interrupt-server#s" of
+ *  the first group is {8,10,12,14} and the
+ *  "ibm,ppc-interrupt-server#s" of the second group is
+ *  {9,11,13,15}. Property "1" is indicative of the thread in the
+ *  group sharing L1 cache, translation cache and Instruction Data
+ *  flow.
+ *
+ * b) provides information of Property "2" being shared by "2" groups,
+ *  each group with "4" threads. The "ibm,ppc-interrupt-server#s" of
+ *  the first group is {8,10,12,14} and the
+ *  "ibm,ppc-interrupt-server#s" of the second group is
+ *  {9,11,13,15}. Property "2" indicates that the threads in each
+ *  group share the L2-cache.
  *
  * Returns 0 on success, -EINVAL if the property does not exist,
  * -ENODATA if property does not have a value, and -EOVERFLOW if the
  * property data isn't large enough.
  */
 static int parse_thread_groups(struct device_node *dn,
-			       struct thread_groups *tg,
-			       unsigned int property)
+			       struct thread_groups_list *tglp)
 {
-	int i;
-	u32 thread_group_array[3 + MAX_THREAD_LIST_SIZE];
-	u32 *thread_list;
+	unsigned int property_idx = 0;
+	u32 *thread_group_array;
 	size_t total_threads;
-	int ret;
+	int ret = 0, count;
+	u32 *thread_list;
+	int i = 0;
 
+	count = of_property_count_u32_elems(dn, "ibm,thread-groups");
+	thread_group_array = kcalloc(count, sizeof(u32), GFP_KERNEL);
 	ret = of_property_read_u32_array(dn, "ibm,thread-groups",
-					 thread_group_array, 3);
+					 thread_group_array, count);
 	if (ret)
-		return ret;
+		goto out_free;
 
-	tg->property = thread_group_array[0];
-	tg->nr_groups = thread_group_array[1];
-	tg->threads_per_group = thread_group_array[2];
-	if (tg->property != property ||
-	    tg->nr_groups < 1 ||
-	    tg->threads_per_group < 1)
-		return -ENODATA;
+	while (i < count && property_idx < MAX_THREAD_GROUP_PROPERTIES) {
+		int j;
+		struct thread_groups *tg = &tglp->property_tgs[property_idx++];
 
-	total_threads = tg->nr_groups * tg->threads_per_group;
+		tg->property = thread_group_array[i];
+		tg->nr_groups = thread_group_array[i + 1];
+		tg->threads_per_group = thread_group_array[i + 2];
+		total_threads = tg->nr_groups * tg->threads_per_group;
 
-	ret = of_property_read_u32_array(dn, "ibm,thread-groups",
-					 thread_group_array,
-					 3 + total_threads);
-	if (ret)
-		return ret;
+		thread_list = &thread_group_array[i + 3];
 
-	thread_list = &thread_group_array[3];
+		for (j = 0; j < total_threads; j++)
+			tg->thread_list[j] = thread_list[j];
+		i = i + 3 + total_threads;
+	}
 
-	for (i = 0 ; i < total_threads; i++)
-		tg->thread_list[i] = thread_list[i];
+	tglp->nr_properties = property_idx;
 
-	return 0;
+out_free:
+	kfree(thread_group_array);
+	return ret;
 }
 
 /*
@@ -780,7 +863,7 @@ static int parse_thread_groups(struct device_node *dn,
  * @tg : The thread-group structure of the CPU node which @cpu belongs
  *       to.
  *
- * Returns the index to tg->thread_list that points to the the start
+ * Returns the index to tg->thread_list that points to the start
  * of the thread_group that @cpu belongs to.
  *
  * Returns -1 if cpu doesn't belong to any of the groups pointed to by
@@ -805,50 +888,100 @@ static int get_cpu_thread_group_start(int cpu, struct thread_groups *tg)
 	return -1;
 }
 
-static int init_cpu_l1_cache_map(int cpu)
-
+static struct thread_groups *__init get_thread_groups(int cpu,
+						      int group_property,
+						      int *err)
 {
 	struct device_node *dn = of_get_cpu_node(cpu, NULL);
-	struct thread_groups tg = {.property = 0,
-				   .nr_groups = 0,
-				   .threads_per_group = 0};
-	int first_thread = cpu_first_thread_sibling(cpu);
-	int i, cpu_group_start = -1, err = 0;
+	struct thread_groups_list *cpu_tgl = &tgl[cpu];
+	struct thread_groups *tg = NULL;
+	int i;
+	*err = 0;
 
-	if (!dn)
-		return -ENODATA;
-
-	err = parse_thread_groups(dn, &tg, THREAD_GROUP_SHARE_L1);
-	if (err)
-		goto out;
-
-	cpu_group_start = get_cpu_thread_group_start(cpu, &tg);
-
-	if (unlikely(cpu_group_start == -1)) {
-		WARN_ON_ONCE(1);
-		err = -ENODATA;
-		goto out;
+	if (!dn) {
+		*err = -ENODATA;
+		return NULL;
 	}
 
-	zalloc_cpumask_var_node(&per_cpu(cpu_l1_cache_map, cpu),
-				GFP_KERNEL, cpu_to_node(cpu));
+	if (!cpu_tgl->nr_properties) {
+		*err = parse_thread_groups(dn, cpu_tgl);
+		if (*err)
+			goto out;
+	}
+
+	for (i = 0; i < cpu_tgl->nr_properties; i++) {
+		if (cpu_tgl->property_tgs[i].property == group_property) {
+			tg = &cpu_tgl->property_tgs[i];
+			break;
+		}
+	}
+
+	if (!tg)
+		*err = -EINVAL;
+out:
+	of_node_put(dn);
+	return tg;
+}
+
+static int __init update_mask_from_threadgroup(cpumask_var_t *mask, struct thread_groups *tg,
+					       int cpu, int cpu_group_start)
+{
+	int first_thread = cpu_first_thread_sibling(cpu);
+	int i;
+
+	zalloc_cpumask_var_node(mask, GFP_KERNEL, cpu_to_node(cpu));
 
 	for (i = first_thread; i < first_thread + threads_per_core; i++) {
-		int i_group_start = get_cpu_thread_group_start(i, &tg);
+		int i_group_start = get_cpu_thread_group_start(i, tg);
 
 		if (unlikely(i_group_start == -1)) {
 			WARN_ON_ONCE(1);
-			err = -ENODATA;
-			goto out;
+			return -ENODATA;
 		}
 
 		if (i_group_start == cpu_group_start)
-			cpumask_set_cpu(i, per_cpu(cpu_l1_cache_map, cpu));
+			cpumask_set_cpu(i, *mask);
 	}
 
-out:
-	of_node_put(dn);
-	return err;
+	return 0;
+}
+
+static int __init init_thread_group_cache_map(int cpu, int cache_property)
+
+{
+	int cpu_group_start = -1, err = 0;
+	struct thread_groups *tg = NULL;
+	cpumask_var_t *mask = NULL;
+
+	if (cache_property != THREAD_GROUP_SHARE_L1 &&
+	    cache_property != THREAD_GROUP_SHARE_L2_L3)
+		return -EINVAL;
+
+	tg = get_thread_groups(cpu, cache_property, &err);
+
+	if (!tg)
+		return err;
+
+	cpu_group_start = get_cpu_thread_group_start(cpu, tg);
+
+	if (unlikely(cpu_group_start == -1)) {
+		WARN_ON_ONCE(1);
+		return -ENODATA;
+	}
+
+	if (cache_property == THREAD_GROUP_SHARE_L1) {
+		mask = &per_cpu(thread_group_l1_cache_map, cpu);
+		update_mask_from_threadgroup(mask, tg, cpu, cpu_group_start);
+	}
+	else if (cache_property == THREAD_GROUP_SHARE_L2_L3) {
+		mask = &per_cpu(thread_group_l2_cache_map, cpu);
+		update_mask_from_threadgroup(mask, tg, cpu, cpu_group_start);
+		mask = &per_cpu(thread_group_l3_cache_map, cpu);
+		update_mask_from_threadgroup(mask, tg, cpu, cpu_group_start);
+	}
+
+
+	return 0;
 }
 
 static bool shared_caches;
@@ -924,7 +1057,7 @@ static int __init init_big_cores(void)
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
-		int err = init_cpu_l1_cache_map(cpu);
+		int err = init_thread_group_cache_map(cpu, THREAD_GROUP_SHARE_L1);
 
 		if (err)
 			return err;
@@ -935,6 +1068,18 @@ static int __init init_big_cores(void)
 	}
 
 	has_big_cores = true;
+
+	for_each_possible_cpu(cpu) {
+		int err = init_thread_group_cache_map(cpu, THREAD_GROUP_SHARE_L2_L3);
+
+		if (err)
+			return err;
+	}
+
+	thread_group_shares_l2 = true;
+	thread_group_shares_l3 = true;
+	pr_debug("L2/L3 cache only shared by the threads in the small core\n");
+
 	return 0;
 }
 
@@ -945,7 +1090,7 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	DBG("smp_prepare_cpus\n");
 
 	/* 
-	 * setup_cpu may need to be called on the boot cpu. We havent
+	 * setup_cpu may need to be called on the boot cpu. We haven't
 	 * spun any cpus up but lets be paranoid.
 	 */
 	BUG_ON(boot_cpuid != smp_processor_id());
@@ -965,7 +1110,7 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 			zalloc_cpumask_var_node(&per_cpu(cpu_coregroup_map, cpu),
 						GFP_KERNEL, cpu_to_node(cpu));
 
-#ifdef CONFIG_NEED_MULTIPLE_NODES
+#ifdef CONFIG_NUMA
 		/*
 		 * numa_node_id() works after this.
 		 */
@@ -975,17 +1120,12 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 				local_memory_node(numa_cpu_lookup_table[cpu]));
 		}
 #endif
-		/*
-		 * cpu_core_map is now more updated and exists only since
-		 * its been exported for long. It only will have a snapshot
-		 * of cpu_cpu_mask.
-		 */
-		cpumask_copy(per_cpu(cpu_core_map, cpu), cpu_cpu_mask(cpu));
 	}
 
 	/* Init the cpumasks so the boot CPU is related to itself */
 	cpumask_set_cpu(boot_cpuid, cpu_sibling_mask(boot_cpuid));
 	cpumask_set_cpu(boot_cpuid, cpu_l2_cache_mask(boot_cpuid));
+	cpumask_set_cpu(boot_cpuid, cpu_core_mask(boot_cpuid));
 
 	if (has_coregroup_support())
 		cpumask_set_cpu(boot_cpuid, cpu_coregroup_mask(boot_cpuid));
@@ -994,6 +1134,20 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	if (has_big_cores) {
 		cpumask_set_cpu(boot_cpuid,
 				cpu_smallcore_mask(boot_cpuid));
+	}
+
+	if (cpu_to_chip_id(boot_cpuid) != -1) {
+		int idx = DIV_ROUND_UP(num_possible_cpus(), threads_per_core);
+
+		/*
+		 * All threads of a core will all belong to the same core,
+		 * chip_id_lookup_table will have one entry per core.
+		 * Assumption: if boot_cpuid doesn't have a chip-id, then no
+		 * other CPUs, will also not have chip-id.
+		 */
+		chip_id_lookup_table = kcalloc(idx, sizeof(int), GFP_KERNEL);
+		if (chip_id_lookup_table)
+			memset(chip_id_lookup_table, -1, sizeof(int) * idx);
 	}
 
 	if (smp_ops && smp_ops->probe)
@@ -1097,13 +1251,18 @@ static void cpu_idle_thread_init(unsigned int cpu, struct task_struct *idle)
 	paca_ptrs[cpu]->kstack = (unsigned long)task_stack_page(idle) +
 				 THREAD_SIZE - STACK_FRAME_OVERHEAD;
 #endif
-	idle->cpu = cpu;
+	task_thread_info(idle)->cpu = cpu;
 	secondary_current = current_set[cpu] = idle;
 }
 
 int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 {
-	int rc, c;
+	const unsigned long boot_spin_ms = 5 * MSEC_PER_SEC;
+	const bool booting = system_state < SYSTEM_RUNNING;
+	const unsigned long hp_spin_ms = 1;
+	unsigned long deadline;
+	int rc;
+	const unsigned long spin_wait_ms = booting ? boot_spin_ms : hp_spin_ms;
 
 	/*
 	 * Don't allow secondary threads to come online if inhibited
@@ -1148,22 +1307,23 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 	}
 
 	/*
-	 * wait to see if the cpu made a callin (is actually up).
-	 * use this value that I found through experimentation.
-	 * -- Cort
+	 * At boot time, simply spin on the callin word until the
+	 * deadline passes.
+	 *
+	 * At run time, spin for an optimistic amount of time to avoid
+	 * sleeping in the common case.
 	 */
-	if (system_state < SYSTEM_RUNNING)
-		for (c = 50000; c && !cpu_callin_map[cpu]; c--)
-			udelay(100);
-#ifdef CONFIG_HOTPLUG_CPU
-	else
-		/*
-		 * CPUs can take much longer to come up in the
-		 * hotplug case.  Wait five seconds.
-		 */
-		for (c = 5000; c && !cpu_callin_map[cpu]; c--)
-			msleep(1);
-#endif
+	deadline = jiffies + msecs_to_jiffies(spin_wait_ms);
+	spin_until_cond(cpu_callin_map[cpu] || time_is_before_jiffies(deadline));
+
+	if (!cpu_callin_map[cpu] && system_state >= SYSTEM_RUNNING) {
+		const unsigned long sleep_interval_us = 10 * USEC_PER_MSEC;
+		const unsigned long sleep_wait_ms = 100 * MSEC_PER_SEC;
+
+		deadline = jiffies + msecs_to_jiffies(sleep_wait_ms);
+		while (!cpu_callin_map[cpu] && time_is_after_jiffies(deadline))
+			fsleep(sleep_interval_us);
+	}
 
 	if (!cpu_callin_map[cpu]) {
 		printk(KERN_ERR "Processor %u is stuck.\n", cpu);
@@ -1187,18 +1347,13 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 int cpu_to_core_id(int cpu)
 {
 	struct device_node *np;
-	const __be32 *reg;
 	int id = -1;
 
 	np = of_get_cpu_node(cpu, NULL);
 	if (!np)
 		goto out;
 
-	reg = of_get_property(np, "reg", NULL);
-	if (!reg)
-		goto out;
-
-	id = be32_to_cpup(reg);
+	id = of_get_cpu_hwid(np, 0);
 out:
 	of_node_put(np);
 	return id;
@@ -1249,10 +1404,32 @@ static bool update_mask_by_l2(int cpu, cpumask_var_t *mask)
 	if (has_big_cores)
 		submask_fn = cpu_smallcore_mask;
 
+	/*
+	 * If the threads in a thread-group share L2 cache, then the
+	 * L2-mask can be obtained from thread_group_l2_cache_map.
+	 */
+	if (thread_group_shares_l2) {
+		cpumask_set_cpu(cpu, cpu_l2_cache_mask(cpu));
+
+		for_each_cpu(i, per_cpu(thread_group_l2_cache_map, cpu)) {
+			if (cpu_online(i))
+				set_cpus_related(i, cpu, cpu_l2_cache_mask);
+		}
+
+		/* Verify that L1-cache siblings are a subset of L2 cache-siblings */
+		if (!cpumask_equal(submask_fn(cpu), cpu_l2_cache_mask(cpu)) &&
+		    !cpumask_subset(submask_fn(cpu), cpu_l2_cache_mask(cpu))) {
+			pr_warn_once("CPU %d : Inconsistent L1 and L2 cache siblings\n",
+				     cpu);
+		}
+
+		return true;
+	}
+
 	l2_cache = cpu_to_l2cache(cpu);
 	if (!l2_cache || !*mask) {
 		/* Assume only core siblings share cache with this CPU */
-		for_each_cpu(i, submask_fn(cpu))
+		for_each_cpu(i, cpu_sibling_mask(cpu))
 			set_cpus_related(cpu, i, cpu_l2_cache_mask);
 
 		return false;
@@ -1294,6 +1471,8 @@ static void remove_cpu_from_masks(int cpu)
 	struct cpumask *(*mask_fn)(int) = cpu_sibling_mask;
 	int i;
 
+	unmap_cpu_from_node(cpu);
+
 	if (shared_caches)
 		mask_fn = cpu_l2_cache_mask;
 
@@ -1303,6 +1482,9 @@ static void remove_cpu_from_masks(int cpu)
 		if (has_big_cores)
 			set_cpus_unrelated(cpu, i, cpu_smallcore_mask);
 	}
+
+	for_each_cpu(i, cpu_core_mask(cpu))
+		set_cpus_unrelated(cpu, i, cpu_core_mask);
 
 	if (has_coregroup_support()) {
 		for_each_cpu(i, cpu_coregroup_mask(cpu))
@@ -1320,7 +1502,7 @@ static inline void add_cpu_to_smallcore_masks(int cpu)
 
 	cpumask_set_cpu(cpu, cpu_smallcore_mask(cpu));
 
-	for_each_cpu(i, per_cpu(cpu_l1_cache_map, cpu)) {
+	for_each_cpu(i, per_cpu(thread_group_l1_cache_map, cpu)) {
 		if (cpu_online(i))
 			set_cpus_related(i, cpu, cpu_smallcore_mask);
 	}
@@ -1364,15 +1546,20 @@ static void update_coregroup_mask(int cpu, cpumask_var_t *mask)
 
 static void add_cpu_to_masks(int cpu)
 {
+	struct cpumask *(*submask_fn)(int) = cpu_sibling_mask;
 	int first_thread = cpu_first_thread_sibling(cpu);
 	cpumask_var_t mask;
+	int chip_id = -1;
+	bool ret;
 	int i;
 
 	/*
 	 * This CPU will not be in the online mask yet so we need to manually
 	 * add it to it's own thread sibling mask.
 	 */
+	map_cpu_to_node(cpu, cpu_to_node(cpu));
 	cpumask_set_cpu(cpu, cpu_sibling_mask(cpu));
+	cpumask_set_cpu(cpu, cpu_core_mask(cpu));
 
 	for (i = first_thread; i < first_thread + threads_per_core; i++)
 		if (cpu_online(i))
@@ -1381,11 +1568,36 @@ static void add_cpu_to_masks(int cpu)
 	add_cpu_to_smallcore_masks(cpu);
 
 	/* In CPU-hotplug path, hence use GFP_ATOMIC */
-	alloc_cpumask_var_node(&mask, GFP_ATOMIC, cpu_to_node(cpu));
+	ret = alloc_cpumask_var_node(&mask, GFP_ATOMIC, cpu_to_node(cpu));
 	update_mask_by_l2(cpu, &mask);
 
 	if (has_coregroup_support())
 		update_coregroup_mask(cpu, &mask);
+
+	if (chip_id_lookup_table && ret)
+		chip_id = cpu_to_chip_id(cpu);
+
+	if (shared_caches)
+		submask_fn = cpu_l2_cache_mask;
+
+	/* Update core_mask with all the CPUs that are part of submask */
+	or_cpumasks_related(cpu, cpu, submask_fn, cpu_core_mask);
+
+	/* Skip all CPUs already part of current CPU core mask */
+	cpumask_andnot(mask, cpu_online_mask, cpu_core_mask(cpu));
+
+	/* If chip_id is -1; limit the cpu_core_mask to within DIE*/
+	if (chip_id == -1)
+		cpumask_and(mask, mask, cpu_cpu_mask(cpu));
+
+	for_each_cpu(i, mask) {
+		if (chip_id == cpu_to_chip_id(i)) {
+			or_cpumasks_related(cpu, i, submask_fn, cpu_core_mask);
+			cpumask_andnot(mask, mask, submask_fn(i));
+		} else {
+			cpumask_andnot(mask, mask, cpu_core_mask(i));
+		}
+	}
 
 	free_cpumask_var(mask);
 }
@@ -1395,13 +1607,16 @@ void start_secondary(void *unused)
 {
 	unsigned int cpu = raw_smp_processor_id();
 
+	/* PPC64 calls setup_kup() in early_setup_secondary() */
+	if (IS_ENABLED(CONFIG_PPC32))
+		setup_kup();
+
 	mmgrab(&init_mm);
 	current->active_mm = &init_mm;
 
 	smp_store_cpu_info(cpu);
 	set_dec(tb_ticks_per_jiffy);
 	rcu_cpu_starting(cpu);
-	preempt_disable();
 	cpu_callin_map[cpu] = 1;
 
 	if (smp_ops->setup_cpu)
@@ -1417,6 +1632,9 @@ void start_secondary(void *unused)
 
 	vdso_getcpu_init();
 #endif
+	set_numa_node(numa_cpu_lookup_table[cpu]);
+	set_numa_mem(local_memory_node(numa_cpu_lookup_table[cpu]));
+
 	/* Update topology CPU masks */
 	add_cpu_to_masks(cpu);
 
@@ -1435,9 +1653,6 @@ void start_secondary(void *unused)
 			shared_caches = true;
 	}
 
-	set_numa_node(numa_cpu_lookup_table[cpu]);
-	set_numa_mem(local_memory_node(numa_cpu_lookup_table[cpu]));
-
 	smp_wmb();
 	notify_cpu_starting(cpu);
 	set_cpu_online(cpu, true);
@@ -1454,12 +1669,7 @@ void start_secondary(void *unused)
 	BUG();
 }
 
-int setup_profiling_timer(unsigned int multiplier)
-{
-	return 0;
-}
-
-static void fixup_topology(void)
+static void __init fixup_topology(void)
 {
 	int i;
 
@@ -1544,8 +1754,6 @@ void __cpu_die(unsigned int cpu)
 
 void arch_cpu_idle_dead(void)
 {
-	sched_preempt_enable_no_resched();
-
 	/*
 	 * Disable on the down path. This will be re-enabled by
 	 * start_secondary() via start_secondary_resume() below

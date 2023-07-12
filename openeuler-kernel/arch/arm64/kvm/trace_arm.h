@@ -135,72 +135,6 @@ TRACE_EVENT(kvm_mmio_emulate,
 		  __entry->vcpu_pc, __entry->instr, __entry->cpsr)
 );
 
-TRACE_EVENT(kvm_unmap_hva_range,
-	TP_PROTO(unsigned long start, unsigned long end),
-	TP_ARGS(start, end),
-
-	TP_STRUCT__entry(
-		__field(	unsigned long,	start		)
-		__field(	unsigned long,	end		)
-	),
-
-	TP_fast_assign(
-		__entry->start		= start;
-		__entry->end		= end;
-	),
-
-	TP_printk("mmu notifier unmap range: %#016lx -- %#016lx",
-		  __entry->start, __entry->end)
-);
-
-TRACE_EVENT(kvm_set_spte_hva,
-	TP_PROTO(unsigned long hva),
-	TP_ARGS(hva),
-
-	TP_STRUCT__entry(
-		__field(	unsigned long,	hva		)
-	),
-
-	TP_fast_assign(
-		__entry->hva		= hva;
-	),
-
-	TP_printk("mmu notifier set pte hva: %#016lx", __entry->hva)
-);
-
-TRACE_EVENT(kvm_age_hva,
-	TP_PROTO(unsigned long start, unsigned long end),
-	TP_ARGS(start, end),
-
-	TP_STRUCT__entry(
-		__field(	unsigned long,	start		)
-		__field(	unsigned long,	end		)
-	),
-
-	TP_fast_assign(
-		__entry->start		= start;
-		__entry->end		= end;
-	),
-
-	TP_printk("mmu notifier age hva: %#016lx -- %#016lx",
-		  __entry->start, __entry->end)
-);
-
-TRACE_EVENT(kvm_test_age_hva,
-	TP_PROTO(unsigned long hva),
-	TP_ARGS(hva),
-
-	TP_STRUCT__entry(
-		__field(	unsigned long,	hva		)
-	),
-
-	TP_fast_assign(
-		__entry->hva		= hva;
-	),
-
-	TP_printk("mmu notifier test age hva: %#016lx", __entry->hva)
-);
-
 TRACE_EVENT(kvm_set_way_flush,
 	    TP_PROTO(unsigned long vcpu_pc, bool cache),
 	    TP_ARGS(vcpu_pc, cache),
@@ -365,24 +299,6 @@ TRACE_EVENT(kvm_timer_emulate,
 
 	TP_printk("arch_timer_ctx_index: %d (should_fire: %d)",
 		  __entry->timer_idx, __entry->should_fire)
-);
-
-TRACE_EVENT(kvm_pvsched_kick_vcpu,
-	TP_PROTO(int vcpu_id, int target_vcpu_id),
-	TP_ARGS(vcpu_id, target_vcpu_id),
-
-	TP_STRUCT__entry(
-		__field(int, vcpu_id)
-		__field(int, target_vcpu_id)
-	),
-
-	TP_fast_assign(
-		__entry->vcpu_id = vcpu_id;
-		__entry->target_vcpu_id = target_vcpu_id;
-	),
-
-	TP_printk("PV qspinlock: vcpu %d kick target vcpu %d",
-		  __entry->vcpu_id, __entry->target_vcpu_id)
 );
 
 #endif /* _TRACE_ARM_ARM64_KVM_H */

@@ -11,6 +11,12 @@
 
 #include "efi-header.S"
 
+#ifdef __ARMEB__
+#define OF_DT_MAGIC 0xd00dfeed
+#else
+#define OF_DT_MAGIC 0xedfe0dd0
+#endif
+
  AR_CLASS(	.arch	armv7-a	)
  M_CLASS(	.arch	armv7-m	)
 
@@ -61,11 +67,7 @@
 #if defined(CONFIG_ARCH_SA1100)
 		.macro	loadsp, rb, tmp1, tmp2
 		mov	\rb, #0x80000000	@ physical base address
-#ifdef CONFIG_DEBUG_LL_SER3
-		add	\rb, \rb, #0x00050000	@ Ser3
-#else
 		add	\rb, \rb, #0x00010000	@ Ser1
-#endif
 		.endm
 #else
 		.macro	loadsp,	rb, tmp1, tmp2
@@ -152,7 +154,7 @@
 		 * in little-endian form.
 		 */
 		.macro	get_inflated_image_size, res:req, tmp1:req, tmp2:req
-		adr_l	\res, .Linflated_image_size_offset
+		adr	\res, .Linflated_image_size_offset
 		ldr	\tmp1, [\res]
 		add	\tmp1, \tmp1, \res	@ address of inflated image size
 
@@ -165,22 +167,10 @@
 		orr	\res, \res, \tmp1, lsl #24
 		.endm
 
-		.macro  record_seed
-#ifdef CONFIG_RANDOMIZE_BASE
-		sub	ip, r1, ip, ror #1	@ poor man's kaslr seed, will
-		sub	ip, r2, ip, ror #2	@ be superseded by kaslr-seed
-		sub	ip, r3, ip, ror #3	@ from /chosen if present
-		sub	ip, r4, ip, ror #5
-		sub	ip, r5, ip, ror #8
-		sub	ip, r6, ip, ror #13
-		sub	ip, r7, ip, ror #21
-		sub	ip, r8, ip, ror #3
-		sub	ip, r9, ip, ror #24
-		sub	ip, r10, ip, ror #27
-		sub	ip, r11, ip, ror #19
-		sub	ip, r13, ip, ror #14
-		sub	ip, r14, ip, ror #2
-		str_l	ip, __kaslr_seed, r9
+		.macro	be32tocpu, val, tmp
+#ifndef __ARMEB__
+		/* convert to little endian */
+		rev_l	\val, \tmp
 #endif
 		.endm
 
@@ -209,7 +199,8 @@ start:
 		 * were patching the initial instructions of the kernel, i.e
 		 * had started to exploit this "patch area".
 		 */
-		.rept	7
+		__initial_nops
+		.rept	5
 		__nop
 		.endr
 #ifndef CONFIG_THUMB2_KERNEL
@@ -231,7 +222,6 @@ start:
 		__EFI_HEADER
 1:
  ARM_BE8(	setend	be		)	@ go BE8 if compiled for BE8
-		record_seed
  AR_CLASS(	mrs	r9, cpsr	)
 #ifdef CONFIG_ARM_VIRT_EXT
 		bl	__hyp_stub_install	@ get into SVC mode, reversibly
@@ -286,10 +276,40 @@ not_angel:
 		 * are already placing their zImage in (eg) the top 64MB
 		 * of this range.
 		 */
-		mov	r4, pc
-		and	r4, r4, #0xf8000000
+		mov	r0, pc
+		and	r0, r0, #0xf8000000
+#ifdef CONFIG_USE_OF
+		adr	r1, LC1
+#ifdef CONFIG_ARM_APPENDED_DTB
+		/*
+		 * Look for an appended DTB.  If found, we cannot use it to
+		 * validate the calculated start of physical memory, as its
+		 * memory nodes may need to be augmented by ATAGS stored at
+		 * an offset from the same start of physical memory.
+		 */
+		ldr	r2, [r1, #4]	@ get &_edata
+		add	r2, r2, r1	@ relocate it
+		ldr	r2, [r2]	@ get DTB signature
+		ldr	r3, =OF_DT_MAGIC
+		cmp	r2, r3		@ do we have a DTB there?
+		beq	1f		@ if yes, skip validation
+#endif /* CONFIG_ARM_APPENDED_DTB */
+
+		/*
+		 * Make sure we have some stack before calling C code.
+		 * No GOT fixup has occurred yet, but none of the code we're
+		 * about to call uses any global variables.
+		 */
+		ldr	sp, [r1]	@ get stack location
+		add	sp, sp, r1	@ apply relocation
+
+		/* Validate calculated start against passed DTB */
+		mov	r1, r8
+		bl	fdt_check_mem_start
+1:
+#endif /* CONFIG_USE_OF */
 		/* Determine final kernel image address. */
-		add	r4, r4, #TEXT_OFFSET
+		add	r4, r0, #TEXT_OFFSET
 #else
 		ldr	r4, =zreladdr
 #endif
@@ -308,7 +328,7 @@ not_angel:
 		orrcc	r4, r4, #1		@ remember we skipped cache_on
 		blcs	cache_on
 
-restart:	adr_l	r0, LC1
+restart:	adr	r0, LC1
 		ldr	sp, [r0]
 		ldr	r6, [r0, #4]
 		add	sp, sp, r0
@@ -345,11 +365,7 @@ restart:	adr_l	r0, LC1
  */
 
 		ldr	lr, [r6, #0]
-#ifndef __ARMEB__
-		ldr	r1, =0xedfe0dd0		@ sig is 0xd00dfeed big endian
-#else
-		ldr	r1, =0xd00dfeed
-#endif
+		ldr	r1, =OF_DT_MAGIC
 		cmp	lr, r1
 		bne	dtb_check_done		@ not found
 
@@ -365,13 +381,7 @@ restart:	adr_l	r0, LC1
 
 		/* Get the initial DTB size */
 		ldr	r5, [r6, #4]
-#ifndef __ARMEB__
-		/* convert to little endian */
-		eor	r1, r5, r5, ror #16
-		bic	r1, r1, #0x00ff0000
-		mov	r5, r5, ror #8
-		eor	r5, r5, r1, lsr #8
-#endif
+		be32tocpu r5, r1
 		dbgadtb	r6, r5
 		/* 50% DTB growth should be good enough */
 		add	r5, r5, r5, lsr #1
@@ -423,13 +433,7 @@ restart:	adr_l	r0, LC1
 
 		/* Get the current DTB size */
 		ldr	r5, [r6, #4]
-#ifndef __ARMEB__
-		/* convert r5 (dtb size) to little endian */
-		eor	r1, r5, r5, ror #16
-		bic	r1, r1, #0x00ff0000
-		mov	r5, r5, ror #8
-		eor	r5, r5, r1, lsr #8
-#endif
+		be32tocpu r5, r1
 
 		/* preserve 64-bit alignment */
 		add	r5, r5, #7
@@ -440,69 +444,6 @@ restart:	adr_l	r0, LC1
 		add	r10, r10, r5
 		add	sp, sp, r5
 dtb_check_done:
-#endif
-
-#ifdef CONFIG_RANDOMIZE_BASE
-		ldr	r1, __kaslr_offset	@ check if the kaslr_offset is
-		cmp	r1, #0			@ already set
-		bne	1f
-
-		stmfd	sp!, {r0-r3, ip, lr}
-#ifdef CONFIG_ARCH_HISI
-#ifdef CONFIG_ARM_APPENDED_DTB
-#ifdef CONFIG_START_MEM_2M_ALIGN
-		mov r0, r4
-#ifdef CONFIG_CORTEX_A9
-		lsr r0, r0, #20
-		lsl r0, r0, #20
-#else
-		lsr r0, r0, #21
-		lsl r0, r0, #21
-#endif
-		add r0, r0, #0x1000
-		ldr r1, [r0]
-#ifndef __ARMEB__
-		ldr r2, =0xedfe0dd0    @ sig is 0xd00dfeed big endian
-#else
-		ldr r2, =0xd00dfeed
-#endif
-		cmp  r1, r2
-		moveq r8, r0
-#endif
-#endif
-#endif
-		adr_l	r2, _text		@ start of zImage
-		stmfd	sp!, {r2, r8, r10}	@ pass stack arguments
-
-		ldr_l	r3, __kaslr_seed
-#if defined(CONFIG_CPU_V6) || defined(CONFIG_CPU_V6K) || defined(CONFIG_CPU_V7)
-		/*
-		 * Get some pseudo-entropy from the low bits of the generic
-		 * timer if it is implemented.
-		 */
-		mrc	p15, 0, r1, c0, c1, 1	@ read ID_PFR1 register
-		tst	r1, #0x10000		@ have generic timer?
-		mrrcne	p15, 1, r3, r1, c14	@ read CNTVCT
-#endif
-		adr_l	r0, __kaslr_offset	@ pass &__kaslr_offset in r0
-		mov	r1, r4			@ pass base address
-		mov	r2, r9			@ pass decompressed image size
-		eor	r3, r3, r3, ror #16	@ pass pseudorandom seed
-		bl	kaslr_early_init
-		add	sp, sp, #12
-		cmp	r0, #0
-		addne	r4, r4, r0		@ add offset to base address
-#ifdef CONFIG_VXBOOT
-#ifdef CONFIG_START_MEM_2M_ALIGN
-#ifdef CONFIG_CORTEX_A9
-		adr r1, vx_edata
-		strne   r6, [r1]
-#endif
-#endif
-#endif
-		ldmfd	sp!, {r0-r3, ip, lr}
-		bne	restart
-1:
 #endif
 
 /*
@@ -873,24 +814,20 @@ __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
 		teq	r0, r2
 		bne	1b
 /*
- * Make sure our entire executable image (including payload) is mapped
- * cacheable, in case it is located outside the region we covered above.
- * (This may be the case if running from flash or with randomization enabled)
- * If the regions happen to overlap, we just duplicate some of the above.
+ * If ever we are running from Flash, then we surely want the cache
+ * to be enabled also for our execution instance...  We map 2MB of it
+ * so there is no map overlap problem for up to 1 MB compressed kernel.
+ * If the execution is in RAM then we would only be duplicating the above.
  */
 		orr	r1, r6, #0x04		@ ensure B is set for this
 		orr	r1, r1, #3 << 10
 		mov	r2, pc
-		adr_l	r9, _end
 		mov	r2, r2, lsr #20
-		mov	r9, r9, lsr #20
 		orr	r1, r1, r2, lsl #20
 		add	r0, r3, r2, lsl #2
-		add	r9, r3, r9, lsl #2
-0:		str	r1, [r0], #4
+		str	r1, [r0], #4
 		add	r1, r1, #1048576
-		cmp	r0, r9
-		bls	0b
+		str	r1, [r0]
 		mov	pc, lr
 ENDPROC(__setup_mmu)
 
@@ -1498,45 +1435,9 @@ __enter_kernel:
 		mov	r0, #0			@ must be 0
 		mov	r1, r7			@ restore architecture number
 		mov	r2, r8			@ restore atags pointer
-#ifdef CONFIG_RANDOMIZE_BASE
-		ldr	r3, __kaslr_offset
-		add	r4, r4, #4		@ skip first instruction
-#endif
  ARM(		mov	pc, r4		)	@ call kernel
  M_CLASS(	add	r4, r4, #1	)	@ enter in Thumb mode for M class
  THUMB(		bx	r4		)	@ entry point is always ARM for A/R classes
-
-#ifdef CONFIG_RANDOMIZE_BASE
-		/*
-		 * Minimal implementation of CRC-16 that does not use a
-		 * lookup table and uses 32-bit wide loads, so it still
-		 * performs reasonably well with the D-cache off. Equivalent
-		 * to lib/crc16.c for input sizes that are 4 byte multiples.
-		 */
-ENTRY(__crc16)
-		push	{r4, lr}
-		ldr	r3, =0xa001     @ CRC-16 polynomial
-0:		subs	r2, r2, #4
-		popmi	{r4, pc}
-		ldr	r4, [r1], #4
-#ifdef __ARMEB__
-		eor	ip, r4, r4, ror #16     @ endian swap
-		bic	ip, ip, #0x00ff0000
-		mov	r4, r4, ror #8
-		eor	r4, r4, ip, lsr #8
-#endif
-		eor	r0, r0, r4
-		.rept	32
-		lsrs	r0, r0, #1
-		eorcs	r0, r0, r3
-		.endr
-		b	0b
-ENDPROC(__crc16)
-
-		.align	2
-__kaslr_seed:	.long	0
-__kaslr_offset:	.long	0
-#endif
 
 reloc_code_end:
 

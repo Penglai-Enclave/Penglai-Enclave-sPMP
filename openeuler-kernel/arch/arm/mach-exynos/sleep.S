@@ -8,7 +8,6 @@
 
 #include <linux/linkage.h>
 #include <asm/asm-offsets.h>
-#include <asm/assembler.h>
 #include <asm/hardware/cache-l2x0.h>
 #include "smc.h"
 
@@ -55,13 +54,19 @@ ENTRY(exynos_cpu_resume_ns)
 	cmp	r0, r1
 	bne	skip_cp15
 
-	ldr_l	r1, cp15_save_power
-	ldr_l	r2, cp15_save_diag
+	adr	r0, _cp15_save_power
+	ldr	r1, [r0]
+	ldr	r1, [r0, r1]
+	adr	r0, _cp15_save_diag
+	ldr	r2, [r0]
+	ldr	r2, [r0, r2]
 	mov	r0, #SMC_CMD_C15RESUME
 	dsb
 	smc	#0
 #ifdef CONFIG_CACHE_L2X0
-	adr_l	r0, l2x0_saved_regs
+	adr	r0, 1f
+	ldr	r2, [r0]
+	add	r0, r2, r0
 
 	/* Check that the address has been initialised. */
 	ldr	r1, [r0, #L2X0_R_PHY_BASE]
@@ -80,7 +85,9 @@ ENTRY(exynos_cpu_resume_ns)
 	smc	#0
 
 	/* Reload saved regs pointer because smc corrupts registers. */
-	adr_l	r0, l2x0_saved_regs
+	adr	r0, 1f
+	ldr	r2, [r0]
+	add	r0, r2, r0
 
 	ldr	r1, [r0, #L2X0_R_PWR_CTRL]
 	ldr	r2, [r0, #L2X0_R_AUX_CTRL]
@@ -98,6 +105,15 @@ skip_l2x0:
 skip_cp15:
 	b	cpu_resume
 ENDPROC(exynos_cpu_resume_ns)
+
+	.align
+_cp15_save_power:
+	.long	cp15_save_power - .
+_cp15_save_diag:
+	.long	cp15_save_diag - .
+#ifdef CONFIG_CACHE_L2X0
+1:	.long	l2x0_saved_regs - .
+#endif /* CONFIG_CACHE_L2X0 */
 
 	.data
 	.align	2

@@ -1,3 +1,7 @@
+.. raw:: latex
+
+	\kerneldocCJKoff
+
 NOTE:
 This is a version of Documentation/process/howto.rst translated into korean
 This document is maintained by Minchan Kim <minchan@kernel.org>
@@ -10,6 +14,10 @@ a fork. So if you have any comments or updates for this file please
 try to update the original English file first.
 
 ----------------------------------
+
+.. raw:: latex
+
+	\kerneldocCJKon
 
 이 문서는
 Documentation/process/howto.rst
@@ -54,7 +62,7 @@ Documentation/process/howto.rst
  - "Practical C Programming" by Steve Oualline [O'Reilly]
  - "C:  A Reference Manual" by Harbison and Steele [Prentice Hall]
 
-커널은 GNU C와 GNU 툴체인을 사용하여 작성되었다. 이 툴들은 ISO C89 표준을
+커널은 GNU C와 GNU 툴체인을 사용하여 작성되었다. 이 툴들은 ISO C11 표준을
 따르는 반면 표준에 있지 않은 많은 확장기능도 가지고 있다. 커널은 표준 C
 라이브러리와는 관계없이 freestanding C 환경이어서 C 표준의 일부는
 지원되지 않는다. 임의의 long long 나누기나 floating point는 지원되지 않는다.
@@ -116,7 +124,7 @@ mtk.manpages@gmail.com의 메인테이너에게 보낼 것을 권장한다.
     메인테이너들은 이 규칙을 따르는 패치들만을 받아들일 것이고 많은 사람들이
     그 패치가 올바른 스타일일 경우만 코드를 검토할 것이다.
 
-  :ref:`Documentation/process/submitting-patches.rst <submittingpatches>` 와 :ref:`Documentation/process/submitting-drivers.rst <submittingdrivers>`
+  :ref:`Documentation/process/submitting-patches.rst <submittingpatches>`
     이 파일들은 성공적으로 패치를 만들고 보내는 법을 다음의 내용들로
     굉장히 상세히 설명하고 있다(그러나 다음으로 한정되진 않는다).
 
@@ -339,14 +347,8 @@ Andrew Morton의 글이 있다.
 버그 보고
 ---------
 
-https://bugzilla.kernel.org 는 리눅스 커널 개발자들이 커널의 버그를 추적하는
-곳이다. 사용자들은 발견한 모든 버그들을 보고하기 위하여 이 툴을 사용할 것을
-권장한다.  kernel bugzilla를 사용하는 자세한 방법은 다음을 참조하라.
-
-    https://bugzilla.kernel.org/page.cgi?id=faq.html
-
-메인 커널 소스 디렉토리에 있는 :ref:`admin-guide/reporting-bugs.rst <reportingbugs>`
-파일은 커널 버그라고 생각되는 것을 보고하는 방법에 관한 좋은 템플릿이며 문제를
+메인 커널 소스 디렉토리에 있는 'Documentation/admin-guide/reporting-issues.rst'
+파일은 커널 버그라고 생각되는 것을 어떻게 보고하면 되는지, 그리고 문제를
 추적하기 위해서 커널 개발자들이 필요로 하는 정보가 무엇들인지를 상세히 설명하고
 있다.
 
@@ -362,8 +364,14 @@ https://bugzilla.kernel.org 는 리눅스 커널 개발자들이 커널의 버�
 점수를 얻을 수 있는 가장 좋은 방법중의 하나이다. 왜냐하면 많은 사람들은
 다른 사람들의 버그들을 수정하기 위하여 시간을 낭비하지 않기 때문이다.
 
-이미 보고된 버그 리포트들을 가지고 작업하기 위해서 https://bugzilla.kernel.org
-를 참조하라.
+이미 보고된 버그 리포트들을 가지고 작업하기 위해서는 여러분이 관심있는
+서브시스템을 찾아라. 해당 서브시스템의 버그들이 어디로 리포트 되는지
+MAINTAINERS 파일을 체크하라; 그건 대부분 메일링 리스트이고, 가끔은 버그 추적
+시스템이다. 그 장소에 있는 최근 버그 리포트 기록들을 검색하고 여러분이 보기에
+적합하다 싶은 것을 도와라. 여러분은 버그 리포트를 위해
+https://bugzilla.kernel.org 를 체크하고자 할 수도 있다; 소수의 커널
+서브시스템들만이 버그 신고와 추적을 위해 해당 시스템을 실제로 사용하고 있지만,
+전체 커널의 버그들이 그곳에 정리된다.
 
 
 메일링 리스트들
@@ -378,7 +386,7 @@ https://bugzilla.kernel.org 는 리눅스 커널 개발자들이 커널의 버�
 웹상의 많은 다른 곳에도 메일링 리스트의 아카이브들이 있다.
 이러한 아카이브들을 찾으려면 검색 엔진을 사용하라. 예를 들어:
 
-      http://dir.gmane.org/gmane.linux.kernel
+      https://lore.kernel.org/lkml/
 
 여러분이 새로운 문제에 관해 리스트에 올리기 전에 말하고 싶은 주제에 관한
 것을 아카이브에서 먼저 찾아보기를 강력히 권장한다. 이미 상세하게 토론된 많은
@@ -583,7 +591,7 @@ Pat이라는 이름을 가진 여자가 있을 수도 있는 것이다. 리눅�
 
    "The Perfect Patch"
 
-    http://www.ozlabs.org/~akpm/stuff/tpp.txt
+    https://www.ozlabs.org/~akpm/stuff/tpp.txt
 
 
 이 모든 것을 하는 것은 매우 어려운 일이다. 완벽히 소화하는 데는 적어도 몇년이

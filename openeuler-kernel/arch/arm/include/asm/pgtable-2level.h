@@ -7,8 +7,6 @@
 #ifndef _ASM_PGTABLE_2LEVEL_H
 #define _ASM_PGTABLE_2LEVEL_H
 
-#include <asm/tlbflush.h>
-
 #define __PAGETABLE_PMD_FOLDED 1
 
 /*
@@ -181,25 +179,27 @@
  * the pud: the pud entry is never bad, always exists, and can't be set or
  * cleared.
  */
-#define pud_none(pud)		(0)
-#define pud_bad(pud)		(0)
-#define pud_present(pud)	(1)
-#define pud_clear(pudp)		do { } while (0)
-#define set_pud(pud,pudp)	do { } while (0)
-
-static inline int pmd_large(pmd_t pmd)
+static inline int pud_none(pud_t pud)
 {
-	if ((pmd_val(pmd) & PMD_TYPE_MASK) == PMD_TYPE_FAULT)
-		return pmd_val(pmd);
-
-	return ((pmd_val(pmd) & PMD_TYPE_MASK) == PMD_TYPE_SECT);
+	return 0;
 }
 
-static inline int pte_huge(pte_t pte)
+static inline int pud_bad(pud_t pud)
 {
-	pmd_t pmd = (pmd_t)pte;
+	return 0;
+}
 
-	return pmd_large(pmd);
+static inline int pud_present(pud_t pud)
+{
+	return 1;
+}
+
+static inline void pud_clear(pud_t *pudp)
+{
+}
+
+static inline void set_pud(pud_t *pudp, pud_t pud)
+{
 }
 
 static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
@@ -208,6 +208,9 @@ static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
 }
 #define pmd_offset pmd_offset
 
+#define pmd_pfn(pmd)		(__phys_to_pfn(pmd_val(pmd) & PHYS_MASK))
+
+#define pmd_large(pmd)		(pmd_val(pmd) & 2)
 #define pmd_leaf(pmd)		(pmd_val(pmd) & 2)
 #define pmd_bad(pmd)		(pmd_val(pmd) & 2)
 #define pmd_present(pmd)	(pmd_val(pmd))
@@ -230,142 +233,6 @@ static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
 #define pmd_addr_end(addr,end) (end)
 
 #define set_pte_ext(ptep,pte,ext) cpu_set_pte_ext(ptep,pte,ext)
-
-/*
- * now follows some of the definitions to allow huge page support, we can't put
- * these in the hugetlb source files as they are also required for transparent
- * hugepage support.
- */
-
-#define HPAGE_SHIFT             PMD_SHIFT
-#define HPAGE_SIZE              (_AC(1, UL) << HPAGE_SHIFT)
-#define HPAGE_MASK              (~(HPAGE_SIZE - 1))
-#define HUGETLB_PAGE_ORDER      (HPAGE_SHIFT - PAGE_SHIFT)
-
-#define HUGE_LINUX_PTE_COUNT       (PAGE_OFFSET >> HPAGE_SHIFT)
-#define HUGE_LINUX_PTE_SIZE        (HUGE_LINUX_PTE_COUNT * sizeof(pte_t *))
-#define HUGE_LINUX_PTE_INDEX(addr) (addr >> HPAGE_SHIFT)
-
-/*
- *  We re-purpose the following domain bits in the section descriptor
- */
-#ifndef PMD_DOMAIN_MASK
-#define PMD_DOMAIN_MASK		(_AT(pmdval_t, 0xF) << 5)
-#endif
-#define PMD_DSECT_PROT_NONE	(_AT(pmdval_t, 1) << 5)
-#define PMD_DSECT_DIRTY		(_AT(pmdval_t, 1) << 6)
-#define PMD_DSECT_AF		(_AT(pmdval_t, 1) << 7)
-
-#define PMD_BIT_FUNC(fn, op) \
-static inline pmd_t pmd_##fn(pmd_t pmd) { pmd_val(pmd) op; return pmd; }
-
-extern pmdval_t arm_hugepmdprotval;
-extern pteval_t arm_hugepteprotval;
-
-#define pmd_mkhuge(pmd)		(__pmd((pmd_val(pmd) & ~PMD_TYPE_MASK) | PMD_TYPE_SECT))
-
-PMD_BIT_FUNC(mkold, &= ~PMD_DSECT_AF);
-PMD_BIT_FUNC(mkdirty, |= PMD_DSECT_DIRTY);
-PMD_BIT_FUNC(mkclean, &= ~PMD_DSECT_DIRTY);
-PMD_BIT_FUNC(mkyoung, |= PMD_DSECT_AF);
-PMD_BIT_FUNC(mkwrite, |= PMD_SECT_AP_WRITE);
-PMD_BIT_FUNC(wrprotect,	&= ~PMD_SECT_AP_WRITE);
-PMD_BIT_FUNC(mknotpresent, &= ~PMD_TYPE_MASK);
-PMD_BIT_FUNC(mkexec,	&= ~PMD_SECT_XN);
-PMD_BIT_FUNC(mknexec,	|= PMD_SECT_XN);
-PMD_BIT_FUNC(mkprotnone, |= PMD_DSECT_PROT_NONE);
-PMD_BIT_FUNC(rmprotnone, &= ~PMD_DSECT_PROT_NONE);
-
-#ifdef CONFIG_NUMA_BALANCING
-#define pmd_protnone(pmd)		(pmd_val(pmd) & PMD_DSECT_PROT_NONE)
-#else
-static inline int pmd_protnone(pmd_t pmd);
-#endif
-#define pmd_young(pmd)			(pmd_val(pmd) & PMD_DSECT_AF)
-#define pmd_write(pmd)			(pmd_val(pmd) & PMD_SECT_AP_WRITE)
-#define pmd_exec(pmd)			(!(pmd_val(pmd) & PMD_SECT_XN))
-#define pmd_dirty(pmd)			(pmd_val(pmd) & PMD_DSECT_DIRTY)
-
-#define __HAVE_ARCH_PMD_WRITE
-
-static inline void set_pmd_at(struct mm_struct *mm, unsigned long addr,
-				pmd_t *pmdp, pmd_t pmd)
-{
-	/*
-	 * we can sometimes be passed a pmd pointing to a level 2 descriptor
-	 * from collapse_huge_page.
-	 */
-	if ((pmd_val(pmd) & PMD_TYPE_MASK) == PMD_TYPE_TABLE) {
-		pmdp[0] = __pmd(pmd_val(pmd));
-		pmdp[1] = __pmd(pmd_val(pmd) + 256 * sizeof(pte_t));
-	} else {
-		if (pmd_protnone(pmd))
-			pmd_val(pmd) &= ~PMD_TYPE_MASK;
-		else
-			pmd_val(pmd) |= PMD_TYPE_SECT;
-
-		pmdp[0] = __pmd(pmd_val(pmd));
-		pmdp[1] = __pmd(pmd_val(pmd) + SECTION_SIZE);
-	}
-
-	flush_pmd_entry(pmdp);
-}
-
-#define pmd_modify(pmd, prot)			    \
-({						    \
-	pmd_t pmdret = __pmd((pmd_val(pmd)	    \
-		& (PMD_MASK | PMD_DOMAIN_MASK))	    \
-		| arm_hugepmdprotval);		    \
-	pgprot_t inprot = prot;			    \
-	pte_t newprot = __pte(pgprot_val(inprot));  \
-						    \
-	if (pte_dirty(newprot))			    \
-		pmdret = pmd_mkdirty(pmdret);	    \
-	else					    \
-		pmdret = pmd_mkclean(pmdret);	    \
-						    \
-	if (pte_exec(newprot))			    \
-		pmdret = pmd_mkexec(pmdret);	    \
-	else					    \
-		pmdret = pmd_mknexec(pmdret);	    \
-						    \
-	if (pte_write(newprot))			    \
-		pmdret = pmd_mkwrite(pmdret);	    \
-	else					    \
-		pmdret = pmd_wrprotect(pmdret);	    \
-						    \
-	if (pte_young(newprot))			    \
-		pmdret = pmd_mkyoung(pmdret);	    \
-	else					    \
-		pmdret = pmd_mkold(pmdret);	    \
-						    \
-	if (pte_protnone(newprot))		    \
-		pmdret = pmd_mkprotnone(pmdret);    \
-	else					    \
-		pmdret = pmd_rmprotnone(pmdret);    \
-						    \
-	if (pte_val(newprot) & PMD_SECT_BUFFERABLE) \
-		pmdret |= PMD_SECT_BUFFERABLE;	    \
-	else					    \
-		pmdret &= ~PMD_SECT_BUFFERABLE;	    \
-						    \
-	if (pte_val(newprot) & PMD_SECT_CACHEABLE)  \
-		pmdret |= PMD_SECT_CACHEABLE;	    \
-	else					    \
-		pmdret &= ~PMD_SECT_CACHEABLE;	    \
-						    \
-	if (pte_val(newprot) & L_PTE_MT_DEV_SHARED) \
-		pmdret |= PMD_SECT_TEX(1);	    \
-	else					    \
-		pmdret &= ~(PMD_SECT_TEX(1));	    \
-						    \
-	if (pte_val(newprot) & L_PTE_SHARED)	    \
-		pmdret |= PMD_SECT_S;		    \
-	else					    \
-		pmdret &= ~PMD_SECT_S;		    \
-						    \
-	pmdret;					    \
-})
 
 /*
  * We don't have huge page support for short descriptors, for the moment

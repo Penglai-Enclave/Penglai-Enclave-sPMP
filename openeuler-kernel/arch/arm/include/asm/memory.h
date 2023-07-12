@@ -20,8 +20,14 @@
 #endif
 #include <asm/kasan_def.h>
 
-/* PAGE_OFFSET - the virtual address of the start of the kernel image */
+/*
+ * PAGE_OFFSET: the virtual address of the start of lowmem, memory above
+ *   the virtual address range for userspace.
+ * KERNEL_OFFSET: the virtual address of the start of the kernel image.
+ *   we may further offset this with TEXT_OFFSET in practice.
+ */
 #define PAGE_OFFSET		UL(CONFIG_PAGE_OFFSET)
+#define KERNEL_OFFSET		(PAGE_OFFSET)
 
 #ifdef CONFIG_MMU
 
@@ -150,36 +156,15 @@ extern unsigned long vectors_base;
  */
 #define PLAT_PHYS_OFFSET	UL(CONFIG_PHYS_OFFSET)
 
-#ifdef CONFIG_XIP_KERNEL
-/*
- * When referencing data in RAM from the XIP region in a relative manner
- * with the MMU off, we need the relative offset between the two physical
- * addresses.  The macro below achieves this, which is:
- *    __pa(v_data) - __xip_pa(v_text)
- */
-#define PHYS_RELATIVE(v_data, v_text) \
-	(((v_data) - PAGE_OFFSET + PLAT_PHYS_OFFSET) - \
-	 ((v_text) - XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR) + \
-          CONFIG_XIP_PHYS_ADDR))
-#else
-#define PHYS_RELATIVE(v_data, v_text) ((v_data) - (v_text))
-#endif
-
 #ifndef __ASSEMBLY__
 
-#ifdef CONFIG_RANDOMIZE_BASE
-extern unsigned long __kaslr_offset;
-
-static inline unsigned long kaslr_offset(void)
-{
-	return __kaslr_offset;
-}
-#else
-static inline unsigned long kaslr_offset(void)
-{
-	return 0;
-}
-#endif
+/*
+ * Physical start and end address of the kernel sections. These addresses are
+ * 2MB-aligned to match the section mappings placed over the kernel. We use
+ * u64 so that LPAE mappings beyond the 32bit limit will work out as well.
+ */
+extern u64 kernel_sec_start;
+extern u64 kernel_sec_end;
 
 /*
  * Physical vs virtual RAM address space conversion.  These are
@@ -383,19 +368,6 @@ static inline unsigned long __virt_to_idmap(unsigned long x)
 }
 
 #define virt_to_idmap(x)	__virt_to_idmap((unsigned long)(x))
-
-/*
- * Virtual <-> DMA view memory address translations
- * Again, these are *only* valid on the kernel direct mapped RAM
- * memory.  Use of these is *deprecated* (and that doesn't mean
- * use the __ prefixed forms instead.)  See dma-mapping.h.
- */
-#ifndef __virt_to_bus
-#define __virt_to_bus	__virt_to_phys
-#define __bus_to_virt	__phys_to_virt
-#define __pfn_to_bus(x)	__pfn_to_phys(x)
-#define __bus_to_pfn(x)	__phys_to_pfn(x)
-#endif
 
 /*
  * Conversion between a struct page and a physical address.

@@ -41,7 +41,6 @@ properties:
       values of 2k, 4k or 8k. If set to 0 it will be off. If this node is not
       mentioned or if the value is unknown, then micbias resistor is set to
       4k.
-    $ref: "/schemas/types.yaml#/definitions/uint32"
     enum: [ 0, 2, 4, 8 ]
 
   micbias-voltage-m-volts:
@@ -76,6 +75,10 @@ properties:
         3 =		4.99 mA		8.61 mA		12.05 mA
     $ref: "/schemas/types.yaml#/definitions/uint32"
     enum: [ 0, 1, 2, 3 ]
+
+  port:
+    $ref: audio-graph-port.yaml#
+    unevaluatedProperties: false
 
 required:
   - compatible

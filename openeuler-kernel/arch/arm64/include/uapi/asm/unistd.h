@@ -15,23 +15,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*
- * AARCH32 interface for ILP32 syscalls.
- */
-#if defined(__ILP32__) || defined(__SYSCALL_COMPAT)
-#define __ARCH_WANT_SYNC_FILE_RANGE2
-#endif
-
-/*
- * AARCH64/ILP32 is introduced after the following syscalls were deprecated.
- */
-#if !(defined(__ILP32__) || defined(__SYSCALL_COMPAT))
 #define __ARCH_WANT_RENAMEAT
-#define __ARCH_WANT_SET_GET_RLIMIT
-#endif
-
 #define __ARCH_WANT_NEW_STAT
+#define __ARCH_WANT_SET_GET_RLIMIT
 #define __ARCH_WANT_TIME32_SYSCALLS
 #define __ARCH_WANT_SYS_CLONE3
+#define __ARCH_WANT_MEMFD_SECRET
 
 #include <asm-generic/unistd.h>

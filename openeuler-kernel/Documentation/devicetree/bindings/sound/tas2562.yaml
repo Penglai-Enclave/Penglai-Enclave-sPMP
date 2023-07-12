@@ -8,7 +8,7 @@ $schema: "http://devicetree.org/meta-schemas/core.yaml#"
 title: Texas Instruments TAS2562 Smart PA
 
 maintainers:
-  - Dan Murphy <dmurphy@ti.com>
+  - Andrew Davis <afd@ti.com>
 
 description: |
   The TAS2562 is a mono, digital input Class-D audio amplifier optimized for
@@ -36,10 +36,12 @@ properties:
        I2C address of the device can be one of these 0x4c, 0x4d, 0x4e or 0x4f
 
   shut-down-gpios:
+    maxItems: 1
     description: GPIO used to control the state of the device.
     deprecated: true
 
   shutdown-gpios:
+    maxItems: 1
     description: GPIO used to control the state of the device.
 
   interrupts:
@@ -74,4 +76,3 @@ examples:
        ti,imon-slot-no = <0>;
      };
    };
-

@@ -19,6 +19,7 @@
 #include <linux/mm.h>
 #include <linux/export.h>
 #include <linux/bitops.h>
+#include <linux/dma-map-ops.h> /* for dma_default_coherent */
 
 #include <asm/bcache.h>
 #include <asm/bootinfo.h>
@@ -32,10 +33,8 @@
 #include <asm/r4kcache.h>
 #include <asm/sections.h>
 #include <asm/mmu_context.h>
-#include <asm/war.h>
 #include <asm/cacheflush.h> /* for run_uncached() */
 #include <asm/traps.h>
-#include <asm/dma-coherence.h>
 #include <asm/mips-cps.h>
 
 /*
@@ -1164,6 +1163,7 @@ static void probe_pcache(void)
 	case CPU_R4400PC:
 	case CPU_R4400SC:
 	case CPU_R4400MC:
+	case CPU_R4300:
 		icache_size = 1 << (12 + ((config & CONF_IC) >> 9));
 		c->icache.linesz = 16 << ((config & CONF_IB) >> 5);
 		c->icache.ways = 1;
@@ -1192,50 +1192,6 @@ static void probe_pcache(void)
 		c->dcache.waybit = 0;
 
 		c->options |= MIPS_CPU_PREFETCH;
-		break;
-
-	case CPU_VR4133:
-		write_c0_config(config & ~VR41_CONF_P4K);
-		fallthrough;
-	case CPU_VR4131:
-		/* Workaround for cache instruction bug of VR4131 */
-		if (c->processor_id == 0x0c80U || c->processor_id == 0x0c81U ||
-		    c->processor_id == 0x0c82U) {
-			config |= 0x00400000U;
-			if (c->processor_id == 0x0c80U)
-				config |= VR41_CONF_BP;
-			write_c0_config(config);
-		} else
-			c->options |= MIPS_CPU_CACHE_CDEX_P;
-
-		icache_size = 1 << (10 + ((config & CONF_IC) >> 9));
-		c->icache.linesz = 16 << ((config & CONF_IB) >> 5);
-		c->icache.ways = 2;
-		c->icache.waybit = __ffs(icache_size/2);
-
-		dcache_size = 1 << (10 + ((config & CONF_DC) >> 6));
-		c->dcache.linesz = 16 << ((config & CONF_DB) >> 4);
-		c->dcache.ways = 2;
-		c->dcache.waybit = __ffs(dcache_size/2);
-		break;
-
-	case CPU_VR41XX:
-	case CPU_VR4111:
-	case CPU_VR4121:
-	case CPU_VR4122:
-	case CPU_VR4181:
-	case CPU_VR4181A:
-		icache_size = 1 << (10 + ((config & CONF_IC) >> 9));
-		c->icache.linesz = 16 << ((config & CONF_IB) >> 5);
-		c->icache.ways = 1;
-		c->icache.waybit = 0;	/* doesn't matter */
-
-		dcache_size = 1 << (10 + ((config & CONF_DC) >> 6));
-		c->dcache.linesz = 16 << ((config & CONF_DB) >> 4);
-		c->dcache.ways = 1;
-		c->dcache.waybit = 0;	/* does not matter */
-
-		c->options |= MIPS_CPU_CACHE_CDEX_P;
 		break;
 
 	case CPU_RM7000:
@@ -1409,7 +1365,6 @@ static void probe_pcache(void)
 	case CPU_I6500:
 	case CPU_SB1:
 	case CPU_SB1A:
-	case CPU_XLR:
 		c->dcache.flags |= MIPS_CACHE_PINDEX;
 		break;
 
@@ -1623,15 +1578,13 @@ static void loongson3_sc_init(void)
 	c->scache.sets = 64 << ((config2 >> 8) & 15);
 	c->scache.ways = 1 + (config2 & 15);
 
-	scache_size = c->scache.sets *
-				  c->scache.ways *
-				  c->scache.linesz;
-
 	/* Loongson-3 has 4-Scache banks, while Loongson-2K have only 2 banks */
 	if ((c->processor_id & PRID_IMP_MASK) == PRID_IMP_LOONGSON_64R)
-		scache_size *= 2;
+		c->scache.sets *= 2;
 	else
-		scache_size *= 4;
+		c->scache.sets *= 4;
+
+	scache_size = c->scache.sets * c->scache.ways * c->scache.linesz;
 
 	c->scache.waybit = 0;
 	c->scache.waysize = scache_size / c->scache.ways;
@@ -1700,7 +1653,6 @@ static void setup_scache(void)
 		return;
 
 	case CPU_CAVIUM_OCTEON3:
-	case CPU_XLP:
 		/* don't need to worry about L2, fully coherent */
 		return;
 
@@ -1915,15 +1867,11 @@ void r4k_cache_init(void)
 	__local_flush_icache_user_range	= local_r4k_flush_icache_user_range;
 
 #ifdef CONFIG_DMA_NONCOHERENT
-#ifdef CONFIG_DMA_MAYBE_COHERENT
-	if (coherentio == IO_COHERENCE_ENABLED ||
-	    (coherentio == IO_COHERENCE_DEFAULT && hw_coherentio)) {
+	if (dma_default_coherent) {
 		_dma_cache_wback_inv	= (void *)cache_noop;
 		_dma_cache_wback	= (void *)cache_noop;
 		_dma_cache_inv		= (void *)cache_noop;
-	} else
-#endif /* CONFIG_DMA_MAYBE_COHERENT */
-	{
+	} else {
 		_dma_cache_wback_inv	= r4k_dma_cache_wback_inv;
 		_dma_cache_wback	= r4k_dma_cache_wback_inv;
 		_dma_cache_inv		= r4k_dma_cache_inv;

@@ -26,12 +26,13 @@
 struct irqaction;
 struct pt_regs;
 
-extern void asm_do_IRQ(unsigned int, struct pt_regs *);
 void handle_IRQ(unsigned int, struct pt_regs *);
 void init_IRQ(void);
 
 #ifdef CONFIG_SMP
-extern bool arch_trigger_cpumask_backtrace(const cpumask_t *mask,
+#include <linux/cpumask.h>
+
+extern void arch_trigger_cpumask_backtrace(const cpumask_t *mask,
 					   bool exclude_self);
 #define arch_trigger_cpumask_backtrace arch_trigger_cpumask_backtrace
 #endif

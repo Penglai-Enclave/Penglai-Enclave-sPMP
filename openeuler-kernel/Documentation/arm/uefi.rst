@@ -64,4 +64,7 @@ linux,uefi-mmap-desc-size   32-bit   Size in bytes of each entry in the UEFI
                                      memory map.
 
 linux,uefi-mmap-desc-ver    32-bit   Version of the mmap descriptor format.
+
+kaslr-seed                  64-bit   Entropy used to randomize the kernel image
+                                     base address location.
 ==========================  ======   ===========================================

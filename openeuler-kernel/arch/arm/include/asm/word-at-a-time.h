@@ -9,7 +9,6 @@
  * Heavily based on the x86 algorithm.
  */
 #include <linux/kernel.h>
-#include <asm/extable.h>
 
 struct word_at_a_time {
 	const unsigned long one_bits, high_bits;
@@ -86,7 +85,10 @@ static inline unsigned long load_unaligned_zeropad(const void *addr)
 #endif
 	"	b	2b\n"
 	"	.popsection\n"
-	"	ex_entry	1b, 3b\n"
+	"	.pushsection __ex_table,\"a\"\n"
+	"	.align	3\n"
+	"	.long	1b, 3b\n"
+	"	.popsection"
 	: "=&r" (ret), "=&r" (offset)
 	: "r" (addr), "Qo" (*(unsigned long *)addr));
 

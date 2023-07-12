@@ -15,19 +15,24 @@ properties:
     enum:
       - ti,j721e-wiz-16g
       - ti,j721e-wiz-10g
+      - ti,am64-wiz-10g
+      - ti,j7200-wiz-10g
 
   power-domains:
     maxItems: 1
 
   clocks:
-    maxItems: 3
+    minItems: 3
+    maxItems: 4
     description: clock-specifier to represent input to the WIZ
 
   clock-names:
+    minItems: 3
     items:
       - const: fck
       - const: core_ref_clk
       - const: ext_ref_clk
+      - const: core_ref1_clk
 
   num-lanes:
     minimum: 1
@@ -40,6 +45,9 @@ properties:
     const: 1
 
   "#reset-cells":
+    const: 1
+
+  "#clock-cells":
     const: 1
 
   ranges: true
@@ -73,56 +81,14 @@ properties:
       Type-C spec states minimum CC pin debounce of 100 ms and maximum
       of 200 ms. However, some solutions might need more than 200 ms.
 
-patternProperties:
-  "^pll[0|1]-refclk$":
+  refclk-dig:
     type: object
-    description: |
-      WIZ node should have subnodes for each of the PLLs present in
-      the SERDES.
-    properties:
-      clocks:
-        maxItems: 2
-        description: Phandle to clock nodes representing the two inputs to PLL.
-
-      "#clock-cells":
-        const: 0
-
-      assigned-clocks:
-        maxItems: 1
-
-      assigned-clock-parents:
-        maxItems: 1
-
-    required:
-      - clocks
-      - "#clock-cells"
-      - assigned-clocks
-      - assigned-clock-parents
-
-  "^cmn-refclk1?-dig-div$":
-    type: object
-    description:
-      WIZ node should have subnodes for each of the PMA common refclock
-      provided by the SERDES.
-    properties:
-      clocks:
-        maxItems: 1
-        description: Phandle to the clock node representing the input to the
-          divider clock.
-
-      "#clock-cells":
-        const: 0
-
-    required:
-      - clocks
-      - "#clock-cells"
-
-  "^refclk-dig$":
-    type: object
+    additionalProperties: false
     description: |
       WIZ node should have subnode for refclk_dig to select the reference
       clock source for the reference clock used in the PHY and PMA digital
       logic.
+    deprecated: true
     properties:
       clocks:
         minItems: 2
@@ -145,13 +111,66 @@ patternProperties:
       - assigned-clocks
       - assigned-clock-parents
 
+  ti,scm:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: |
+      phandle to System Control Module for syscon regmap access.
+
+patternProperties:
+  "^pll[0|1]-refclk$":
+    type: object
+    additionalProperties: false
+    description: |
+      WIZ node should have subnodes for each of the PLLs present in
+      the SERDES.
+    deprecated: true
+    properties:
+      clocks:
+        maxItems: 2
+        description: Phandle to clock nodes representing the two inputs to PLL.
+
+      "#clock-cells":
+        const: 0
+
+      assigned-clocks:
+        maxItems: 1
+
+      assigned-clock-parents:
+        maxItems: 1
+
+    required:
+      - clocks
+      - "#clock-cells"
+      - assigned-clocks
+      - assigned-clock-parents
+
+  "^cmn-refclk1?-dig-div$":
+    type: object
+    additionalProperties: false
+    description:
+      WIZ node should have subnodes for each of the PMA common refclock
+      provided by the SERDES.
+    deprecated: true
+    properties:
+      clocks:
+        maxItems: 1
+        description: Phandle to the clock node representing the input to the
+          divider clock.
+
+      "#clock-cells":
+        const: 0
+
+    required:
+      - clocks
+      - "#clock-cells"
+
   "^serdes@[0-9a-f]+$":
     type: object
     description: |
       WIZ node should have '1' subnode for the SERDES. It could be either
       Sierra SERDES or Torrent SERDES. Sierra SERDES should follow the
       bindings specified in
-      Documentation/devicetree/bindings/phy/phy-cadence-sierra.txt
+      Documentation/devicetree/bindings/phy/phy-cadence-sierra.yaml
       Torrent SERDES should follow the bindings specified in
       Documentation/devicetree/bindings/phy/phy-cadence-torrent.yaml
 
@@ -165,6 +184,16 @@ required:
   - "#size-cells"
   - "#reset-cells"
   - ranges
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: ti,j7200-wiz-10g
+    then:
+      required:
+        - ti,scm
 
 additionalProperties: false
 
@@ -218,7 +247,7 @@ examples:
            };
 
            serdes@5000000 {
-                  compatible = "cdns,ti,sierra-phy-t0";
+                  compatible = "ti,sierra-phy-t0";
                   reg-names = "serdes";
                   reg = <0x5000000 0x10000>;
                   #address-cells = <1>;

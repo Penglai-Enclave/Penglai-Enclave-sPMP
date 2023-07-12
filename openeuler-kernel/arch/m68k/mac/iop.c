@@ -25,7 +25,7 @@
  *		  check this.)
  * 990605 (jmt) - Rearranged things a bit wrt IOP detection; iop_present is
  *		  gone, IOP base addresses are now in an array and the
- *		  globally-visible functions take an IOP number instead of an
+ *		  globally-visible functions take an IOP number instead of
  *		  an actual base address.
  * 990610 (jmt) - Finished the message passing framework and it seems to work.
  *		  Sending _definitely_ works; my adb-bus.c mods can send
@@ -47,6 +47,10 @@
  *
  * TODO:
  *
+ * o The SCC IOP has to be placed in bypass mode before the serial console
+ *   gets initialized. iop_init() would be one place to do that. Or the
+ *   bootloader could do that. For now, the Serial Switch control panel
+ *   is needed for that -- contrary to the changelog above.
  * o Something should be periodically checking iop_alive() to make sure the
  *   IOP hasn't died.
  * o Some of the IOP manager routines need better error checking and
@@ -62,7 +66,7 @@
  * a shared memory area in the IOP RAM. Each IOP has seven "channels"; each
  * channel is connected to a specific software driver on the IOP. For example
  * on the SCC IOP there is one channel for each serial port. Each channel has
- * an incoming and and outgoing message queue with a depth of one.
+ * an incoming and an outgoing message queue with a depth of one.
  *
  * A message is 32 bytes plus a state byte for the channel (MSG_IDLE, MSG_NEW,
  * MSG_RCVD, MSG_COMPLETE). To send a message you copy the message into the
@@ -225,40 +229,6 @@ static struct iop_msg *iop_get_unused_msg(void)
 }
 
 /*
- * This is called by the startup code before anything else. Its purpose
- * is to find and initialize the IOPs early in the boot sequence, so that
- * the serial IOP can be placed into bypass mode _before_ we try to
- * initialize the serial console.
- */
-
-void __init iop_preinit(void)
-{
-	if (macintosh_config->scc_type == MAC_SCC_IOP) {
-		if (macintosh_config->ident == MAC_MODEL_IIFX) {
-			iop_base[IOP_NUM_SCC] = (struct mac_iop *) SCC_IOP_BASE_IIFX;
-		} else {
-			iop_base[IOP_NUM_SCC] = (struct mac_iop *) SCC_IOP_BASE_QUADRA;
-		}
-		iop_scc_present = 1;
-	} else {
-		iop_base[IOP_NUM_SCC] = NULL;
-		iop_scc_present = 0;
-	}
-	if (macintosh_config->adb_type == MAC_ADB_IOP) {
-		if (macintosh_config->ident == MAC_MODEL_IIFX) {
-			iop_base[IOP_NUM_ISM] = (struct mac_iop *) ISM_IOP_BASE_IIFX;
-		} else {
-			iop_base[IOP_NUM_ISM] = (struct mac_iop *) ISM_IOP_BASE_QUADRA;
-		}
-		iop_stop(iop_base[IOP_NUM_ISM]);
-		iop_ism_present = 1;
-	} else {
-		iop_base[IOP_NUM_ISM] = NULL;
-		iop_ism_present = 0;
-	}
-}
-
-/*
  * Initialize the IOPs, if present.
  */
 
@@ -266,11 +236,23 @@ void __init iop_init(void)
 {
 	int i;
 
-	if (iop_scc_present) {
+	if (macintosh_config->scc_type == MAC_SCC_IOP) {
+		if (macintosh_config->ident == MAC_MODEL_IIFX)
+			iop_base[IOP_NUM_SCC] = (struct mac_iop *)SCC_IOP_BASE_IIFX;
+		else
+			iop_base[IOP_NUM_SCC] = (struct mac_iop *)SCC_IOP_BASE_QUADRA;
+		iop_scc_present = 1;
 		pr_debug("SCC IOP detected at %p\n", iop_base[IOP_NUM_SCC]);
 	}
-	if (iop_ism_present) {
+	if (macintosh_config->adb_type == MAC_ADB_IOP) {
+		if (macintosh_config->ident == MAC_MODEL_IIFX)
+			iop_base[IOP_NUM_ISM] = (struct mac_iop *)ISM_IOP_BASE_IIFX;
+		else
+			iop_base[IOP_NUM_ISM] = (struct mac_iop *)ISM_IOP_BASE_QUADRA;
+		iop_ism_present = 1;
 		pr_debug("ISM IOP detected at %p\n", iop_base[IOP_NUM_ISM]);
+
+		iop_stop(iop_base[IOP_NUM_ISM]);
 		iop_start(iop_base[IOP_NUM_ISM]);
 		iop_alive(iop_base[IOP_NUM_ISM]); /* clears the alive flag */
 	}

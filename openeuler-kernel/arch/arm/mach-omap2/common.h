@@ -130,7 +130,6 @@ void am33xx_init_early(void);
 void am35xx_init_early(void);
 void ti814x_init_early(void);
 void ti816x_init_early(void);
-void am33xx_init_early(void);
 void am43xx_init_early(void);
 void am43xx_init_late(void);
 void omap4430_init_early(void);
@@ -267,7 +266,7 @@ extern void omap4_sar_ram_init(void);
 extern void __iomem *omap4_get_sar_ram_base(void);
 extern void omap4_mpuss_early_init(void);
 extern void omap_do_wfi(void);
-
+extern void omap_interconnect_sync(void);
 
 #ifdef CONFIG_SMP
 /* Needed for secondary core boot */
@@ -343,15 +342,6 @@ static inline void omap5_secondary_hyp_startup(void)
 }
 #endif
 
-#ifdef CONFIG_SOC_DRA7XX
-extern int dra7xx_pciess_reset(struct omap_hwmod *oh);
-#else
-static inline int dra7xx_pciess_reset(struct omap_hwmod *oh)
-{
-	return 0;
-}
-#endif
-
 struct omap_system_dma_plat_info;
 
 void pdata_quirks_init(const struct of_device_id *);
@@ -369,6 +359,17 @@ extern int omap_dss_reset(struct omap_hwmod *);
 
 /* SoC specific clock initializer */
 int omap_clk_init(void);
+
+#if IS_ENABLED(CONFIG_OMAP_IOMMU)
+int omap_iommu_set_pwrdm_constraint(struct platform_device *pdev, bool request,
+				    u8 *pwrst);
+#else
+static inline int omap_iommu_set_pwrdm_constraint(struct platform_device *pdev,
+						  bool request, u8 *pwrst)
+{
+	return 0;
+}
+#endif
 
 #endif /* __ASSEMBLER__ */
 #endif /* __ARCH_ARM_MACH_OMAP2PLUS_COMMON_H */

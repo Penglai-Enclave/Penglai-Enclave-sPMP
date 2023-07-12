@@ -16,7 +16,7 @@
 #include <linux/io.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/rawnand.h>
-#include <linux/mtd/nand_ecc.h>
+#include <linux/mtd/nand-ecc-sw-hamming.h>
 #include <linux/mtd/partitions.h>
 #include <linux/memblock.h>
 
@@ -156,6 +156,7 @@ static void __init vstms_init(void)
 
 MACHINE_START(VSTMS, "VSTMS")
 	.atag_offset	= 0x100,
+	.nr_irqs	= NR_IRQS_S3C2412,
 
 	.fixup		= vstms_fixup,
 	.init_irq	= s3c2412_init_irq,

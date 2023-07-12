@@ -10,7 +10,6 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/memblock.h>
-#include <linux/interrupt.h>
 #include <linux/of_fdt.h>
 #include <asm/mmu_context.h>
 #include <asm/cacheflush.h>
@@ -121,27 +120,10 @@ static void machine_kexec_mask_interrupts(void)
 
 	for_each_irq_desc(i, desc) {
 		struct irq_chip *chip;
-		int ret;
 
 		chip = irq_desc_get_chip(desc);
 		if (!chip)
 			continue;
-
-		/*
-		 * First try to remove the active state. If this
-		 * fails, try to EOI the interrupt.
-		 */
-		if (desc->irq_data.hwirq > 15 && desc->irq_data.hwirq < 32) {
-			bool active = false;
-			ret = irq_get_irqchip_state(i, IRQCHIP_STATE_ACTIVE, &active);
-			if (ret) {
-				pr_debug("Get irq active state failed.\n");
-			} else {
-				if (active)
-					chip->irq_eoi(&desc->irq_data);
-			}
-		}
-
 
 		if (chip->irq_eoi && irqd_irq_inprogress(&desc->irq_data))
 			chip->irq_eoi(&desc->irq_data);
@@ -164,11 +146,6 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 	pr_info("Loading crashdump kernel...\n");
 }
-
-/*
- * Function pointer to optional machine-specific reinitialization
- */
-void (*kexec_reinit)(void);
 
 void machine_kexec(struct kimage *image)
 {
@@ -204,9 +181,6 @@ void machine_kexec(struct kimage *image)
 	reboot_entry_phys = virt_to_idmap(reboot_entry);
 
 	pr_info("Bye!\n");
-
-	if (kexec_reinit)
-		kexec_reinit();
 
 	soft_restart(reboot_entry_phys);
 }

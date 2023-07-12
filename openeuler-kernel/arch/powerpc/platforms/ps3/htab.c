@@ -10,7 +10,6 @@
 #include <linux/memblock.h>
 
 #include <asm/machdep.h>
-#include <asm/prom.h>
 #include <asm/udbg.h>
 #include <asm/lv1call.h>
 #include <asm/ps3fb.h>
@@ -169,7 +168,8 @@ static void ps3_hpte_invalidate(unsigned long slot, unsigned long vpn,
 	spin_unlock_irqrestore(&ps3_htab_lock, flags);
 }
 
-static void ps3_hpte_clear(void)
+/* Called during kexec sequence with MMU off */
+static notrace void ps3_hpte_clear(void)
 {
 	unsigned long hpte_count = (1UL << ppc64_pft_size) >> 4;
 	u64 i;

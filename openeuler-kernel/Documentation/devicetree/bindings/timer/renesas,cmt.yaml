@@ -74,6 +74,7 @@ properties:
               - renesas,r8a774e1-cmt0     # 32-bit CMT0 on RZ/G2H
               - renesas,r8a7795-cmt0      # 32-bit CMT0 on R-Car H3
               - renesas,r8a7796-cmt0      # 32-bit CMT0 on R-Car M3-W
+              - renesas,r8a77961-cmt0     # 32-bit CMT0 on R-Car M3-W+
               - renesas,r8a77965-cmt0     # 32-bit CMT0 on R-Car M3-N
               - renesas,r8a77970-cmt0     # 32-bit CMT0 on R-Car V3M
               - renesas,r8a77980-cmt0     # 32-bit CMT0 on R-Car V3H
@@ -89,12 +90,25 @@ properties:
               - renesas,r8a774e1-cmt1     # 48-bit CMT on RZ/G2H
               - renesas,r8a7795-cmt1      # 48-bit CMT on R-Car H3
               - renesas,r8a7796-cmt1      # 48-bit CMT on R-Car M3-W
+              - renesas,r8a77961-cmt1     # 48-bit CMT on R-Car M3-W+
               - renesas,r8a77965-cmt1     # 48-bit CMT on R-Car M3-N
               - renesas,r8a77970-cmt1     # 48-bit CMT on R-Car V3M
               - renesas,r8a77980-cmt1     # 48-bit CMT on R-Car V3H
               - renesas,r8a77990-cmt1     # 48-bit CMT on R-Car E3
               - renesas,r8a77995-cmt1     # 48-bit CMT on R-Car D3
           - const: renesas,rcar-gen3-cmt1 # 48-bit CMT on R-Car Gen3 and RZ/G2
+
+      - items:
+          - enum:
+              - renesas,r8a779a0-cmt0     # 32-bit CMT0 on R-Car V3U
+              - renesas,r8a779f0-cmt0     # 32-bit CMT0 on R-Car S4-8
+          - const: renesas,rcar-gen4-cmt0 # 32-bit CMT0 on R-Car Gen4
+
+      - items:
+          - enum:
+              - renesas,r8a779a0-cmt1     # 48-bit CMT on R-Car V3U
+              - renesas,r8a779f0-cmt1     # 48-bit CMT on R-Car S4-8
+          - const: renesas,rcar-gen4-cmt1 # 48-bit CMT on R-Car Gen4
 
   reg:
     maxItems: 1
@@ -131,6 +145,7 @@ allOf:
             enum:
               - renesas,rcar-gen2-cmt0
               - renesas,rcar-gen3-cmt0
+              - renesas,rcar-gen4-cmt0
     then:
       properties:
         interrupts:
@@ -144,6 +159,7 @@ allOf:
             enum:
               - renesas,rcar-gen2-cmt1
               - renesas,rcar-gen3-cmt1
+              - renesas,rcar-gen4-cmt1
     then:
       properties:
         interrupts:

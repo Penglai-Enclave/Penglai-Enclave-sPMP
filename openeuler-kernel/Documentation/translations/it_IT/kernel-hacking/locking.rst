@@ -102,15 +102,10 @@ che non esistano.
 Sincronizzazione nel kernel Linux
 =================================
 
-Se posso darvi un suggerimento: non dormite mai con qualcuno più pazzo di
-voi. Ma se dovessi darvi un suggerimento sulla sincronizzazione:
-**mantenetela semplice**.
+Se dovessi darvi un suggerimento sulla sincronizzazione: **mantenetela
+semplice**.
 
 Siate riluttanti nell'introduzione di nuovi *lock*.
-
-Abbastanza strano, quest'ultimo è l'esatto opposto del mio suggerimento
-su quando **avete** dormito con qualcuno più pazzo di voi. E dovreste
-pensare a prendervi un cane bello grande.
 
 I due principali tipi di *lock* nel kernel: spinlock e mutex
 ------------------------------------------------------------
@@ -127,11 +122,11 @@ il vostro processo si auto-sospenderà; verrà riattivato quando il mutex
 verrà rilasciato. Questo significa che il processore potrà occuparsi d'altro
 mentre il vostro processo è in attesa. Esistono molti casi in cui non potete
 permettervi di sospendere un processo (vedere
-:ref:`Quali funzioni possono essere chiamate in modo sicuro dalle interruzioni? <it_sleeping-things>`)
+`Quali funzioni possono essere chiamate in modo sicuro dalle interruzioni?`_)
 e quindi dovrete utilizzare gli spinlock.
 
 Nessuno di questi *lock* è ricorsivo: vedere
-:ref:`Stallo: semplice ed avanzato <it_deadlock>`
+`Stallo: semplice ed avanzato`_
 
 I *lock* e i kernel per sistemi monoprocessore
 ----------------------------------------------
@@ -190,7 +185,7 @@ perfetto questa funzione si chiamerebbe 'spin_lock_softirq()').
 
 Da notare che in questo caso potete utilizzare anche spin_lock_irq()
 o spin_lock_irqsave(), queste fermano anche le interruzioni hardware:
-vedere :ref:`Contesto di interruzione hardware <it_hardirq-context>`.
+vedere `Contesto di interruzione hardware`_.
 
 Questo funziona alla perfezione anche sui sistemi monoprocessore: gli spinlock
 svaniscono e questa macro diventa semplicemente local_bh_disable()
@@ -241,7 +236,7 @@ Lo stesso softirq
 
 Lo stesso softirq può essere eseguito su un diverso processore: allo scopo
 di migliorare le prestazioni potete utilizzare dati riservati ad ogni
-processore (vedere :ref:`Dati per processore <it_per-cpu>`). Se siete arrivati
+processore (vedere `Dati per processore`_). Se siete arrivati
 fino a questo punto nell'uso dei softirq, probabilmente tenete alla scalabilità
 delle prestazioni abbastanza da giustificarne la complessità aggiuntiva.
 
@@ -316,7 +311,7 @@ Pete Zaitcev ci offre il seguente riassunto:
 
 -  Se siete in un contesto utente (una qualsiasi chiamata di sistema)
    e volete sincronizzarvi con altri processi, usate i mutex. Potete trattenere
-   il mutex e dormire (``copy_from_user*(`` o ``kmalloc(x,GFP_KERNEL)``).
+   il mutex e dormire (``copy_from_user(`` o ``kmalloc(x,GFP_KERNEL)``).
 
 -  Altrimenti (== i dati possono essere manipolati da un'interruzione) usate
    spin_lock_irqsave() e spin_unlock_irqrestore().
@@ -896,8 +891,6 @@ leggendo solamente il codice. E come dice Alan Cox: “Lock data, not code”.
 Problemi comuni
 ===============
 
-.. _`it_deadlock`:
-
 Stallo: semplice ed avanzato
 ----------------------------
 
@@ -980,9 +973,6 @@ Un pezzo di codice trattiene un *lock* di lettura, cerca in una lista,
 fallisce nel trovare quello che vuole, quindi rilascia il *lock* di lettura,
 trattiene un *lock* di scrittura ed inserisce un oggetto; questo genere di
 codice presenta una corsa critica.
-
-Se non riuscite a capire il perché, per favore state alla larga dal mio
-codice.
 
 corsa fra temporizzatori: un passatempo del kernel
 --------------------------------------------------
@@ -1282,7 +1272,6 @@ Il beneficio qui sta nel fatto che il contatore di riferimenti no
 viene scritto: l'oggetto non viene alterato in alcun modo e quindi diventa
 molto più veloce su sistemi molti-processore grazie alla loro memoria cache.
 
-.. _`it_per-cpu`:
 
 Dati per processore
 -------------------
@@ -1333,7 +1322,6 @@ Naturalmente, questo è più lento della semplice chiamata
 spin_lock_irq(), quindi ha senso solo se questo genere di accesso
 è estremamente raro.
 
-.. _`it_sleeping-things`:
 
 Quali funzioni possono essere chiamate in modo sicuro dalle interruzioni?
 =========================================================================
@@ -1400,7 +1388,19 @@ Riferimento per l'API dei Mutex
 Riferimento per l'API dei Futex
 ===============================
 
-.. kernel-doc:: kernel/futex.c
+.. kernel-doc:: kernel/futex/core.c
+   :internal:
+
+.. kernel-doc:: kernel/futex/futex.h
+   :internal:
+
+.. kernel-doc:: kernel/futex/pi.c
+   :internal:
+
+.. kernel-doc:: kernel/futex/requeue.c
+   :internal:
+
+.. kernel-doc:: kernel/futex/waitwake.c
    :internal:
 
 Approfondimenti
@@ -1463,11 +1463,11 @@ contesto utente
   che hardware.
 
 interruzione hardware
-  Richiesta di interruzione hardware. in_irq() ritorna vero in un
+  Richiesta di interruzione hardware. in_hardirq() ritorna vero in un
   gestore d'interruzioni hardware.
 
 interruzione software / softirq
-  Gestore di interruzioni software: in_irq() ritorna falso;
+  Gestore di interruzioni software: in_hardirq() ritorna falso;
   in_softirq() ritorna vero. I tasklet e le softirq sono entrambi
   considerati 'interruzioni software'.
 

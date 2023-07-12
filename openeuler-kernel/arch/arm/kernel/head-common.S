@@ -80,45 +80,73 @@ __mmap_switched:
 	mov	r8, r2
 	mov	r10, r0
 
+	adr	r4, __mmap_switched_data
 	mov	fp, #0
 
 #if defined(CONFIG_XIP_DEFLATED_DATA)
-	adr_l	r4, __bss_stop
-	mov	sp, r4				@ sp (temporary stack in .bss)
+   ARM(	ldr	sp, [r4], #4 )
+ THUMB(	ldr	sp, [r4] )
+ THUMB(	add	r4, #4 )
 	bl	__inflate_kernel_data		@ decompress .data to RAM
 	teq	r0, #0
 	bne	__error
 #elif defined(CONFIG_XIP_KERNEL)
-	adr_l	r0, _sdata
-	adr_l	r1, __data_loc
-	adr_l	r2, _edata_loc
-	adr_l	r3, __bss_stop
-	mov	sp, r3				@ sp (temporary stack in .bss)
+   ARM(	ldmia	r4!, {r0, r1, r2, sp} )
+ THUMB(	ldmia	r4!, {r0, r1, r2, r3} )
+ THUMB(	mov	sp, r3 )
 	sub	r2, r2, r1
 	bl	__memcpy			@ copy .data to RAM
 #endif
 
-	adr_l	r0, __bss_start
-	adr_l	r1, __bss_stop
-	adr_l	r3, init_thread_union + THREAD_START_SP
-	mov	sp, r3
+   ARM(	ldmia	r4!, {r0, r1, sp} )
+ THUMB(	ldmia	r4!, {r0, r1, r3} )
+ THUMB(	mov	sp, r3 )
 	sub	r2, r1, r0
 	mov	r1, #0
 	bl	__memset			@ clear .bss
 
+	adr_l	r0, init_task			@ get swapper task_struct
+	set_current r0, r1
+
+	ldmia	r4, {r0, r1, r2, r3}
+	str	r9, [r0]			@ Save processor ID
+	str	r7, [r1]			@ Save machine type
+	str	r8, [r2]			@ Save atags pointer
+	cmp	r3, #0
+	strne	r10, [r3]			@ Save control register values
 #ifdef CONFIG_KASAN
 	bl	kasan_early_init
-#endif
-
-	str_l	r9, processor_id, r4		@ Save processor ID
-	str_l	r7, __machine_arch_type, r4	@ Save machine type
-	str_l	r8, __atags_pointer, r4		@ Save atags pointer
-#ifdef CONFIG_CPU_CP15
-	str_l	r10, cr_alignment, r4		@ Save control register values
 #endif
 	mov	lr, #0
 	b	start_kernel
 ENDPROC(__mmap_switched)
+
+	.align	2
+	.type	__mmap_switched_data, %object
+__mmap_switched_data:
+#ifdef CONFIG_XIP_KERNEL
+#ifndef CONFIG_XIP_DEFLATED_DATA
+	.long	_sdata				@ r0
+	.long	__data_loc			@ r1
+	.long	_edata_loc			@ r2
+#endif
+	.long	__bss_stop			@ sp (temporary stack in .bss)
+#endif
+
+	.long	__bss_start			@ r0
+	.long	__bss_stop			@ r1
+	.long	init_thread_union + THREAD_START_SP @ sp
+
+	.long	processor_id			@ r0
+	.long	__machine_arch_type		@ r1
+	.long	__atags_pointer			@ r2
+#ifdef CONFIG_CPU_CP15
+	.long	cr_alignment			@ r3
+#else
+M_CLASS(.long	exc_ret)			@ r3
+AR_CLASS(.long	0)				@ r3
+#endif
+	.size	__mmap_switched_data, . - __mmap_switched_data
 
 	__FINIT
 	.text

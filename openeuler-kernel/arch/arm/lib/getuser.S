@@ -27,7 +27,6 @@
 #include <linux/linkage.h>
 #include <asm/assembler.h>
 #include <asm/errno.h>
-#include <asm/extable.h>
 #include <asm/domain.h>
 
 ENTRY(__get_user_1)
@@ -150,18 +149,19 @@ _ASM_NOKPROBE(__get_user_bad)
 _ASM_NOKPROBE(__get_user_bad8)
 
 .pushsection __ex_table, "a"
-	ex_entry	1b, __get_user_bad
-	ex_entry	2b, __get_user_bad
+	.long	1b, __get_user_bad
+	.long	2b, __get_user_bad
 #if __LINUX_ARM_ARCH__ < 6
-	ex_entry	3b, __get_user_bad
+	.long	3b, __get_user_bad
 #endif
-	ex_entry	4b, __get_user_bad
-	ex_entry	5b, __get_user_bad8
-	ex_entry	6b, __get_user_bad8
+	.long	4b, __get_user_bad
+	.long	5b, __get_user_bad8
+	.long	6b, __get_user_bad8
 #ifdef __ARMEB__
-	ex_entry	7b, __get_user_bad
-	ex_entry	8b, __get_user_bad8
-	ex_entry	9b, __get_user_bad8
-	ex_entry	10b, __get_user_bad8
-	ex_entry	11b, __get_user_bad8
+	.long   7b, __get_user_bad
+	.long	8b, __get_user_bad8
+	.long	9b, __get_user_bad8
+	.long	10b, __get_user_bad8
+	.long	11b, __get_user_bad8
 #endif
+.popsection

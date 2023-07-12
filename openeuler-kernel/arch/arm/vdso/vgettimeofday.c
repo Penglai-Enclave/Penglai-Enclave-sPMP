@@ -4,11 +4,6 @@
  *
  * Copyright 2015 Mentor Graphics Corporation.
  */
-
-#ifdef CONFIG_RANDOMIZE_BASE
-#pragma GCC visibility pop
-#endif
-
 #include <linux/time.h>
 #include <linux/types.h>
 

@@ -30,7 +30,6 @@ properties:
 
   power-domain-names:
     minItems: 3
-    maxItems: 4
     items:
       - const: venus
       - const: vcodec0
@@ -82,6 +81,7 @@ properties:
 
   video-firmware:
     type: object
+    additionalProperties: false
 
     description: |
       Firmware subnode is needed when the platform does not

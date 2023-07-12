@@ -7,6 +7,7 @@
  */
 
 #include <linux/linkage.h>
+#include <linux/cfi_types.h>
 #include <asm/asm-offsets.h>
 #include <asm/assembler.h>
 #include <asm/ftrace.h>
@@ -35,7 +36,7 @@
  */
 	.macro  ftrace_regs_entry, allregs=0
 	/* Make room for pt_regs, plus a callee frame */
-	sub	sp, sp, #(S_FRAME_SIZE + 16)
+	sub	sp, sp, #(PT_REGS_SIZE + 16)
 
 	/* Save function arguments (and x9 for simplicity) */
 	stp	x0, x1, [sp, #S_X0]
@@ -61,15 +62,15 @@
 	.endif
 
 	/* Save the callsite's SP and LR */
-	add	x10, sp, #(S_FRAME_SIZE + 16)
+	add	x10, sp, #(PT_REGS_SIZE + 16)
 	stp	x9, x10, [sp, #S_LR]
 
 	/* Save the PC after the ftrace callsite */
 	str	x30, [sp, #S_PC]
 
 	/* Create a frame record for the callsite above pt_regs */
-	stp	x29, x9, [sp, #S_FRAME_SIZE]
-	add	x29, sp, #S_FRAME_SIZE
+	stp	x29, x9, [sp, #PT_REGS_SIZE]
+	add	x29, sp, #PT_REGS_SIZE
 
 	/* Create our frame record within pt_regs. */
 	stp	x29, x30, [sp, #S_STACKFRAME]
@@ -77,11 +78,13 @@
 	.endm
 
 SYM_CODE_START(ftrace_regs_caller)
+	bti	c
 	ftrace_regs_entry	1
 	b	ftrace_common
 SYM_CODE_END(ftrace_regs_caller)
 
 SYM_CODE_START(ftrace_caller)
+	bti	c
 	ftrace_regs_entry	0
 	b	ftrace_common
 SYM_CODE_END(ftrace_caller)
@@ -95,18 +98,11 @@ SYM_CODE_START(ftrace_common)
 SYM_INNER_LABEL(ftrace_call, SYM_L_GLOBAL)
 	bl	ftrace_stub
 
-#ifdef CONFIG_FUNCTION_GRAPH_TRACER
-SYM_INNER_LABEL(ftrace_graph_call, SYM_L_GLOBAL) // ftrace_graph_caller();
-	nop				// If enabled, this will be replaced
-					// "b ftrace_graph_caller"
-#endif
-
 /*
  * At the callsite x0-x8 and x19-x30 were live. Any C code will have preserved
  * x19-x29 per the AAPCS, and we created frame records upon entry, so we need
  * to restore x0-x8, x29, and x30.
  */
-ftrace_common_return:
 	/* Restore function arguments */
 	ldp	x0, x1, [sp]
 	ldp	x2, x3, [sp, #S_X2]
@@ -120,21 +116,10 @@ ftrace_common_return:
 	ldr	x9, [sp, #S_PC]
 
 	/* Restore the callsite's SP */
-	add	sp, sp, #S_FRAME_SIZE + 16
+	add	sp, sp, #PT_REGS_SIZE + 16
 
 	ret	x9
 SYM_CODE_END(ftrace_common)
-
-#ifdef CONFIG_FUNCTION_GRAPH_TRACER
-SYM_CODE_START(ftrace_graph_caller)
-	ldr	x0, [sp, #S_PC]
-	sub	x0, x0, #AARCH64_INSN_SIZE	// ip (callsite's BL insn)
-	add	x1, sp, #S_LR			// parent_ip (callsite's LR)
-	ldr	x2, [sp, #S_FRAME_SIZE]	   	// parent fp (callsite's FP)
-	bl	prepare_ftrace_return
-	b	ftrace_common_return
-SYM_CODE_END(ftrace_graph_caller)
-#endif
 
 #else /* CONFIG_DYNAMIC_FTRACE_WITH_REGS */
 
@@ -310,11 +295,15 @@ SYM_FUNC_END(ftrace_graph_caller)
 #endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 #endif /* CONFIG_DYNAMIC_FTRACE_WITH_REGS */
 
-SYM_FUNC_START(ftrace_stub)
+SYM_TYPED_FUNC_START(ftrace_stub)
 	ret
 SYM_FUNC_END(ftrace_stub)
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
+SYM_TYPED_FUNC_START(ftrace_stub_graph)
+	ret
+SYM_FUNC_END(ftrace_stub_graph)
+
 /*
  * void return_to_handler(void)
  *

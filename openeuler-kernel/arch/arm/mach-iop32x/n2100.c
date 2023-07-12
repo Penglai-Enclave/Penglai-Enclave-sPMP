@@ -116,16 +116,16 @@ static struct hw_pci n2100_pci __initdata = {
 };
 
 /*
- * Both r8169 chips on the n2100 exhibit PCI parity problems.  Set
- * the ->broken_parity_status flag for both ports so that the r8169
- * driver knows it should ignore error interrupts.
+ * Both r8169 chips on the n2100 exhibit PCI parity problems.  Turn
+ * off parity reporting for both ports so we don't get error interrupts
+ * for them.
  */
 static void n2100_fixup_r8169(struct pci_dev *dev)
 {
 	if (dev->bus->number == 0 &&
 	    (dev->devfn == PCI_DEVFN(1, 0) ||
 	     dev->devfn == PCI_DEVFN(2, 0)))
-		dev->broken_parity_status = 1;
+		pci_disable_parity(dev);
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_REALTEK, PCI_ANY_ID, n2100_fixup_r8169);
 
@@ -358,6 +358,7 @@ static void __init n2100_init_machine(void)
 MACHINE_START(N2100, "Thecus N2100")
 	/* Maintainer: Lennert Buytenhek <buytenh@wantstofly.org> */
 	.atag_offset	= 0x100,
+	.nr_irqs	= IOP32X_NR_IRQS,
 	.map_io		= n2100_map_io,
 	.init_irq	= iop32x_init_irq,
 	.init_time	= n2100_timer_init,

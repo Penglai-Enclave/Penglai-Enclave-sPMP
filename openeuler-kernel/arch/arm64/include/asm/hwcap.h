@@ -18,7 +18,7 @@
 #define COMPAT_HWCAP_EDSP	(1 << 7)
 #define COMPAT_HWCAP_JAVA	(1 << 8)
 #define COMPAT_HWCAP_IWMMXT	(1 << 9)
-#define COMPAT_HWCAP_CRUNCH	(1 << 10)
+#define COMPAT_HWCAP_CRUNCH	(1 << 10) /* Obsolete */
 #define COMPAT_HWCAP_THUMBEE	(1 << 11)
 #define COMPAT_HWCAP_NEON	(1 << 12)
 #define COMPAT_HWCAP_VFPv3	(1 << 13)
@@ -85,7 +85,7 @@
 #define KERNEL_HWCAP_PACA		__khwcap_feature(PACA)
 #define KERNEL_HWCAP_PACG		__khwcap_feature(PACG)
 
-#define __khwcap2_feature(x)		(const_ilog2(HWCAP2_ ## x) + 32)
+#define __khwcap2_feature(x)		(const_ilog2(HWCAP2_ ## x) + 64)
 #define KERNEL_HWCAP_DCPODP		__khwcap2_feature(DCPODP)
 #define KERNEL_HWCAP_SVE2		__khwcap2_feature(SVE2)
 #define KERNEL_HWCAP_SVEAES		__khwcap2_feature(SVEAES)
@@ -105,6 +105,21 @@
 #define KERNEL_HWCAP_RNG		__khwcap2_feature(RNG)
 #define KERNEL_HWCAP_BTI		__khwcap2_feature(BTI)
 #define KERNEL_HWCAP_MTE		__khwcap2_feature(MTE)
+#define KERNEL_HWCAP_ECV		__khwcap2_feature(ECV)
+#define KERNEL_HWCAP_AFP		__khwcap2_feature(AFP)
+#define KERNEL_HWCAP_RPRES		__khwcap2_feature(RPRES)
+#define KERNEL_HWCAP_MTE3		__khwcap2_feature(MTE3)
+#define KERNEL_HWCAP_SME		__khwcap2_feature(SME)
+#define KERNEL_HWCAP_SME_I16I64		__khwcap2_feature(SME_I16I64)
+#define KERNEL_HWCAP_SME_F64F64		__khwcap2_feature(SME_F64F64)
+#define KERNEL_HWCAP_SME_I8I32		__khwcap2_feature(SME_I8I32)
+#define KERNEL_HWCAP_SME_F16F32		__khwcap2_feature(SME_F16F32)
+#define KERNEL_HWCAP_SME_B16F32		__khwcap2_feature(SME_B16F32)
+#define KERNEL_HWCAP_SME_F32F32		__khwcap2_feature(SME_F32F32)
+#define KERNEL_HWCAP_SME_FA64		__khwcap2_feature(SME_FA64)
+#define KERNEL_HWCAP_WFXT		__khwcap2_feature(WFXT)
+#define KERNEL_HWCAP_EBF16		__khwcap2_feature(EBF16)
+#define KERNEL_HWCAP_SVE_EBF16		__khwcap2_feature(SVE_EBF16)
 
 /*
  * This yields a mask that user programs can use to figure out what
@@ -113,13 +128,15 @@
 #define ELF_HWCAP		cpu_get_elf_hwcap()
 #define ELF_HWCAP2		cpu_get_elf_hwcap2()
 
-#ifdef CONFIG_AARCH32_EL0
-extern unsigned int a32_elf_hwcap, a32_elf_hwcap2;
+#ifdef CONFIG_COMPAT
+#define COMPAT_ELF_HWCAP	(compat_elf_hwcap)
+#define COMPAT_ELF_HWCAP2	(compat_elf_hwcap2)
+extern unsigned int compat_elf_hwcap, compat_elf_hwcap2;
 #endif
 
 enum {
 	CAP_HWCAP = 1,
-#ifdef CONFIG_AARCH32_EL0
+#ifdef CONFIG_COMPAT
 	CAP_COMPAT_HWCAP,
 	CAP_COMPAT_HWCAP2,
 #endif

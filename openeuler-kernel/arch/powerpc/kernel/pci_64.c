@@ -19,10 +19,10 @@
 #include <linux/syscalls.h>
 #include <linux/irq.h>
 #include <linux/vmalloc.h>
+#include <linux/of.h>
 
 #include <asm/processor.h>
 #include <asm/io.h>
-#include <asm/prom.h>
 #include <asm/pci-bridge.h>
 #include <asm/byteorder.h>
 #include <asm/machdep.h>
@@ -140,7 +140,7 @@ void __iomem *ioremap_phb(phys_addr_t paddr, unsigned long size)
 	addr = (unsigned long)area->addr;
 	if (ioremap_page_range(addr, addr + size, paddr,
 			pgprot_noncached(PAGE_KERNEL))) {
-		unmap_kernel_range(addr, size);
+		vunmap_range(addr, addr + size);
 		return NULL;
 	}
 
@@ -284,4 +284,15 @@ int pcibus_to_node(struct pci_bus *bus)
 	return phb->node;
 }
 EXPORT_SYMBOL(pcibus_to_node);
+#endif
+
+#ifdef CONFIG_PPC_PMAC
+int pci_device_from_OF_node(struct device_node *np, u8 *bus, u8 *devfn)
+{
+	if (!PCI_DN(np))
+		return -ENODEV;
+	*bus = PCI_DN(np)->busno;
+	*devfn = PCI_DN(np)->devfn;
+	return 0;
+}
 #endif

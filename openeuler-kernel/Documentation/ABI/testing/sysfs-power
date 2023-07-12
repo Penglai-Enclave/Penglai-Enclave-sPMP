@@ -152,7 +152,7 @@ Description:
 		case further investigation is required to determine which
 		device is causing the problem.  Note that genuine RTC clock
 		values (such as when pm_trace has not been used), can still
-		match a device and output it's name here.
+		match a device and output its name here.
 
 What:		/sys/power/pm_async
 Date:		January 2009
@@ -295,7 +295,7 @@ Description:
 
 What:		/sys/power/resume_offset
 Date:		April 2018
-Contact:	Mario Limonciello <mario.limonciello@dell.com>
+Contact:	Mario Limonciello <mario.limonciello@outlook.com>
 Description:
 		This file is used for telling the kernel an offset into a disk
 		to use when hibernating the system such as with a swap file.

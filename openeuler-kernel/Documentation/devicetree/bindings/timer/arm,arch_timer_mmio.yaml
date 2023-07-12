@@ -62,6 +62,7 @@ properties:
 patternProperties:
   '^frame@[0-9a-z]*$':
     type: object
+    additionalProperties: false
     description: A timer node has up to 8 frame sub-nodes, each with the following properties.
     properties:
       frame-number:
@@ -71,14 +72,12 @@ patternProperties:
 
       interrupts:
         minItems: 1
-        maxItems: 2
         items:
           - description: physical timer irq
           - description: virtual timer irq
 
       reg:
         minItems: 1
-        maxItems: 2
         items:
           - description: 1st view base address
           - description: 2nd optional view base address

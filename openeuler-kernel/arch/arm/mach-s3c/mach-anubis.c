@@ -34,7 +34,7 @@
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/rawnand.h>
-#include <linux/mtd/nand_ecc.h>
+#include <linux/mtd/nand-ecc-sw-hamming.h>
 #include <linux/mtd/partitions.h>
 
 #include <net/ax88796.h>
@@ -56,11 +56,6 @@ static struct map_desc anubis_iodesc[] __initdata = {
 	.virtual	= (u32)S3C24XX_VA_ISA_BYTE,
 	.pfn		= __phys_to_pfn(0x0),
 	.length		= SZ_4M,
-	.type		= MT_DEVICE,
-  }, {
-	.virtual	= (u32)S3C24XX_VA_ISA_WORD,
-	.pfn		= __phys_to_pfn(0x0),
-	.length 	= SZ_4M,
 	.type		= MT_DEVICE,
   },
 
@@ -419,6 +414,7 @@ static void __init anubis_init(void)
 MACHINE_START(ANUBIS, "Simtec-Anubis")
 	/* Maintainer: Ben Dooks <ben@simtec.co.uk> */
 	.atag_offset	= 0x100,
+	.nr_irqs	= NR_IRQS_S3C2440,
 	.map_io		= anubis_map_io,
 	.init_machine	= anubis_init,
 	.init_irq	= s3c2440_init_irq,

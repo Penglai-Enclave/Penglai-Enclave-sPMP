@@ -11,12 +11,14 @@ Contents:
    appletalk/index
    atm/index
    cable/index
+   can/index
    cellular/index
    ethernet/index
    fddi/index
    hamradio/index
-   wan/index
+   qlogic/index
    wifi/index
+   wwan/index
 
 .. only::  subproject and html
 

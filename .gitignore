@@ -22,4 +22,10 @@ backup/
 -object
 -smp
 host.txt
+
 Image
+openeuler-kernel-*/
+fw_payload_oe_*
+Image-*
+*.zst
+opensbi-1.2-*

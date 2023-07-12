@@ -11,9 +11,8 @@
 
 #include <linux/notifier.h>
 #include <asm/probes.h>
-#include <asm/inst.h>
 
-typedef ppc_opcode_t uprobe_opcode_t;
+typedef u32 uprobe_opcode_t;
 
 #define MAX_UINSN_BYTES		8
 #define UPROBE_XOL_SLOT_BYTES	(MAX_UINSN_BYTES)
@@ -24,8 +23,8 @@ typedef ppc_opcode_t uprobe_opcode_t;
 
 struct arch_uprobe {
 	union {
-		struct ppc_inst	insn;
-		struct ppc_inst	ixol;
+		u32 insn[2];
+		u32 ixol[2];
 	};
 };
 

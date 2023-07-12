@@ -19,7 +19,6 @@ description: |
 
 maintainers:
   - Tim Harvey <tharvey@gateworks.com>
-  - Robert Jones <rjones@gateworks.com>
 
 properties:
   $nodename:
@@ -47,6 +46,7 @@ properties:
 
   adc:
     type: object
+    additionalProperties: false
     description: Optional hardware monitoring module
 
     properties:
@@ -60,8 +60,9 @@ properties:
         const: 0
 
     patternProperties:
-      "^channel@[0-9]+$":
+      "^channel@[0-9a-f]+$":
         type: object
+        additionalProperties: false
         description: |
           Properties for a single ADC which can report cooked values
           (i.e. temperature sensor based on thermister), raw values
@@ -83,8 +84,9 @@ properties:
                 2 - scaled voltage based on an optional resistor divider
                     and optional offset
                 3 - pre-scaled 16-bit voltage value
+                4 - fan tach input to report RPM's
             $ref: /schemas/types.yaml#/definitions/uint32
-            enum: [0, 1, 2, 3]
+            enum: [0, 1, 2, 3, 4]
 
           gw,voltage-divider-ohms:
             description: Values of resistors for divider on raw ADC input
@@ -113,6 +115,7 @@ properties:
 patternProperties:
   "^fan-controller@[0-9a-f]+$":
     type: object
+    additionalProperties: false
     description: Optional fan controller
 
     properties:

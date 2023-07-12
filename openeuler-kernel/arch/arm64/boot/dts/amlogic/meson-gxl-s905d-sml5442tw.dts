@@ -16,28 +16,28 @@
 	leds {
 		compatible = "gpio-leds";
 
-		yellow {
+		led-yellow {
 			color = <LED_COLOR_ID_YELLOW>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio_ao GPIOAO_6 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
-		blue {
+		led-blue {
 			color = <LED_COLOR_ID_BLUE>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio GPIODV_28 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
-		green {
+		led-green {
 			color = <LED_COLOR_ID_GREEN>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio_ao GPIOAO_9 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
 
-		red {
+		led-red {
 			color = <LED_COLOR_ID_RED>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio GPIODV_27 GPIO_ACTIVE_HIGH>;
@@ -63,6 +63,10 @@
 	pinctrl-names = "default";
 };
 
+&ir {
+        linux,rc-map-name = "rc-khamsin";
+};
+
 /* This is connected to the Bluetooth module: */
 &uart_A {
 	status = "okay";
@@ -75,6 +79,5 @@
 		enable-gpios = <&gpio GPIOX_17 GPIO_ACTIVE_HIGH>;
 		max-speed = <2000000>;
 		clocks = <&wifi32k>;
-		clock-names = "lpo";
 	};
 };

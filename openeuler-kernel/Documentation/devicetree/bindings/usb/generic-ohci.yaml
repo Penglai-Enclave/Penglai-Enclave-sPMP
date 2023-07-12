@@ -4,7 +4,7 @@
 $id: http://devicetree.org/schemas/usb/generic-ohci.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: USB OHCI Controller Device Tree Bindings
+title: USB OHCI Controller
 
 allOf:
   - $ref: "usb-hcd.yaml"
@@ -14,8 +14,41 @@ maintainers:
 
 properties:
   compatible:
-    contains:
-      const: generic-ohci
+    oneOf:
+      - items:
+          - enum:
+              - allwinner,sun4i-a10-ohci
+              - allwinner,sun50i-a64-ohci
+              - allwinner,sun50i-h6-ohci
+              - allwinner,sun5i-a13-ohci
+              - allwinner,sun6i-a31-ohci
+              - allwinner,sun7i-a20-ohci
+              - allwinner,sun8i-a23-ohci
+              - allwinner,sun8i-a83t-ohci
+              - allwinner,sun8i-h3-ohci
+              - allwinner,sun8i-r40-ohci
+              - allwinner,sun9i-a80-ohci
+              - allwinner,sun20i-d1-ohci
+              - brcm,bcm3384-ohci
+              - brcm,bcm63268-ohci
+              - brcm,bcm6328-ohci
+              - brcm,bcm6358-ohci
+              - brcm,bcm6362-ohci
+              - brcm,bcm6368-ohci
+              - brcm,bcm7125-ohci
+              - brcm,bcm7346-ohci
+              - brcm,bcm7358-ohci
+              - brcm,bcm7360-ohci
+              - brcm,bcm7362-ohci
+              - brcm,bcm7420-ohci
+              - brcm,bcm7425-ohci
+              - brcm,bcm7435-ohci
+              - hpe,gxp-ohci
+              - ibm,476gtr-ohci
+              - ingenic,jz4740-ohci
+              - snps,hsdk-v1.0-ohci
+          - const: generic-ohci
+      - const: generic-ohci
 
   reg:
     maxItems: 1
@@ -71,13 +104,19 @@ properties:
       Overrides the detected port count
 
   phys:
-    description: PHY specifier for the USB PHY
+    minItems: 1
+    maxItems: 3
 
   phy-names:
     const: usb
 
   iommus:
     maxItems: 1
+
+  dr_mode:
+    enum:
+      - host
+      - otg
 
 required:
   - compatible

@@ -61,6 +61,9 @@ typedef struct user_fp elf_fpregset_t;
 #define R_ARM_MOVT_ABS		44
 #define R_ARM_MOVW_PREL_NC	45
 #define R_ARM_MOVT_PREL		46
+#define R_ARM_ALU_PC_G0_NC	57
+#define R_ARM_ALU_PC_G1_NC	59
+#define R_ARM_LDR_PC_G2		63
 
 #define R_ARM_THM_CALL		10
 #define R_ARM_THM_JUMP24	30
@@ -99,13 +102,11 @@ typedef struct user_fp elf_fpregset_t;
 extern char elf_platform[];
 
 struct elf32_hdr;
-struct elf64_hdr;
 
 /*
  * This is used to ensure we don't load something for the wrong architecture.
  */
 extern int elf_check_arch(const struct elf32_hdr *);
-extern int elf_check_arch_64(const struct elf64_hdr *);
 #define elf_check_arch elf_check_arch
 
 #define ELFOSABI_ARM_FDPIC  65	/* ARM FDPIC platform */
@@ -113,14 +114,10 @@ extern int elf_check_arch_64(const struct elf64_hdr *);
 #define elf_check_const_displacement(x)  ((x)->e_flags & EF_ARM_PIC)
 #define ELF_FDPIC_CORE_EFLAGS  0
 
-#define vmcore_elf64_check_arch(x) (elf_check_arch_64(x) || vmcore_elf_check_arch_cross(x))
+#define vmcore_elf64_check_arch(x) (0)
 
 extern int arm_elf_read_implies_exec(int);
 #define elf_read_implies_exec(ex,stk) arm_elf_read_implies_exec(stk)
-
-struct task_struct;
-int dump_task_regs(struct task_struct *t, elf_gregset_t *elfregs);
-#define ELF_CORE_COPY_TASK_REGS dump_task_regs
 
 #define CORE_DUMP_USE_REGSET
 #define ELF_EXEC_PAGESIZE	4096

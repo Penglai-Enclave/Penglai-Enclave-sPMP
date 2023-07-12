@@ -250,17 +250,17 @@ static void uniphier_cache_maint_all(u32 operation)
 		__uniphier_cache_maint_all(data, operation);
 }
 
-static void uniphier_cache_inv_range(phys_addr_t start, phys_addr_t end)
+static void uniphier_cache_inv_range(unsigned long start, unsigned long end)
 {
 	uniphier_cache_maint_range(start, end, UNIPHIER_SSCOQM_CM_INV);
 }
 
-static void uniphier_cache_clean_range(phys_addr_t start, phys_addr_t end)
+static void uniphier_cache_clean_range(unsigned long start, unsigned long end)
 {
 	uniphier_cache_maint_range(start, end, UNIPHIER_SSCOQM_CM_CLEAN);
 }
 
-static void uniphier_cache_flush_range(phys_addr_t start, phys_addr_t end)
+static void uniphier_cache_flush_range(unsigned long start, unsigned long end)
 {
 	uniphier_cache_maint_range(start, end, UNIPHIER_SSCOQM_CM_FLUSH);
 }

@@ -318,98 +318,309 @@ AES_FUNC_END(aes_cbc_cts_decrypt)
 	.byte		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 	.previous
 
-
 	/*
-	 * aes_ctr_encrypt(u8 out[], u8 const in[], u8 const rk[], int rounds,
-	 *		   int blocks, u8 ctr[])
+	 * This macro generates the code for CTR and XCTR mode.
 	 */
+.macro ctr_encrypt xctr
+	// Arguments
+	OUT		.req x0
+	IN		.req x1
+	KEY		.req x2
+	ROUNDS_W	.req w3
+	BYTES_W		.req w4
+	IV		.req x5
+	BYTE_CTR_W 	.req w6		// XCTR only
+	// Intermediate values
+	CTR_W		.req w11	// XCTR only
+	CTR		.req x11	// XCTR only
+	IV_PART		.req x12
+	BLOCKS		.req x13
+	BLOCKS_W	.req w13
 
-AES_FUNC_START(aes_ctr_encrypt)
 	stp		x29, x30, [sp, #-16]!
 	mov		x29, sp
 
-	enc_prepare	w3, x2, x6
-	ld1		{vctr.16b}, [x5]
+	enc_prepare	ROUNDS_W, KEY, IV_PART
+	ld1		{vctr.16b}, [IV]
 
-	umov		x6, vctr.d[1]		/* keep swabbed ctr in reg */
-	rev		x6, x6
-	cmn		w6, w4			/* 32 bit overflow? */
-	bcs		.Lctrloop
-.LctrloopNx:
-	subs		w4, w4, #MAX_STRIDE
-	bmi		.Lctr1x
-	add		w7, w6, #1
+	/*
+	 * Keep 64 bits of the IV in a register.  For CTR mode this lets us
+	 * easily increment the IV.  For XCTR mode this lets us efficiently XOR
+	 * the 64-bit counter with the IV.
+	 */
+	.if \xctr
+		umov		IV_PART, vctr.d[0]
+		lsr		CTR_W, BYTE_CTR_W, #4
+	.else
+		umov		IV_PART, vctr.d[1]
+		rev		IV_PART, IV_PART
+	.endif
+
+.LctrloopNx\xctr:
+	add		BLOCKS_W, BYTES_W, #15
+	sub		BYTES_W, BYTES_W, #MAX_STRIDE << 4
+	lsr		BLOCKS_W, BLOCKS_W, #4
+	mov		w8, #MAX_STRIDE
+	cmp		BLOCKS_W, w8
+	csel		BLOCKS_W, BLOCKS_W, w8, lt
+
+	/*
+	 * Set up the counter values in v0-v{MAX_STRIDE-1}.
+	 *
+	 * If we are encrypting less than MAX_STRIDE blocks, the tail block
+	 * handling code expects the last keystream block to be in
+	 * v{MAX_STRIDE-1}.  For example: if encrypting two blocks with
+	 * MAX_STRIDE=5, then v3 and v4 should have the next two counter blocks.
+	 */
+	.if \xctr
+		add		CTR, CTR, BLOCKS
+	.else
+		adds		IV_PART, IV_PART, BLOCKS
+	.endif
 	mov		v0.16b, vctr.16b
-	add		w8, w6, #2
 	mov		v1.16b, vctr.16b
-	add		w9, w6, #3
 	mov		v2.16b, vctr.16b
-	add		w9, w6, #3
-	rev		w7, w7
 	mov		v3.16b, vctr.16b
-	rev		w8, w8
 ST5(	mov		v4.16b, vctr.16b		)
-	mov		v1.s[3], w7
-	rev		w9, w9
-ST5(	add		w10, w6, #4			)
-	mov		v2.s[3], w8
-ST5(	rev		w10, w10			)
-	mov		v3.s[3], w9
-ST5(	mov		v4.s[3], w10			)
-	ld1		{v5.16b-v7.16b}, [x1], #48	/* get 3 input blocks */
+	.if \xctr
+		sub		x6, CTR, #MAX_STRIDE - 1
+		sub		x7, CTR, #MAX_STRIDE - 2
+		sub		x8, CTR, #MAX_STRIDE - 3
+		sub		x9, CTR, #MAX_STRIDE - 4
+ST5(		sub		x10, CTR, #MAX_STRIDE - 5	)
+		eor		x6, x6, IV_PART
+		eor		x7, x7, IV_PART
+		eor		x8, x8, IV_PART
+		eor		x9, x9, IV_PART
+ST5(		eor		x10, x10, IV_PART		)
+		mov		v0.d[0], x6
+		mov		v1.d[0], x7
+		mov		v2.d[0], x8
+		mov		v3.d[0], x9
+ST5(		mov		v4.d[0], x10			)
+	.else
+		bcs		0f
+		.subsection	1
+		/*
+		 * This subsection handles carries.
+		 *
+		 * Conditional branching here is allowed with respect to time
+		 * invariance since the branches are dependent on the IV instead
+		 * of the plaintext or key.  This code is rarely executed in
+		 * practice anyway.
+		 */
+
+		/* Apply carry to outgoing counter. */
+0:		umov		x8, vctr.d[0]
+		rev		x8, x8
+		add		x8, x8, #1
+		rev		x8, x8
+		ins		vctr.d[0], x8
+
+		/*
+		 * Apply carry to counter blocks if needed.
+		 *
+		 * Since the carry flag was set, we know 0 <= IV_PART <
+		 * MAX_STRIDE.  Using the value of IV_PART we can determine how
+		 * many counter blocks need to be updated.
+		 */
+		cbz		IV_PART, 2f
+		adr		x16, 1f
+		sub		x16, x16, IV_PART, lsl #3
+		br		x16
+		bti		c
+		mov		v0.d[0], vctr.d[0]
+		bti		c
+		mov		v1.d[0], vctr.d[0]
+		bti		c
+		mov		v2.d[0], vctr.d[0]
+		bti		c
+		mov		v3.d[0], vctr.d[0]
+ST5(		bti		c				)
+ST5(		mov		v4.d[0], vctr.d[0]		)
+1:		b		2f
+		.previous
+
+2:		rev		x7, IV_PART
+		ins		vctr.d[1], x7
+		sub		x7, IV_PART, #MAX_STRIDE - 1
+		sub		x8, IV_PART, #MAX_STRIDE - 2
+		sub		x9, IV_PART, #MAX_STRIDE - 3
+		rev		x7, x7
+		rev		x8, x8
+		mov		v1.d[1], x7
+		rev		x9, x9
+ST5(		sub		x10, IV_PART, #MAX_STRIDE - 4	)
+		mov		v2.d[1], x8
+ST5(		rev		x10, x10			)
+		mov		v3.d[1], x9
+ST5(		mov		v4.d[1], x10			)
+	.endif
+
+	/*
+	 * If there are at least MAX_STRIDE blocks left, XOR the data with
+	 * keystream and store.  Otherwise jump to tail handling.
+	 */
+	tbnz		BYTES_W, #31, .Lctrtail\xctr
+	ld1		{v5.16b-v7.16b}, [IN], #48
 ST4(	bl		aes_encrypt_block4x		)
 ST5(	bl		aes_encrypt_block5x		)
 	eor		v0.16b, v5.16b, v0.16b
-ST4(	ld1		{v5.16b}, [x1], #16		)
+ST4(	ld1		{v5.16b}, [IN], #16		)
 	eor		v1.16b, v6.16b, v1.16b
-ST5(	ld1		{v5.16b-v6.16b}, [x1], #32	)
+ST5(	ld1		{v5.16b-v6.16b}, [IN], #32	)
 	eor		v2.16b, v7.16b, v2.16b
 	eor		v3.16b, v5.16b, v3.16b
 ST5(	eor		v4.16b, v6.16b, v4.16b		)
-	st1		{v0.16b-v3.16b}, [x0], #64
-ST5(	st1		{v4.16b}, [x0], #16		)
-	add		x6, x6, #MAX_STRIDE
-	rev		x7, x6
-	ins		vctr.d[1], x7
-	cbz		w4, .Lctrout
-	b		.LctrloopNx
-.Lctr1x:
-	adds		w4, w4, #MAX_STRIDE
-	beq		.Lctrout
-.Lctrloop:
-	mov		v0.16b, vctr.16b
-	encrypt_block	v0, w3, x2, x8, w7
+	st1		{v0.16b-v3.16b}, [OUT], #64
+ST5(	st1		{v4.16b}, [OUT], #16		)
+	cbz		BYTES_W, .Lctrout\xctr
+	b		.LctrloopNx\xctr
 
-	adds		x6, x6, #1		/* increment BE ctr */
-	rev		x7, x6
-	ins		vctr.d[1], x7
-	bcs		.Lctrcarry		/* overflow? */
-
-.Lctrcarrydone:
-	subs		w4, w4, #1
-	bmi		.Lctrtailblock		/* blocks <0 means tail block */
-	ld1		{v3.16b}, [x1], #16
-	eor		v3.16b, v0.16b, v3.16b
-	st1		{v3.16b}, [x0], #16
-	bne		.Lctrloop
-
-.Lctrout:
-	st1		{vctr.16b}, [x5]	/* return next CTR value */
+.Lctrout\xctr:
+	.if !\xctr
+		st1		{vctr.16b}, [IV] /* return next CTR value */
+	.endif
 	ldp		x29, x30, [sp], #16
 	ret
 
-.Lctrtailblock:
-	st1		{v0.16b}, [x0]
-	b		.Lctrout
+.Lctrtail\xctr:
+	/*
+	 * Handle up to MAX_STRIDE * 16 - 1 bytes of plaintext
+	 *
+	 * This code expects the last keystream block to be in v{MAX_STRIDE-1}.
+	 * For example: if encrypting two blocks with MAX_STRIDE=5, then v3 and
+	 * v4 should have the next two counter blocks.
+	 *
+	 * This allows us to store the ciphertext by writing to overlapping
+	 * regions of memory.  Any invalid ciphertext blocks get overwritten by
+	 * correctly computed blocks.  This approach greatly simplifies the
+	 * logic for storing the ciphertext.
+	 */
+	mov		x16, #16
+	ands		w7, BYTES_W, #0xf
+	csel		x13, x7, x16, ne
 
-.Lctrcarry:
-	umov		x7, vctr.d[0]		/* load upper word of ctr  */
-	rev		x7, x7			/* ... to handle the carry */
-	add		x7, x7, #1
-	rev		x7, x7
-	ins		vctr.d[0], x7
-	b		.Lctrcarrydone
+ST5(	cmp		BYTES_W, #64 - (MAX_STRIDE << 4))
+ST5(	csel		x14, x16, xzr, gt		)
+	cmp		BYTES_W, #48 - (MAX_STRIDE << 4)
+	csel		x15, x16, xzr, gt
+	cmp		BYTES_W, #32 - (MAX_STRIDE << 4)
+	csel		x16, x16, xzr, gt
+	cmp		BYTES_W, #16 - (MAX_STRIDE << 4)
+
+	adr_l		x9, .Lcts_permute_table
+	add		x9, x9, x13
+	ble		.Lctrtail1x\xctr
+
+ST5(	ld1		{v5.16b}, [IN], x14		)
+	ld1		{v6.16b}, [IN], x15
+	ld1		{v7.16b}, [IN], x16
+
+ST4(	bl		aes_encrypt_block4x		)
+ST5(	bl		aes_encrypt_block5x		)
+
+	ld1		{v8.16b}, [IN], x13
+	ld1		{v9.16b}, [IN]
+	ld1		{v10.16b}, [x9]
+
+ST4(	eor		v6.16b, v6.16b, v0.16b		)
+ST4(	eor		v7.16b, v7.16b, v1.16b		)
+ST4(	tbl		v3.16b, {v3.16b}, v10.16b	)
+ST4(	eor		v8.16b, v8.16b, v2.16b		)
+ST4(	eor		v9.16b, v9.16b, v3.16b		)
+
+ST5(	eor		v5.16b, v5.16b, v0.16b		)
+ST5(	eor		v6.16b, v6.16b, v1.16b		)
+ST5(	tbl		v4.16b, {v4.16b}, v10.16b	)
+ST5(	eor		v7.16b, v7.16b, v2.16b		)
+ST5(	eor		v8.16b, v8.16b, v3.16b		)
+ST5(	eor		v9.16b, v9.16b, v4.16b		)
+
+ST5(	st1		{v5.16b}, [OUT], x14		)
+	st1		{v6.16b}, [OUT], x15
+	st1		{v7.16b}, [OUT], x16
+	add		x13, x13, OUT
+	st1		{v9.16b}, [x13]		// overlapping stores
+	st1		{v8.16b}, [OUT]
+	b		.Lctrout\xctr
+
+.Lctrtail1x\xctr:
+	/*
+	 * Handle <= 16 bytes of plaintext
+	 *
+	 * This code always reads and writes 16 bytes.  To avoid out of bounds
+	 * accesses, XCTR and CTR modes must use a temporary buffer when
+	 * encrypting/decrypting less than 16 bytes.
+	 *
+	 * This code is unusual in that it loads the input and stores the output
+	 * relative to the end of the buffers rather than relative to the start.
+	 * This causes unusual behaviour when encrypting/decrypting less than 16
+	 * bytes; the end of the data is expected to be at the end of the
+	 * temporary buffer rather than the start of the data being at the start
+	 * of the temporary buffer.
+	 */
+	sub		x8, x7, #16
+	csel		x7, x7, x8, eq
+	add		IN, IN, x7
+	add		OUT, OUT, x7
+	ld1		{v5.16b}, [IN]
+	ld1		{v6.16b}, [OUT]
+ST5(	mov		v3.16b, v4.16b			)
+	encrypt_block	v3, ROUNDS_W, KEY, x8, w7
+	ld1		{v10.16b-v11.16b}, [x9]
+	tbl		v3.16b, {v3.16b}, v10.16b
+	sshr		v11.16b, v11.16b, #7
+	eor		v5.16b, v5.16b, v3.16b
+	bif		v5.16b, v6.16b, v11.16b
+	st1		{v5.16b}, [OUT]
+	b		.Lctrout\xctr
+
+	// Arguments
+	.unreq OUT
+	.unreq IN
+	.unreq KEY
+	.unreq ROUNDS_W
+	.unreq BYTES_W
+	.unreq IV
+	.unreq BYTE_CTR_W	// XCTR only
+	// Intermediate values
+	.unreq CTR_W		// XCTR only
+	.unreq CTR		// XCTR only
+	.unreq IV_PART
+	.unreq BLOCKS
+	.unreq BLOCKS_W
+.endm
+
+	/*
+	 * aes_ctr_encrypt(u8 out[], u8 const in[], u8 const rk[], int rounds,
+	 *		   int bytes, u8 ctr[])
+	 *
+	 * The input and output buffers must always be at least 16 bytes even if
+	 * encrypting/decrypting less than 16 bytes.  Otherwise out of bounds
+	 * accesses will occur.  The data to be encrypted/decrypted is expected
+	 * to be at the end of this 16-byte temporary buffer rather than the
+	 * start.
+	 */
+
+AES_FUNC_START(aes_ctr_encrypt)
+	ctr_encrypt 0
 AES_FUNC_END(aes_ctr_encrypt)
+
+	/*
+	 * aes_xctr_encrypt(u8 out[], u8 const in[], u8 const rk[], int rounds,
+	 *		   int bytes, u8 const iv[], int byte_ctr)
+	 *
+	 * The input and output buffers must always be at least 16 bytes even if
+	 * encrypting/decrypting less than 16 bytes.  Otherwise out of bounds
+	 * accesses will occur.  The data to be encrypted/decrypted is expected
+	 * to be at the end of this 16-byte temporary buffer rather than the
+	 * start.
+	 */
+
+AES_FUNC_START(aes_xctr_encrypt)
+	ctr_encrypt 1
+AES_FUNC_END(aes_xctr_encrypt)
 
 
 	/*
@@ -619,61 +830,47 @@ AES_FUNC_END(aes_xts_decrypt)
 	 *		  int blocks, u8 dg[], int enc_before, int enc_after)
 	 */
 AES_FUNC_START(aes_mac_update)
-	frame_push	6
-
-	mov		x19, x0
-	mov		x20, x1
-	mov		x21, x2
-	mov		x22, x3
-	mov		x23, x4
-	mov		x24, x6
-
-	ld1		{v0.16b}, [x23]			/* get dg */
+	ld1		{v0.16b}, [x4]			/* get dg */
 	enc_prepare	w2, x1, x7
 	cbz		w5, .Lmacloop4x
 
 	encrypt_block	v0, w2, x1, x7, w8
 
 .Lmacloop4x:
-	subs		w22, w22, #4
+	subs		w3, w3, #4
 	bmi		.Lmac1x
-	ld1		{v1.16b-v4.16b}, [x19], #64	/* get next pt block */
+	ld1		{v1.16b-v4.16b}, [x0], #64	/* get next pt block */
 	eor		v0.16b, v0.16b, v1.16b		/* ..and xor with dg */
-	encrypt_block	v0, w21, x20, x7, w8
+	encrypt_block	v0, w2, x1, x7, w8
 	eor		v0.16b, v0.16b, v2.16b
-	encrypt_block	v0, w21, x20, x7, w8
+	encrypt_block	v0, w2, x1, x7, w8
 	eor		v0.16b, v0.16b, v3.16b
-	encrypt_block	v0, w21, x20, x7, w8
+	encrypt_block	v0, w2, x1, x7, w8
 	eor		v0.16b, v0.16b, v4.16b
-	cmp		w22, wzr
-	csinv		x5, x24, xzr, eq
+	cmp		w3, wzr
+	csinv		x5, x6, xzr, eq
 	cbz		w5, .Lmacout
-	encrypt_block	v0, w21, x20, x7, w8
-	st1		{v0.16b}, [x23]			/* return dg */
-	cond_yield_neon	.Lmacrestart
+	encrypt_block	v0, w2, x1, x7, w8
+	st1		{v0.16b}, [x4]			/* return dg */
+	cond_yield	.Lmacout, x7, x8
 	b		.Lmacloop4x
 .Lmac1x:
-	add		w22, w22, #4
+	add		w3, w3, #4
 .Lmacloop:
-	cbz		w22, .Lmacout
-	ld1		{v1.16b}, [x19], #16		/* get next pt block */
+	cbz		w3, .Lmacout
+	ld1		{v1.16b}, [x0], #16		/* get next pt block */
 	eor		v0.16b, v0.16b, v1.16b		/* ..and xor with dg */
 
-	subs		w22, w22, #1
-	csinv		x5, x24, xzr, eq
+	subs		w3, w3, #1
+	csinv		x5, x6, xzr, eq
 	cbz		w5, .Lmacout
 
 .Lmacenc:
-	encrypt_block	v0, w21, x20, x7, w8
+	encrypt_block	v0, w2, x1, x7, w8
 	b		.Lmacloop
 
 .Lmacout:
-	st1		{v0.16b}, [x23]			/* return dg */
-	frame_pop
+	st1		{v0.16b}, [x4]			/* return dg */
+	mov		w0, w3
 	ret
-
-.Lmacrestart:
-	ld1		{v0.16b}, [x23]			/* get dg */
-	enc_prepare	w21, x20, x0
-	b		.Lmacloop4x
 AES_FUNC_END(aes_mac_update)

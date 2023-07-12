@@ -23,6 +23,9 @@ struct drmem_lmb_info {
 	u64                     lmb_size;
 };
 
+struct device_node;
+struct property;
+
 extern struct drmem_lmb_info *drmem_info;
 
 static inline struct drmem_lmb *drmem_lmb_next(struct drmem_lmb *lmb,
@@ -111,6 +114,7 @@ int drmem_update_dt(void);
 int __init
 walk_drmem_lmbs_early(unsigned long node, void *data,
 		      int (*func)(struct drmem_lmb *, const __be32 **, void *));
+void drmem_update_lmbs(struct property *prop);
 #endif
 
 static inline void invalidate_lmb_associativity_index(struct drmem_lmb *lmb)

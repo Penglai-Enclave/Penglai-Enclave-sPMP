@@ -11,7 +11,7 @@ int fixup_exception(struct pt_regs *regs)
 
 	fixup = search_exception_tables(instruction_pointer(regs));
 	if (fixup) {
-		regs->ARM_pc = (unsigned long)&fixup->fixup + fixup->fixup;
+		regs->ARM_pc = fixup->fixup;
 #ifdef CONFIG_THUMB2_KERNEL
 		/* Clear the IT state to avoid nasty surprises in the fixup */
 		regs->ARM_cpsr &= ~PSR_IT_MASK;

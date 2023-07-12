@@ -14,9 +14,9 @@
 struct l2x0_regs;
 
 struct outer_cache_fns {
-	void (*inv_range)(phys_addr_t, phys_addr_t);
-	void (*clean_range)(phys_addr_t, phys_addr_t);
-	void (*flush_range)(phys_addr_t, phys_addr_t);
+	void (*inv_range)(unsigned long, unsigned long);
+	void (*clean_range)(unsigned long, unsigned long);
+	void (*flush_range)(unsigned long, unsigned long);
 	void (*flush_all)(void);
 	void (*disable)(void);
 #ifdef CONFIG_OUTER_CACHE_SYNC

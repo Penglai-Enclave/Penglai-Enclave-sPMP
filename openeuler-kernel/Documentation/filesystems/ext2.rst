@@ -1,6 +1,7 @@
 .. SPDX-License-Identifier: GPL-2.0
 
 
+==============================
 The Second Extended Filesystem
 ==============================
 
@@ -24,7 +25,7 @@ check=none, nocheck	(*)	Don't do extra checking of bitmaps on mount
 				(check=normal and check=strict options removed)
 
 dax				Use direct access (no page cache).  See
-				Documentation/filesystems/dax.txt.
+				Documentation/filesystems/dax.rst.
 
 debug				Extra debugging information is sent to the
 				kernel syslog.  Useful for developers.
@@ -57,8 +58,6 @@ nouser_xattr			Don't support "user." extended attributes.
 acl				Enable POSIX Access Control Lists support
 				(requires CONFIG_EXT2_FS_POSIX_ACL).
 noacl				Don't support POSIX ACLs.
-
-nobh				Do not attach buffer_heads to file pagecache.
 
 quota, usrquota			Enable user disk quota support
 				(requires CONFIG_QUOTA).

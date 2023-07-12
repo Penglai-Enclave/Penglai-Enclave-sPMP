@@ -54,6 +54,14 @@ properties:
           - const: renesas,rcar-gen3-hscif # R-Car Gen3 and RZ/G2
           - const: renesas,hscif           # generic HSCIF compatible UART
 
+      - items:
+          - enum:
+              - renesas,hscif-r8a779a0     # R-Car V3U
+              - renesas,hscif-r8a779f0     # R-Car S4-8
+              - renesas,hscif-r8a779g0     # R-Car V4H
+          - const: renesas,rcar-gen4-hscif # R-Car Gen4
+          - const: renesas,hscif           # generic HSCIF compatible UART
+
   reg:
     maxItems: 1
 
@@ -81,6 +89,8 @@ properties:
     maxItems: 1
 
   dmas:
+    minItems: 2
+    maxItems: 4
     description:
       Must contain a list of pairs of references to DMA specifiers, one for
       transmission, and one for reception.
@@ -110,6 +120,7 @@ if:
         enum:
           - renesas,rcar-gen2-hscif
           - renesas,rcar-gen3-hscif
+          - renesas,rcar-gen4-hscif
 then:
   required:
     - resets

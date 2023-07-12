@@ -40,39 +40,6 @@ int elf_check_arch(const struct elf32_hdr *x)
 }
 EXPORT_SYMBOL(elf_check_arch);
 
-int elf_check_arch_64(const struct elf64_hdr *x)
-{
-	unsigned int eflags;
-
-	/* Make sure it's an ARM executable */
-	if (x->e_machine != EM_ARM)
-		return 0;
-
-	/* Make sure the entry address is reasonable */
-	if (x->e_entry & 1) {
-		if (!(elf_hwcap & HWCAP_THUMB))
-			return 0;
-	} else if (x->e_entry & 3)
-		return 0;
-
-	eflags = x->e_flags;
-	if ((eflags & EF_ARM_EABI_MASK) == EF_ARM_EABI_UNKNOWN) {
-		unsigned int flt_fmt;
-
-		/* APCS26 is only allowed if the CPU supports it */
-		if ((eflags & EF_ARM_APCS_26) && !(elf_hwcap & HWCAP_26BIT))
-			return 0;
-
-		flt_fmt = eflags & (EF_ARM_VFP_FLOAT | EF_ARM_SOFT_FLOAT);
-
-		/* VFP requires the supporting code */
-		if (flt_fmt == EF_ARM_VFP_FLOAT && !(elf_hwcap & HWCAP_VFP))
-			return 0;
-	}
-	return 1;
-}
-EXPORT_SYMBOL(elf_check_arch_64);
-
 void elf_set_personality(const struct elf32_hdr *x)
 {
 	unsigned int eflags = x->e_flags;

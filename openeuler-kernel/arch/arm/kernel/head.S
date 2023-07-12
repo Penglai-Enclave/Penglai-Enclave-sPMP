@@ -23,7 +23,6 @@
 #if defined(CONFIG_DEBUG_LL) && !defined(CONFIG_DEBUG_SEMIHOSTING)
 #include CONFIG_DEBUG_LL_INCLUDE
 #endif
-
 /*
  * swapper_pg_dir is the virtual address of the initial page table.
  * We place the page tables 16K below KERNEL_RAM_VADDR.  Therefore, we must
@@ -31,7 +30,7 @@
  * the least significant 16 bits to be 0x8000, but we could probably
  * relax this restriction to KERNEL_RAM_VADDR >= PAGE_OFFSET + 0x4000.
  */
-#define KERNEL_RAM_VADDR	(PAGE_OFFSET + TEXT_OFFSET)
+#define KERNEL_RAM_VADDR	(KERNEL_OFFSET + TEXT_OFFSET)
 #if (KERNEL_RAM_VADDR & 0xffff) != 0x8000
 #error KERNEL_RAM_VADDR must start at 0xXXXX8000
 #endif
@@ -39,32 +38,35 @@
 #ifdef CONFIG_ARM_LPAE
 	/* LPAE requires an additional page for the PGD */
 #define PG_DIR_SIZE	0x5000
-#define PMD_ORDER	3
+#define PMD_ENTRY_ORDER	3	/* PMD entry size is 2^PMD_ENTRY_ORDER */
 #else
 #define PG_DIR_SIZE	0x4000
-#define PMD_ORDER	2
+#define PMD_ENTRY_ORDER	2
 #endif
 
-	.macro	get_kaslr_offset, reg
-#ifdef CONFIG_RANDOMIZE_BASE
-	ldr_l			\reg, __kaslr_offset
-#else
-	mov			\reg, #0
-#endif
-	.endm
+	.globl	swapper_pg_dir
+	.equ	swapper_pg_dir, KERNEL_RAM_VADDR - PG_DIR_SIZE
 
-	.macro	add_kaslr_offset, reg, tmp
-#ifdef CONFIG_RANDOMIZE_BASE
-	get_kaslr_offset	\tmp
-	add			\reg, \reg, \tmp
-#endif
-	.endm
+	/*
+	 * This needs to be assigned at runtime when the linker symbols are
+	 * resolved. These are unsigned 64bit really, but in this assembly code
+	 * We store them as 32bit.
+	 */
+	.pushsection .data
+	.align	2
+	.globl	kernel_sec_start
+	.globl	kernel_sec_end
+kernel_sec_start:
+	.long	0
+	.long	0
+kernel_sec_end:
+	.long	0
+	.long	0
+	.popsection
 
-	.macro	sub_kaslr_offset, reg, tmp
-#ifdef CONFIG_RANDOMIZE_BASE
-	get_kaslr_offset	\tmp
-	sub			\reg, \reg, \tmp
-#endif
+	.macro	pgtbl, rd, phys
+	add	\rd, \phys, #TEXT_OFFSET
+	sub	\rd, \rd, #PG_DIR_SIZE
 	.endm
 
 /*
@@ -88,27 +90,13 @@
 	.arm
 
 	__HEAD
-	.globl	swapper_pg_dir
-	.equ	swapper_pg_dir, . - PG_DIR_SIZE
-
 ENTRY(stext)
-	mov	r3, #0			@ normal entry point - clear r3
  ARM_BE8(setend	be )			@ ensure we are in BE8 mode
 
  THUMB(	badr	r9, 1f		)	@ Kernel is always entered in ARM.
  THUMB(	bx	r9		)	@ If this is a Thumb-2 kernel,
  THUMB(	.thumb			)	@ switch to Thumb now.
  THUMB(1:			)
-
-#ifdef CONFIG_RANDOMIZE_BASE
-	str_l	r3, __kaslr_offset, r9	@ offset in r3 if entered via kaslr ep
-
-	.pushsection .data		@ data in bss will be cleared
-	.align	2
-ENTRY(__kaslr_offset)
-	.long	0			@ will be wiped before entering C code
-	.popsection
-#endif
 
 #ifdef CONFIG_ARM_VIRT_EXT
 	bl	__hyp_stub_install
@@ -133,7 +121,6 @@ ENTRY(__kaslr_offset)
 #ifndef CONFIG_XIP_KERNEL
 	adr_l	r8, _text			@ __pa(_text)
 	sub	r8, r8, #TEXT_OFFSET		@ PHYS_OFFSET
-	sub_kaslr_offset r8, r12
 #else
 	ldr	r8, =PLAT_PHYS_OFFSET		@ always constant in this case
 #endif
@@ -170,8 +157,8 @@ ENTRY(__kaslr_offset)
 	 * r0 will hold the CPU control register value, r1, r2, r4, and
 	 * r9 will be preserved.  r5 will also be preserved if LPAE.
 	 */
-	adr_l	lr, __primary_switch		@ address to jump to after
-	mov	r13, lr				@ mmu has been enabled
+	ldr	r13, =__mmap_switched		@ address to jump to after
+						@ mmu has been enabled
 	badr	lr, 1f				@ return (PIC) address
 #ifdef CONFIG_ARM_LPAE
 	mov	r5, #0				@ high TTBR0
@@ -182,8 +169,7 @@ ENTRY(__kaslr_offset)
 	ldr	r12, [r10, #PROCINFO_INITFUNC]
 	add	r12, r12, r10
 	ret	r12
-1:	get_kaslr_offset r12			@ get before turning MMU on
-	b	__enable_mmu
+1:	b	__enable_mmu
 ENDPROC(stext)
 	.ltorg
 
@@ -199,7 +185,7 @@ ENDPROC(stext)
  *  r4 = physical page table address
  */
 __create_page_tables:
-	adr_l	r4, swapper_pg_dir		@ page table address
+	pgtbl	r4, r8				@ page table address
 
 	/*
 	 * Clear the swapper page table
@@ -254,27 +240,37 @@ __create_page_tables:
 	mov	r6, r6, lsr #SECTION_SHIFT
 
 1:	orr	r3, r7, r5, lsl #SECTION_SHIFT	@ flags + kernel base
-	str	r3, [r4, r5, lsl #PMD_ORDER]	@ identity mapping
+	str	r3, [r4, r5, lsl #PMD_ENTRY_ORDER]	@ identity mapping
 	cmp	r5, r6
 	addlo	r5, r5, #1			@ next section
 	blo	1b
 
 	/*
-	 * Map our RAM from the start to the end of the kernel .bss section.
+	 * The main matter: map in the kernel using section mappings, and
+	 * set two variables to indicate the physical start and end of the
+	 * kernel.
 	 */
-	get_kaslr_offset r3
-	add	r0, r3, #PAGE_OFFSET
-	add	r0, r4, r0, lsr #(SECTION_SHIFT - PMD_ORDER)
-	adr_l	r6, _end - 1
-	sub	r6, r6, r8
-	add	r6, r6, #PAGE_OFFSET
-	add	r3, r3, r8
-	orr	r3, r3, r7
-	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ORDER)
-1:	str	r3, [r0], #1 << PMD_ORDER
+	add	r0, r4, #KERNEL_OFFSET >> (SECTION_SHIFT - PMD_ENTRY_ORDER)
+	ldr	r6, =(_end - 1)
+	adr_l	r5, kernel_sec_start		@ _pa(kernel_sec_start)
+#if defined CONFIG_CPU_ENDIAN_BE8 || defined CONFIG_CPU_ENDIAN_BE32
+	str	r8, [r5, #4]			@ Save physical start of kernel (BE)
+#else
+	str	r8, [r5]			@ Save physical start of kernel (LE)
+#endif
+	orr	r3, r8, r7			@ Add the MMU flags
+	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ENTRY_ORDER)
+1:	str	r3, [r0], #1 << PMD_ENTRY_ORDER
 	add	r3, r3, #1 << SECTION_SHIFT
 	cmp	r0, r6
 	bls	1b
+	eor	r3, r3, r7			@ Remove the MMU flags
+	adr_l	r5, kernel_sec_end		@ _pa(kernel_sec_end)
+#if defined CONFIG_CPU_ENDIAN_BE8 || defined CONFIG_CPU_ENDIAN_BE32
+	str	r3, [r5, #4]			@ Save physical end of kernel (BE)
+#else
+	str	r3, [r5]			@ Save physical end of kernel (LE)
+#endif
 
 #ifdef CONFIG_XIP_KERNEL
 	/*
@@ -284,14 +280,14 @@ __create_page_tables:
 	mov	r3, pc
 	mov	r3, r3, lsr #SECTION_SHIFT
 	orr	r3, r7, r3, lsl #SECTION_SHIFT
-	add	r0, r4,  #(XIP_START & 0xff000000) >> (SECTION_SHIFT - PMD_ORDER)
-	str	r3, [r0, #((XIP_START & 0x00f00000) >> SECTION_SHIFT) << PMD_ORDER]!
+	add	r0, r4,  #(XIP_START & 0xff000000) >> (SECTION_SHIFT - PMD_ENTRY_ORDER)
+	str	r3, [r0, #((XIP_START & 0x00f00000) >> SECTION_SHIFT) << PMD_ENTRY_ORDER]!
 	ldr	r6, =(_edata_loc - 1)
-	add	r0, r0, #1 << PMD_ORDER
-	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ORDER)
+	add	r0, r0, #1 << PMD_ENTRY_ORDER
+	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ENTRY_ORDER)
 1:	cmp	r0, r6
 	add	r3, r3, #1 << SECTION_SHIFT
-	strls	r3, [r0], #1 << PMD_ORDER
+	strls	r3, [r0], #1 << PMD_ENTRY_ORDER
 	bls	1b
 #endif
 
@@ -301,10 +297,10 @@ __create_page_tables:
 	 */
 	mov	r0, r2, lsr #SECTION_SHIFT
 	cmp	r2, #0
-	ldrne	r3, =FDT_FIXED_BASE >> (SECTION_SHIFT - PMD_ORDER)
+	ldrne	r3, =FDT_FIXED_BASE >> (SECTION_SHIFT - PMD_ENTRY_ORDER)
 	addne	r3, r3, r4
 	orrne	r6, r7, r0, lsl #SECTION_SHIFT
-	strne	r6, [r3], #1 << PMD_ORDER
+	strne	r6, [r3], #1 << PMD_ENTRY_ORDER
 	addne	r6, r6, #1 << SECTION_SHIFT
 	strne	r6, [r3]
 
@@ -323,7 +319,7 @@ __create_page_tables:
 	addruart r7, r3, r0
 
 	mov	r3, r3, lsr #SECTION_SHIFT
-	mov	r3, r3, lsl #PMD_ORDER
+	mov	r3, r3, lsl #PMD_ENTRY_ORDER
 
 	add	r0, r4, r3
 	mov	r3, r7, lsr #SECTION_SHIFT
@@ -353,7 +349,7 @@ __create_page_tables:
 	 * If we're using the NetWinder or CATS, we also need to map
 	 * in the 16550-type serial port for the debug messages
 	 */
-	add	r0, r4, #0xff000000 >> (SECTION_SHIFT - PMD_ORDER)
+	add	r0, r4, #0xff000000 >> (SECTION_SHIFT - PMD_ENTRY_ORDER)
 	orr	r3, r7, #0x7c000000
 	str	r3, [r0]
 #endif
@@ -363,10 +359,10 @@ __create_page_tables:
 	 * Similar reasons here - for debug.  This is
 	 * only for Acorn RiscPC architectures.
 	 */
-	add	r0, r4, #0x02000000 >> (SECTION_SHIFT - PMD_ORDER)
+	add	r0, r4, #0x02000000 >> (SECTION_SHIFT - PMD_ENTRY_ORDER)
 	orr	r3, r7, #0x02000000
 	str	r3, [r0]
-	add	r0, r4, #0xd8000000 >> (SECTION_SHIFT - PMD_ORDER)
+	add	r0, r4, #0xd8000000 >> (SECTION_SHIFT - PMD_ENTRY_ORDER)
 	str	r3, [r0]
 #endif
 #endif
@@ -412,7 +408,7 @@ ENTRY(secondary_startup)
 	 * Use the page tables supplied from  __cpu_up.
 	 */
 	adr_l	r3, secondary_data
-	mov_l	r12, __secondary_switch
+	mov_l	r12, __secondary_switched
 	ldrd	r4, r5, [r3, #0]		@ get secondary_data.pgdir
 ARM_BE8(eor	r4, r4, r5)			@ Swap r5 and r4 in BE:
 ARM_BE8(eor	r5, r4, r5)			@ it can be done in 3 steps
@@ -428,8 +424,16 @@ ENDPROC(secondary_startup)
 ENDPROC(secondary_startup_arm)
 
 ENTRY(__secondary_switched)
-	ldr_l	r7, secondary_data + 12		@ get secondary_data.stack
-	mov	sp, r7
+#if defined(CONFIG_VMAP_STACK) && !defined(CONFIG_ARM_LPAE)
+	@ Before using the vmap'ed stack, we have to switch to swapper_pg_dir
+	@ as the ID map does not cover the vmalloc region.
+	mrc	p15, 0, ip, c2, c0, 1	@ read TTBR1
+	mcr	p15, 0, ip, c2, c0, 0	@ set TTBR0
+	instr_sync
+#endif
+	adr_l	r7, secondary_data + 12		@ get secondary_data.stack
+	ldr	sp, [r7]
+	ldr	r0, [r7, #4]			@ get secondary_data.task
 	mov	fp, #0
 	b	secondary_start_kernel
 ENDPROC(__secondary_switched)
@@ -450,7 +454,6 @@ ENDPROC(__secondary_switched)
  *  r4  = TTBR pointer (low word)
  *  r5  = TTBR pointer (high word if LPAE)
  *  r9  = processor ID
- *  r12 = KASLR offset
  *  r13 = *virtual* address to jump to upon completion
  */
 __enable_mmu:
@@ -471,11 +474,7 @@ __enable_mmu:
 #ifdef CONFIG_ARM_LPAE
 	mcrr	p15, 0, r4, r5, c2		@ load TTBR0
 #else
-#ifdef CONFIG_SYS_SUPPORTS_HUGETLBFS
-	ldr	r5, =0x55555555
-#else
 	mov	r5, #DACR_INIT
-#endif
 	mcr	p15, 0, r5, c3, c0, 0		@ load domain access register
 	mcr	p15, 0, r4, c2, c0, 0		@ load page table pointer
 #endif
@@ -492,7 +491,6 @@ ENDPROC(__enable_mmu)
  *  r1  = machine ID
  *  r2  = atags or dtb pointer
  *  r9  = processor ID
- *  r12 = KASLR offset
  *  r13 = *virtual* address to jump to upon completion
  *
  * other registers depend on the function called upon completion
@@ -508,52 +506,10 @@ ENTRY(__turn_mmu_on)
 	mov	r3, r3
 	mov	r3, r13
 	ret	r3
-ENDPROC(__turn_mmu_on)
-
-__primary_switch:
-#ifdef CONFIG_RELOCATABLE
-	adr_l	r7, _text			@ r7 := __pa(_text)
-	sub	r7, r7, #TEXT_OFFSET		@ r7 := PHYS_OFFSET
-
-	adr_l	r5, __rel_begin
-	adr_l	r6, __rel_end
-	sub	r5, r5, r7
-	sub	r6, r6, r7
-
-	add	r5, r5, #PAGE_OFFSET
-	add	r6, r6, #PAGE_OFFSET
-	add	r5, r5, r12
-	add	r6, r6, r12
-
-	adr_l	r3, __stubs_start		@ __pa(__stubs_start)
-	sub	r3, r3, r7			@ offset of __stubs_start
-	add	r3, r3, #PAGE_OFFSET		@ __va(__stubs_start)
-	sub	r3, r3, #0xffff1000		@ subtract VA of stubs section
-
-0:	cmp	r5, r6
-	bge	1f
-	ldm	r5!, {r7, r8}			@ load next relocation entry
-	cmp	r8, #23				@ R_ARM_RELATIVE
-	bne	0b
-	cmp	r7, #0xff000000			@ vector page?
-	addgt	r7, r7, r3			@ fix up VA offset
-	ldr	r8, [r7, r12]
-	add	r8, r8, r12
-	str	r8, [r7, r12]
-	b	0b
-1:
-#endif
-	ldr	pc, =__mmap_switched
-ENDPROC(__primary_switch)
-
-#ifdef CONFIG_SMP
-__secondary_switch:
-	ldr	pc, =__secondary_switched
-ENDPROC(__secondary_switch)
-#endif
-	.ltorg
 __turn_mmu_on_end:
+ENDPROC(__turn_mmu_on)
 	.popsection
+
 
 #ifdef CONFIG_SMP_ON_UP
 	__HEAD

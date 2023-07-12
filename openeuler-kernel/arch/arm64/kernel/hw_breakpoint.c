@@ -157,7 +157,7 @@ enum hw_breakpoint_ops {
 	HW_BREAKPOINT_RESTORE
 };
 
-static int is_a32_compat_bp(struct perf_event *bp)
+static int is_compat_bp(struct perf_event *bp)
 {
 	struct task_struct *tsk = bp->hw.target;
 
@@ -168,7 +168,7 @@ static int is_a32_compat_bp(struct perf_event *bp)
 	 * deprecated behaviour if we use unaligned watchpoints in
 	 * AArch64 state.
 	 */
-	return tsk && is_a32_compat_thread(task_thread_info(tsk));
+	return tsk && is_compat_thread(task_thread_info(tsk));
 }
 
 /**
@@ -467,7 +467,7 @@ static int arch_build_bp_info(struct perf_event *bp,
 	 * Watchpoints can be of length 1, 2, 4 or 8 bytes.
 	 */
 	if (hw->ctrl.type == ARM_BREAKPOINT_EXECUTE) {
-		if (is_a32_compat_bp(bp)) {
+		if (is_compat_bp(bp)) {
 			if (hw->ctrl.len != ARM_BREAKPOINT_LEN_2 &&
 			    hw->ctrl.len != ARM_BREAKPOINT_LEN_4)
 				return -EINVAL;
@@ -525,7 +525,7 @@ int hw_breakpoint_arch_parse(struct perf_event *bp,
 	 * AArch32 tasks expect some simple alignment fixups, so emulate
 	 * that here.
 	 */
-	if (is_a32_compat_bp(bp)) {
+	if (is_compat_bp(bp)) {
 		if (hw->ctrl.len == ARM_BREAKPOINT_LEN_8)
 			alignment_mask = 0x7;
 		else
@@ -617,7 +617,7 @@ NOKPROBE_SYMBOL(toggle_bp_registers);
 /*
  * Debug exception handlers.
  */
-static int breakpoint_handler(unsigned long unused, unsigned int esr,
+static int breakpoint_handler(unsigned long unused, unsigned long esr,
 			      struct pt_regs *regs)
 {
 	int i, step = 0, *kernel_step;
@@ -701,7 +701,7 @@ NOKPROBE_SYMBOL(breakpoint_handler);
  * addresses. There is no straight-forward way, short of disassembling the
  * offending instruction, to map that address back to the watchpoint. This
  * function computes the distance of the memory access from the watchpoint as a
- * heuristic for the likelyhood that a given access triggered the watchpoint.
+ * heuristic for the likelihood that a given access triggered the watchpoint.
  *
  * See Section D2.10.5 "Determining the memory location that caused a Watchpoint
  * exception" of ARMv8 Architecture Reference Manual for details.
@@ -751,7 +751,7 @@ static int watchpoint_report(struct perf_event *wp, unsigned long addr,
 	return step;
 }
 
-static int watchpoint_handler(unsigned long addr, unsigned int esr,
+static int watchpoint_handler(unsigned long addr, unsigned long esr,
 			      struct pt_regs *regs)
 {
 	int i, step = 0, *kernel_step, access, closest_match = 0;

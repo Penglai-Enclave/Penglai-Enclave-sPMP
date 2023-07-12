@@ -7,6 +7,8 @@
 
 /dts-v1/;
 
+#include "sc7180-trogdor.dtsi"
+#include "sc7180-trogdor-ti-sn65dsi86.dtsi"
 #include "sc7180-trogdor-lazor.dtsi"
 
 / {
@@ -21,4 +23,12 @@
 	 * that means we no longer need the swizzle.
 	 */
 	lane-polarities = <1 0>;
+};
+
+&usb_hub_2_x {
+	 vdd-supply = <&pp3300_l7c>;
+};
+
+&usb_hub_3_x {
+	 vdd-supply = <&pp3300_l7c>;
 };

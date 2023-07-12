@@ -9,7 +9,7 @@
  */
 
 #include <asm/cputable.h>
-#include <asm/reg.h>
+#include <asm/vdso/timebase.h>
 
 #define CLOCK_TICK_RATE	1024000 /* Underlying HZ */
 
@@ -19,6 +19,7 @@ static inline cycles_t get_cycles(void)
 {
 	return mftb();
 }
+#define get_cycles get_cycles
 
 #endif	/* __KERNEL__ */
 #endif	/* _ASM_POWERPC_TIMEX_H */

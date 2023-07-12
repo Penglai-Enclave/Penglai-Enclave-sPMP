@@ -19,7 +19,10 @@ ENTRY(exynos4_secondary_startup)
 ARM_BE8(setend	be)
 	mrc	p15, 0, r0, c0, c0, 5
 	and	r0, r0, #15
-	adr_l	r6, exynos_pen_release
+	adr	r4, 1f
+	ldmia	r4, {r5, r6}
+	sub	r4, r4, r5
+	add	r6, r6, r4
 pen:	ldr	r7, [r6]
 	cmp	r7, r0
 	bne	pen
@@ -30,3 +33,7 @@ pen:	ldr	r7, [r6]
 	 */
 	b	secondary_startup
 ENDPROC(exynos4_secondary_startup)
+
+	.align 2
+1:	.long	.
+	.long	exynos_pen_release

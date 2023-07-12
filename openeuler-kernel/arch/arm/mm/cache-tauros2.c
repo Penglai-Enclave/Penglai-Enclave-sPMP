@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * arch/arm/mm/cache-tauros2.c - Tauros2 L2 cache controller support
  *
  * Copyright (C) 2008 Marvell Semiconductor
- *
- * This file is licensed under the terms of the GNU General Public
- * License version 2.  This program is licensed "as is" without any
- * warranty of any kind, whether express or implied.
  *
  * References:
  * - PJ1 CPU Core Datasheet,
@@ -66,11 +63,8 @@ static inline void tauros2_inv_pa(unsigned long addr)
  */
 #define CACHE_LINE_SIZE		32
 
-static void tauros2_inv_range(phys_addr_t pa_start, phys_addr_t pa_end)
+static void tauros2_inv_range(unsigned long start, unsigned long end)
 {
-	unsigned long start = pa_start;
-	unsigned long end = pa_end;
-
 	/*
 	 * Clean and invalidate partial first cache line.
 	 */
@@ -98,11 +92,8 @@ static void tauros2_inv_range(phys_addr_t pa_start, phys_addr_t pa_end)
 	dsb();
 }
 
-static void tauros2_clean_range(phys_addr_t pa_start, phys_addr_t pa_end)
+static void tauros2_clean_range(unsigned long start, unsigned long end)
 {
-	unsigned long start = pa_start;
-	unsigned long end = pa_end;
-
 	start &= ~(CACHE_LINE_SIZE - 1);
 	while (start < end) {
 		tauros2_clean_pa(start);
@@ -112,11 +103,8 @@ static void tauros2_clean_range(phys_addr_t pa_start, phys_addr_t pa_end)
 	dsb();
 }
 
-static void tauros2_flush_range(phys_addr_t pa_start, phys_addr_t pa_end)
+static void tauros2_flush_range(unsigned long start, unsigned long end)
 {
-	unsigned long start = pa_start;
-	unsigned long end = pa_end;
-
 	start &= ~(CACHE_LINE_SIZE - 1);
 	while (start < end) {
 		tauros2_clean_inv_pa(start);

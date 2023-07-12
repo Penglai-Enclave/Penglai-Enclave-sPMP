@@ -53,6 +53,25 @@ static inline unsigned long COLOR_ALIGN(unsigned long addr,
 	return base + off;
 }
 
+
+#define STACK_SIZE_DEFAULT (USER_WIDE_MODE			\
+			? (1 << 30)	/* 1 GB */		\
+			: (CONFIG_STACK_MAX_DEFAULT_SIZE_MB*1024*1024))
+
+unsigned long calc_max_stack_size(unsigned long stack_max)
+{
+#ifdef CONFIG_COMPAT
+	if (!USER_WIDE_MODE && (stack_max == COMPAT_RLIM_INFINITY))
+		stack_max = STACK_SIZE_DEFAULT;
+	else
+#endif
+	if (stack_max == RLIM_INFINITY)
+		stack_max = STACK_SIZE_DEFAULT;
+
+	return stack_max;
+}
+
+
 /*
  * Top of mmap area (just below the process stack).
  */
@@ -69,8 +88,8 @@ static unsigned long mmap_upper_limit(struct rlimit *rlim_stack)
 	/* Limit stack size - see setup_arg_pages() in fs/exec.c */
 	stack_base = rlim_stack ? rlim_stack->rlim_max
 				: rlimit_max(RLIMIT_STACK);
-	if (stack_base > STACK_SIZE_MAX)
-		stack_base = STACK_SIZE_MAX;
+
+	stack_base = calc_max_stack_size(stack_base);
 
 	/* Add space for stack randomization. */
 	if (current->flags & PF_RANDOMIZE)
@@ -220,14 +239,14 @@ static unsigned long mmap_rnd(void)
 	unsigned long rnd = 0;
 
 	if (current->flags & PF_RANDOMIZE)
-		rnd = get_random_int() & MMAP_RND_MASK;
+		rnd = get_random_u32() & MMAP_RND_MASK;
 
 	return rnd << PAGE_SHIFT;
 }
 
 unsigned long arch_mmap_rnd(void)
 {
-	return (get_random_int() & MMAP_RND_MASK) << PAGE_SHIFT;
+	return (get_random_u32() & MMAP_RND_MASK) << PAGE_SHIFT;
 }
 
 static unsigned long mmap_legacy_base(void)
@@ -390,10 +409,12 @@ long parisc_personality(unsigned long personality)
 
 static int FIX_O_NONBLOCK(int flags)
 {
-	if (flags & O_NONBLOCK_MASK_OUT) {
-		struct task_struct *tsk = current;
-		pr_warn_once("%s(%d) uses a deprecated O_NONBLOCK value.\n",
-			tsk->comm, tsk->pid);
+	if ((flags & O_NONBLOCK_MASK_OUT) &&
+			!test_thread_flag(TIF_NONBLOCK_WARNING)) {
+		set_thread_flag(TIF_NONBLOCK_WARNING);
+		pr_warn("%s(%d) uses a deprecated O_NONBLOCK value."
+			" Please recompile with newer glibc.\n",
+			current->comm, current->pid);
 	}
 	return flags & ~O_NONBLOCK_MASK_OUT;
 }
@@ -443,4 +464,32 @@ asmlinkage long parisc_inotify_init1(int flags)
 {
 	flags = FIX_O_NONBLOCK(flags);
 	return sys_inotify_init1(flags);
+}
+
+/*
+ * madvise() wrapper
+ *
+ * Up to kernel v6.1 parisc has different values than all other
+ * platforms for the MADV_xxx flags listed below.
+ * To keep binary compatibility with existing userspace programs
+ * translate the former values to the new values.
+ *
+ * XXX: Remove this wrapper in year 2025 (or later)
+ */
+
+asmlinkage notrace long parisc_madvise(unsigned long start, size_t len_in, int behavior)
+{
+	switch (behavior) {
+	case 65: behavior = MADV_MERGEABLE;	break;
+	case 66: behavior = MADV_UNMERGEABLE;	break;
+	case 67: behavior = MADV_HUGEPAGE;	break;
+	case 68: behavior = MADV_NOHUGEPAGE;	break;
+	case 69: behavior = MADV_DONTDUMP;	break;
+	case 70: behavior = MADV_DODUMP;	break;
+	case 71: behavior = MADV_WIPEONFORK;	break;
+	case 72: behavior = MADV_KEEPONFORK;	break;
+	case 73: behavior = MADV_COLLAPSE;	break;
+	}
+
+	return sys_madvise(start, len_in, behavior);
 }

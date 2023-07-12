@@ -29,18 +29,9 @@
 #include <asm/signal32.h>
 #include <asm/vdso.h>
 
-extern char vdso_start[], vdso_end[];
-extern char vdso32_start[], vdso32_end[];
-#ifdef CONFIG_ARM64_ILP32
-extern char vdso_ilp32_start[], vdso_ilp32_end[];
-#endif
-
 enum vdso_abi {
 	VDSO_ABI_AA64,
 	VDSO_ABI_AA32,
-#ifdef CONFIG_ARM64_ILP32
-	VDSO_ABI_ILP32
-#endif
 };
 
 enum vvar_pages {
@@ -73,13 +64,6 @@ static struct vdso_abi_info vdso_info[] __ro_after_init = {
 		.vdso_code_end = vdso32_end,
 	},
 #endif /* CONFIG_COMPAT_VDSO */
-#ifdef CONFIG_ARM64_ILP32
-	[VDSO_ABI_ILP32] = {
-		.name = "vdso",
-		.vdso_code_start = vdso_ilp32_start,
-		.vdso_code_end = vdso_ilp32_end,
-	},
-#endif
 };
 
 /*
@@ -91,23 +75,15 @@ static union {
 } vdso_data_store __page_aligned_data;
 struct vdso_data *vdso_data = vdso_data_store.data;
 
-static int __vdso_remap(enum vdso_abi abi,
-			const struct vm_special_mapping *sm,
-			struct vm_area_struct *new_vma)
+static int vdso_mremap(const struct vm_special_mapping *sm,
+		struct vm_area_struct *new_vma)
 {
-	unsigned long new_size = new_vma->vm_end - new_vma->vm_start;
-	unsigned long vdso_size = vdso_info[abi].vdso_code_end -
-				  vdso_info[abi].vdso_code_start;
-
-	if (vdso_size != new_size)
-		return -EINVAL;
-
 	current->mm->context.vdso = (void *)new_vma->vm_start;
 
 	return 0;
 }
 
-static int __vdso_init(enum vdso_abi abi)
+static int __init __vdso_init(enum vdso_abi abi)
 {
 	int i;
 	struct page **vdso_pagelist;
@@ -157,10 +133,11 @@ int vdso_join_timens(struct task_struct *task, struct time_namespace *ns)
 {
 	struct mm_struct *mm = task->mm;
 	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, mm, 0);
 
 	mmap_read_lock(mm);
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	for_each_vma(vmi, vma) {
 		unsigned long size = vma->vm_end - vma->vm_start;
 
 		if (vma_is_special_mapping(vma, vdso_info[VDSO_ABI_AA64].dm))
@@ -232,17 +209,6 @@ static vm_fault_t vvar_fault(const struct vm_special_mapping *sm,
 	return vmf_insert_pfn(vma, vmf->address, pfn);
 }
 
-static int vvar_mremap(const struct vm_special_mapping *sm,
-		       struct vm_area_struct *new_vma)
-{
-	unsigned long new_size = new_vma->vm_end - new_vma->vm_start;
-
-	if (new_size != VVAR_NR_PAGES * PAGE_SIZE)
-		return -EINVAL;
-
-	return 0;
-}
-
 static int __setup_additional_pages(enum vdso_abi abi,
 				    struct mm_struct *mm,
 				    struct linux_binprm *bprm,
@@ -289,16 +255,10 @@ up_fail:
 	return PTR_ERR(ret);
 }
 
-#ifdef CONFIG_AARCH32_EL0
+#ifdef CONFIG_COMPAT
 /*
  * Create and map the vectors page for AArch32 tasks.
  */
-static int aarch32_vdso_mremap(const struct vm_special_mapping *sm,
-		struct vm_area_struct *new_vma)
-{
-	return __vdso_remap(VDSO_ABI_AA32, sm, new_vma);
-}
-
 enum aarch32_map {
 	AA32_MAP_VECTORS, /* kuser helpers */
 	AA32_MAP_SIGPAGE,
@@ -309,6 +269,14 @@ enum aarch32_map {
 static struct page *aarch32_vectors_page __ro_after_init;
 static struct page *aarch32_sig_page __ro_after_init;
 
+static int aarch32_sigpage_mremap(const struct vm_special_mapping *sm,
+				  struct vm_area_struct *new_vma)
+{
+	current->mm->context.sigpage = (void *)new_vma->vm_start;
+
+	return 0;
+}
+
 static struct vm_special_mapping aarch32_vdso_maps[] = {
 	[AA32_MAP_VECTORS] = {
 		.name	= "[vectors]", /* ABI */
@@ -317,15 +285,15 @@ static struct vm_special_mapping aarch32_vdso_maps[] = {
 	[AA32_MAP_SIGPAGE] = {
 		.name	= "[sigpage]", /* ABI */
 		.pages	= &aarch32_sig_page,
+		.mremap	= aarch32_sigpage_mremap,
 	},
 	[AA32_MAP_VVAR] = {
 		.name = "[vvar]",
 		.fault = vvar_fault,
-		.mremap = vvar_mremap,
 	},
 	[AA32_MAP_VDSO] = {
 		.name = "[vdso]",
-		.mremap = aarch32_vdso_mremap,
+		.mremap = vdso_mremap,
 	},
 };
 
@@ -338,34 +306,35 @@ static int aarch32_alloc_kuser_vdso_page(void)
 	if (!IS_ENABLED(CONFIG_KUSER_HELPERS))
 		return 0;
 
-	vdso_page = get_zeroed_page(GFP_ATOMIC);
+	vdso_page = get_zeroed_page(GFP_KERNEL);
 	if (!vdso_page)
 		return -ENOMEM;
 
 	memcpy((void *)(vdso_page + 0x1000 - kuser_sz), __kuser_helper_start,
 	       kuser_sz);
 	aarch32_vectors_page = virt_to_page(vdso_page);
-	flush_dcache_page(aarch32_vectors_page);
 	return 0;
 }
 
+#define COMPAT_SIGPAGE_POISON_WORD	0xe7fddef1
 static int aarch32_alloc_sigpage(void)
 {
 	extern char __aarch32_sigret_code_start[], __aarch32_sigret_code_end[];
 	int sigret_sz = __aarch32_sigret_code_end - __aarch32_sigret_code_start;
-	unsigned long sigpage;
+	__le32 poison = cpu_to_le32(COMPAT_SIGPAGE_POISON_WORD);
+	void *sigpage;
 
-	sigpage = get_zeroed_page(GFP_ATOMIC);
+	sigpage = (void *)__get_free_page(GFP_KERNEL);
 	if (!sigpage)
 		return -ENOMEM;
 
-	memcpy((void *)sigpage, __aarch32_sigret_code_start, sigret_sz);
+	memset32(sigpage, (__force u32)poison, PAGE_SIZE / sizeof(poison));
+	memcpy(sigpage, __aarch32_sigret_code_start, sigret_sz);
 	aarch32_sig_page = virt_to_page(sigpage);
-	flush_dcache_page(aarch32_sig_page);
 	return 0;
 }
 
-static int __aarch32_alloc_vdso_pages(void)
+static int __init __aarch32_alloc_vdso_pages(void)
 {
 
 	if (!IS_ENABLED(CONFIG_COMPAT_VDSO))
@@ -464,13 +433,7 @@ out:
 	mmap_write_unlock(mm);
 	return ret;
 }
-#endif /* CONFIG_AARCH32_EL0 */
-
-static int vdso_mremap(const struct vm_special_mapping *sm,
-		struct vm_area_struct *new_vma)
-{
-	return __vdso_remap(VDSO_ABI_AA64, sm, new_vma);
-}
+#endif /* CONFIG_COMPAT */
 
 enum aarch64_map {
 	AA64_MAP_VVAR,
@@ -481,27 +444,12 @@ static struct vm_special_mapping aarch64_vdso_maps[] __ro_after_init = {
 	[AA64_MAP_VVAR] = {
 		.name	= "[vvar]",
 		.fault = vvar_fault,
-		.mremap = vvar_mremap,
 	},
 	[AA64_MAP_VDSO] = {
 		.name	= "[vdso]",
 		.mremap = vdso_mremap,
 	},
 };
-
-#ifdef CONFIG_ARM64_ILP32
-static struct vm_special_mapping ilp32_vdso_maps[] __ro_after_init = {
-	[AA64_MAP_VVAR] = {
-		.name	= "[vvar]",
-		.fault = vvar_fault,
-		.mremap = vvar_mremap,
-	},
-	[AA64_MAP_VDSO] = {
-		.name	= "[vdso]",
-		.mremap = vdso_mremap,
-	},
-};
-#endif
 
 static int __init vdso_init(void)
 {
@@ -512,32 +460,15 @@ static int __init vdso_init(void)
 }
 arch_initcall(vdso_init);
 
-#ifdef CONFIG_ARM64_ILP32
-static int __init vdso_ilp32_init(void)
-{
-	vdso_info[VDSO_ABI_ILP32].dm = &ilp32_vdso_maps[AA64_MAP_VVAR];
-	vdso_info[VDSO_ABI_ILP32].cm = &ilp32_vdso_maps[AA64_MAP_VDSO];
-
-	return __vdso_init(VDSO_ABI_ILP32);
-}
-arch_initcall(vdso_ilp32_init);
-#endif
-
 int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 {
 	struct mm_struct *mm = current->mm;
-	enum vdso_abi abi = VDSO_ABI_AA64;
 	int ret;
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
-#ifdef CONFIG_ARM64_ILP32
-	if (is_ilp32_compat_task())
-		abi = VDSO_ABI_ILP32;
-#endif
-	ret = __setup_additional_pages(abi, mm, bprm, uses_interp);
-
+	ret = __setup_additional_pages(VDSO_ABI_AA64, mm, bprm, uses_interp);
 	mmap_write_unlock(mm);
 
 	return ret;

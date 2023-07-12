@@ -30,50 +30,58 @@
  *	the implementation assumes non-aliasing VIPT D-cache and (aliasing)
  *	VIPT I-cache.
  *
- *	flush_cache_mm(mm)
+ *	All functions below apply to the interval [start, end)
+ *		- start  - virtual start address (inclusive)
+ *		- end    - virtual end address (exclusive)
  *
- *		Clean and invalidate all user space cache entries
- *		before a change of page tables.
+ *	caches_clean_inval_pou(start, end)
  *
- *	flush_icache_range(start, end)
+ *		Ensure coherency between the I-cache and the D-cache region to
+ *		the Point of Unification.
  *
- *		Ensure coherency between the I-cache and the D-cache in the
- *		region described by start, end.
- *		- start  - virtual start address
- *		- end    - virtual end address
+ *	caches_clean_inval_user_pou(start, end)
  *
- *	invalidate_icache_range(start, end)
+ *		Ensure coherency between the I-cache and the D-cache region to
+ *		the Point of Unification.
+ *		Use only if the region might access user memory.
  *
- *		Invalidate the I-cache in the region described by start, end.
- *		- start  - virtual start address
- *		- end    - virtual end address
+ *	icache_inval_pou(start, end)
  *
- *	__flush_cache_user_range(start, end)
+ *		Invalidate I-cache region to the Point of Unification.
  *
- *		Ensure coherency between the I-cache and the D-cache in the
- *		region described by start, end.
- *		- start  - virtual start address
- *		- end    - virtual end address
+ *	dcache_clean_inval_poc(start, end)
  *
- *	__flush_dcache_area(kaddr, size)
+ *		Clean and invalidate D-cache region to the Point of Coherency.
  *
- *		Ensure that the data held in page is written back.
- *		- kaddr  - page address
- *		- size   - region size
+ *	dcache_inval_poc(start, end)
+ *
+ *		Invalidate D-cache region to the Point of Coherency.
+ *
+ *	dcache_clean_poc(start, end)
+ *
+ *		Clean D-cache region to the Point of Coherency.
+ *
+ *	dcache_clean_pop(start, end)
+ *
+ *		Clean D-cache region to the Point of Persistence.
+ *
+ *	dcache_clean_pou(start, end)
+ *
+ *		Clean D-cache region to the Point of Unification.
  */
-extern void __flush_icache_range(unsigned long start, unsigned long end);
-extern int  invalidate_icache_range(unsigned long start, unsigned long end);
-extern void __flush_dcache_area(void *addr, size_t len);
-extern void __inval_dcache_area(void *addr, size_t len);
-extern void __clean_dcache_area_poc(void *addr, size_t len);
-extern void __clean_dcache_area_pop(void *addr, size_t len);
-extern void __clean_dcache_area_pou(void *addr, size_t len);
-extern long __flush_cache_user_range(unsigned long start, unsigned long end);
-extern void sync_icache_aliases(void *kaddr, unsigned long len);
+extern void caches_clean_inval_pou(unsigned long start, unsigned long end);
+extern void icache_inval_pou(unsigned long start, unsigned long end);
+extern void dcache_clean_inval_poc(unsigned long start, unsigned long end);
+extern void dcache_inval_poc(unsigned long start, unsigned long end);
+extern void dcache_clean_poc(unsigned long start, unsigned long end);
+extern void dcache_clean_pop(unsigned long start, unsigned long end);
+extern void dcache_clean_pou(unsigned long start, unsigned long end);
+extern long caches_clean_inval_user_pou(unsigned long start, unsigned long end);
+extern void sync_icache_aliases(unsigned long start, unsigned long end);
 
 static inline void flush_icache_range(unsigned long start, unsigned long end)
 {
-	__flush_icache_range(start, end);
+	caches_clean_inval_pou(start, end);
 
 	/*
 	 * IPI all online CPUs so that they undergo a context synchronization
@@ -95,64 +103,6 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
 	kick_all_cpus_sync();
 }
 #define flush_icache_range flush_icache_range
-
-/*
- * Ensure that any D-cache lines for the interval [addr, addr+len)
- * are invalidated.
- *
- * addr: kernel address
- * len: size of the address
- */
-static inline void inval_dcache_area(void *addr, size_t len)
-{
-	__inval_dcache_area(addr, len);
-}
-
-/* Ensure that any D-cache lines for the interval [addr, addr+len)
- * are cleaned to the PoC.
- *
- * addr: kernel address
- * len: size of the address
- */
-static inline void clean_dcache_area(void *addr, size_t len)
-{
-	__clean_dcache_area_poc(addr, len);
-}
-
-/* Ensure that any D-cache lines for the interval [addr, addr+len)
- * are cleaned and invalidated to the PoC.
- *
- * addr: kernel address
- * len: size of the address
- */
-static inline void flush_dcache_area(void *addr, size_t len)
-{
-	__flush_dcache_area(addr, len);
-}
-#define flush_dcache_area flush_dcache_area
-
-/* start and end are kernel addresses */
-static inline void inval_dcache_range(unsigned long start, unsigned long end)
-{
-	__inval_dcache_area((void *)start, end - start);
-}
-
-static inline void clean_dcache_range(unsigned long start, unsigned long end)
-{
-	__clean_dcache_area_poc((void *)start, end - start);
-}
-
-static inline void flush_dcache_range(unsigned long start, unsigned long end)
-{
-	__flush_dcache_area((void *)start, end - start);
-}
-
-/*
- * Cache maintenance functions used by the DMA API. No to be used directly.
- */
-extern void __dma_map_area(const void *, size_t, int);
-extern void __dma_unmap_area(const void *, size_t, int);
-extern void __dma_flush_area(const void *, size_t);
 
 /*
  * Copy user data from/to a page which is mapped into a different
@@ -178,7 +128,7 @@ extern void copy_to_user_page(struct vm_area_struct *, struct page *,
 #define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 1
 extern void flush_dcache_page(struct page *);
 
-static __always_inline void __flush_icache_all(void)
+static __always_inline void icache_inval_all_pou(void)
 {
 	if (cpus_have_const_cap(ARM64_HAS_CACHE_DIC))
 		return;
@@ -186,11 +136,6 @@ static __always_inline void __flush_icache_all(void)
 	asm("ic	ialluis");
 	dsb(ish);
 }
-
-int set_memory_valid(unsigned long addr, int numpages, int enable);
-
-int set_direct_map_invalid_noflush(struct page *page);
-int set_direct_map_default_noflush(struct page *page);
 
 #include <asm-generic/cacheflush.h>
 

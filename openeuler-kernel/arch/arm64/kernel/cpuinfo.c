@@ -33,12 +33,19 @@
 DEFINE_PER_CPU(struct cpuinfo_arm64, cpu_data);
 static struct cpuinfo_arm64 boot_cpu_data;
 
-static const char *icache_policy_str[] = {
-	[ICACHE_POLICY_VPIPT]		= "VPIPT",
-	[ICACHE_POLICY_RESERVED]	= "RESERVED/UNKNOWN",
-	[ICACHE_POLICY_VIPT]		= "VIPT",
-	[ICACHE_POLICY_PIPT]		= "PIPT",
-};
+static inline const char *icache_policy_str(int l1ip)
+{
+	switch (l1ip) {
+	case CTR_EL0_L1Ip_VPIPT:
+		return "VPIPT";
+	case CTR_EL0_L1Ip_VIPT:
+		return "VIPT";
+	case CTR_EL0_L1Ip_PIPT:
+		return "PIPT";
+	default:
+		return "RESERVED/UNKNOWN";
+	}
+}
 
 unsigned long __icache_flags;
 
@@ -94,9 +101,24 @@ static const char *const hwcap_str[] = {
 	[KERNEL_HWCAP_RNG]		= "rng",
 	[KERNEL_HWCAP_BTI]		= "bti",
 	[KERNEL_HWCAP_MTE]		= "mte",
+	[KERNEL_HWCAP_ECV]		= "ecv",
+	[KERNEL_HWCAP_AFP]		= "afp",
+	[KERNEL_HWCAP_RPRES]		= "rpres",
+	[KERNEL_HWCAP_MTE3]		= "mte3",
+	[KERNEL_HWCAP_SME]		= "sme",
+	[KERNEL_HWCAP_SME_I16I64]	= "smei16i64",
+	[KERNEL_HWCAP_SME_F64F64]	= "smef64f64",
+	[KERNEL_HWCAP_SME_I8I32]	= "smei8i32",
+	[KERNEL_HWCAP_SME_F16F32]	= "smef16f32",
+	[KERNEL_HWCAP_SME_B16F32]	= "smeb16f32",
+	[KERNEL_HWCAP_SME_F32F32]	= "smef32f32",
+	[KERNEL_HWCAP_SME_FA64]		= "smefa64",
+	[KERNEL_HWCAP_WFXT]		= "wfxt",
+	[KERNEL_HWCAP_EBF16]		= "ebf16",
+	[KERNEL_HWCAP_SVE_EBF16]	= "sveebf16",
 };
 
-#ifdef CONFIG_AARCH32_EL0
+#ifdef CONFIG_COMPAT
 #define COMPAT_KERNEL_HWCAP(x)	const_ilog2(COMPAT_HWCAP_ ## x)
 static const char *const compat_hwcap_str[] = {
 	[COMPAT_KERNEL_HWCAP(SWP)]	= "swp",
@@ -131,12 +153,12 @@ static const char *const compat_hwcap2_str[] = {
 	[COMPAT_KERNEL_HWCAP2(SHA2)]	= "sha2",
 	[COMPAT_KERNEL_HWCAP2(CRC32)]	= "crc32",
 };
-#endif /* CONFIG_AARCH32_EL0 */
+#endif /* CONFIG_COMPAT */
 
 static int c_show(struct seq_file *m, void *v)
 {
 	int i, j;
-	bool aarch32 = personality(current->personality) == PER_LINUX32;
+	bool compat = personality(current->personality) == PER_LINUX32;
 
 	for_each_online_cpu(i) {
 		struct cpuinfo_arm64 *cpuinfo = &per_cpu(cpu_data, i);
@@ -148,7 +170,7 @@ static int c_show(struct seq_file *m, void *v)
 		 * "processor".  Give glibc what it expects.
 		 */
 		seq_printf(m, "processor\t: %d\n", i);
-		if (aarch32)
+		if (compat)
 			seq_printf(m, "model name\t: ARMv8 Processor rev %d (%s)\n",
 				   MIDR_REVISION(midr), COMPAT_ELF_PLATFORM);
 
@@ -163,10 +185,10 @@ static int c_show(struct seq_file *m, void *v)
 		 * software which does already (at least for 32-bit).
 		 */
 		seq_puts(m, "Features\t:");
-		if (aarch32) {
-#ifdef CONFIG_AARCH32_EL0
+		if (compat) {
+#ifdef CONFIG_COMPAT
 			for (j = 0; j < ARRAY_SIZE(compat_hwcap_str); j++) {
-				if (a32_elf_hwcap & (1 << j)) {
+				if (compat_elf_hwcap & (1 << j)) {
 					/*
 					 * Warn once if any feature should not
 					 * have been present on arm64 platform.
@@ -179,9 +201,9 @@ static int c_show(struct seq_file *m, void *v)
 			}
 
 			for (j = 0; j < ARRAY_SIZE(compat_hwcap2_str); j++)
-				if (a32_elf_hwcap2 & (1 << j))
+				if (compat_elf_hwcap2 & (1 << j))
 					seq_printf(m, " %s", compat_hwcap2_str[j]);
-#endif /* CONFIG_AARCH32_EL0 */
+#endif /* CONFIG_COMPAT */
 		} else {
 			for (j = 0; j < ARRAY_SIZE(hwcap_str); j++)
 				if (cpu_have_feature(j))
@@ -246,7 +268,7 @@ static struct kobj_type cpuregs_kobj_type = {
 		struct cpuinfo_arm64 *info = kobj_to_cpuinfo(kobj);		\
 										\
 		if (info->reg_midr)						\
-			return sprintf(buf, "0x%016x\n", info->reg_##_field);	\
+			return sprintf(buf, "0x%016llx\n", info->reg_##_field);	\
 		else								\
 			return 0;						\
 	}									\
@@ -254,6 +276,7 @@ static struct kobj_type cpuregs_kobj_type = {
 
 CPUREGS_ATTR_RO(midr_el1, midr);
 CPUREGS_ATTR_RO(revidr_el1, revidr);
+CPUREGS_ATTR_RO(smidr_el1, smidr);
 
 static struct attribute *cpuregs_id_attrs[] = {
 	&cpuregs_attr_midr_el1.attr,
@@ -263,6 +286,16 @@ static struct attribute *cpuregs_id_attrs[] = {
 
 static const struct attribute_group cpuregs_attr_group = {
 	.attrs = cpuregs_id_attrs,
+	.name = "identification"
+};
+
+static struct attribute *sme_cpuregs_id_attrs[] = {
+	&cpuregs_attr_smidr_el1.attr,
+	NULL
+};
+
+static const struct attribute_group sme_cpuregs_attr_group = {
+	.attrs = sme_cpuregs_id_attrs,
 	.name = "identification"
 };
 
@@ -283,6 +316,8 @@ static int cpuid_cpu_online(unsigned int cpu)
 	rc = sysfs_create_group(&info->kobj, &cpuregs_attr_group);
 	if (rc)
 		kobject_del(&info->kobj);
+	if (system_supports_sme())
+		rc = sysfs_merge_group(&info->kobj, &sme_cpuregs_attr_group);
 out:
 	return rc;
 }
@@ -329,19 +364,45 @@ static void cpuinfo_detect_icache_policy(struct cpuinfo_arm64 *info)
 	u32 l1ip = CTR_L1IP(info->reg_ctr);
 
 	switch (l1ip) {
-	case ICACHE_POLICY_PIPT:
+	case CTR_EL0_L1Ip_PIPT:
 		break;
-	case ICACHE_POLICY_VPIPT:
+	case CTR_EL0_L1Ip_VPIPT:
 		set_bit(ICACHEF_VPIPT, &__icache_flags);
 		break;
-	case ICACHE_POLICY_RESERVED:
-	case ICACHE_POLICY_VIPT:
+	case CTR_EL0_L1Ip_VIPT:
+	default:
 		/* Assume aliasing */
 		set_bit(ICACHEF_ALIASING, &__icache_flags);
 		break;
 	}
 
-	pr_info("Detected %s I-cache on CPU%d\n", icache_policy_str[l1ip], cpu);
+	pr_info("Detected %s I-cache on CPU%d\n", icache_policy_str(l1ip), cpu);
+}
+
+static void __cpuinfo_store_cpu_32bit(struct cpuinfo_32bit *info)
+{
+	info->reg_id_dfr0 = read_cpuid(ID_DFR0_EL1);
+	info->reg_id_dfr1 = read_cpuid(ID_DFR1_EL1);
+	info->reg_id_isar0 = read_cpuid(ID_ISAR0_EL1);
+	info->reg_id_isar1 = read_cpuid(ID_ISAR1_EL1);
+	info->reg_id_isar2 = read_cpuid(ID_ISAR2_EL1);
+	info->reg_id_isar3 = read_cpuid(ID_ISAR3_EL1);
+	info->reg_id_isar4 = read_cpuid(ID_ISAR4_EL1);
+	info->reg_id_isar5 = read_cpuid(ID_ISAR5_EL1);
+	info->reg_id_isar6 = read_cpuid(ID_ISAR6_EL1);
+	info->reg_id_mmfr0 = read_cpuid(ID_MMFR0_EL1);
+	info->reg_id_mmfr1 = read_cpuid(ID_MMFR1_EL1);
+	info->reg_id_mmfr2 = read_cpuid(ID_MMFR2_EL1);
+	info->reg_id_mmfr3 = read_cpuid(ID_MMFR3_EL1);
+	info->reg_id_mmfr4 = read_cpuid(ID_MMFR4_EL1);
+	info->reg_id_mmfr5 = read_cpuid(ID_MMFR5_EL1);
+	info->reg_id_pfr0 = read_cpuid(ID_PFR0_EL1);
+	info->reg_id_pfr1 = read_cpuid(ID_PFR1_EL1);
+	info->reg_id_pfr2 = read_cpuid(ID_PFR2_EL1);
+
+	info->reg_mvfr0 = read_cpuid(MVFR0_EL1);
+	info->reg_mvfr1 = read_cpuid(MVFR1_EL1);
+	info->reg_mvfr2 = read_cpuid(MVFR2_EL1);
 }
 
 static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
@@ -353,7 +414,7 @@ static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
 	 * with the CLIDR_EL1 fields to avoid triggering false warnings
 	 * when there is a mismatch across the CPUs. Keep track of the
 	 * effective value of the CTR_EL0 in our internal records for
-	 * acurate sanity check and feature enablement.
+	 * accurate sanity check and feature enablement.
 	 */
 	info->reg_ctr = read_cpuid_effective_cachetype();
 	info->reg_dczid = read_cpuid(DCZID_EL0);
@@ -364,42 +425,20 @@ static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
 	info->reg_id_aa64dfr1 = read_cpuid(ID_AA64DFR1_EL1);
 	info->reg_id_aa64isar0 = read_cpuid(ID_AA64ISAR0_EL1);
 	info->reg_id_aa64isar1 = read_cpuid(ID_AA64ISAR1_EL1);
+	info->reg_id_aa64isar2 = read_cpuid(ID_AA64ISAR2_EL1);
 	info->reg_id_aa64mmfr0 = read_cpuid(ID_AA64MMFR0_EL1);
 	info->reg_id_aa64mmfr1 = read_cpuid(ID_AA64MMFR1_EL1);
 	info->reg_id_aa64mmfr2 = read_cpuid(ID_AA64MMFR2_EL1);
 	info->reg_id_aa64pfr0 = read_cpuid(ID_AA64PFR0_EL1);
 	info->reg_id_aa64pfr1 = read_cpuid(ID_AA64PFR1_EL1);
 	info->reg_id_aa64zfr0 = read_cpuid(ID_AA64ZFR0_EL1);
+	info->reg_id_aa64smfr0 = read_cpuid(ID_AA64SMFR0_EL1);
 
-	/* Update the 32bit ID registers only if AArch32 is implemented */
-	if (id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0)) {
-		info->reg_id_dfr0 = read_cpuid(ID_DFR0_EL1);
-		info->reg_id_dfr1 = read_cpuid(ID_DFR1_EL1);
-		info->reg_id_isar0 = read_cpuid(ID_ISAR0_EL1);
-		info->reg_id_isar1 = read_cpuid(ID_ISAR1_EL1);
-		info->reg_id_isar2 = read_cpuid(ID_ISAR2_EL1);
-		info->reg_id_isar3 = read_cpuid(ID_ISAR3_EL1);
-		info->reg_id_isar4 = read_cpuid(ID_ISAR4_EL1);
-		info->reg_id_isar5 = read_cpuid(ID_ISAR5_EL1);
-		info->reg_id_isar6 = read_cpuid(ID_ISAR6_EL1);
-		info->reg_id_mmfr0 = read_cpuid(ID_MMFR0_EL1);
-		info->reg_id_mmfr1 = read_cpuid(ID_MMFR1_EL1);
-		info->reg_id_mmfr2 = read_cpuid(ID_MMFR2_EL1);
-		info->reg_id_mmfr3 = read_cpuid(ID_MMFR3_EL1);
-		info->reg_id_mmfr4 = read_cpuid(ID_MMFR4_EL1);
-		info->reg_id_mmfr5 = read_cpuid(ID_MMFR5_EL1);
-		info->reg_id_pfr0 = read_cpuid(ID_PFR0_EL1);
-		info->reg_id_pfr1 = read_cpuid(ID_PFR1_EL1);
-		info->reg_id_pfr2 = read_cpuid(ID_PFR2_EL1);
+	if (id_aa64pfr1_mte(info->reg_id_aa64pfr1))
+		info->reg_gmid = read_cpuid(GMID_EL1);
 
-		info->reg_mvfr0 = read_cpuid(MVFR0_EL1);
-		info->reg_mvfr1 = read_cpuid(MVFR1_EL1);
-		info->reg_mvfr2 = read_cpuid(MVFR2_EL1);
-	}
-
-	if (IS_ENABLED(CONFIG_ARM64_SVE) &&
-	    id_aa64pfr0_sve(info->reg_id_aa64pfr0))
-		info->reg_zcr = read_zcr_features();
+	if (id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0))
+		__cpuinfo_store_cpu_32bit(&info->aarch32);
 
 	cpuinfo_detect_icache_policy(info);
 }

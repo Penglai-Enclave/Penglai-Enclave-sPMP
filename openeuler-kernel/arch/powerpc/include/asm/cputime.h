@@ -19,6 +19,7 @@
 #include <asm/div64.h>
 #include <asm/time.h>
 #include <asm/param.h>
+#include <asm/firmware.h>
 
 typedef u64 __nocast cputime_t;
 typedef u64 __nocast cputime64_t;
@@ -87,6 +88,17 @@ static notrace inline void account_cpu_user_exit(void)
 	acct->starttime_user = tb;
 }
 
+static notrace inline void account_stolen_time(void)
+{
+#ifdef CONFIG_PPC_SPLPAR
+	if (firmware_has_feature(FW_FEATURE_SPLPAR)) {
+		struct lppaca *lp = local_paca->lppaca_ptr;
+
+		if (unlikely(local_paca->dtl_ridx != be64_to_cpu(lp->dtl_idx)))
+			pseries_accumulate_stolen_time();
+	}
+#endif
+}
 
 #endif /* __KERNEL__ */
 #else /* CONFIG_VIRT_CPU_ACCOUNTING_NATIVE */
@@ -94,6 +106,9 @@ static inline void account_cpu_user_entry(void)
 {
 }
 static inline void account_cpu_user_exit(void)
+{
+}
+static notrace inline void account_stolen_time(void)
 {
 }
 #endif /* CONFIG_VIRT_CPU_ACCOUNTING_NATIVE */

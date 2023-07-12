@@ -16,12 +16,11 @@
 #include <asm/fpsimd.h>
 #include <asm/signal32.h>
 #include <asm/traps.h>
-#include <asm/signal32_common.h>
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/vdso.h>
 
-struct a32_vfp_sigframe {
+struct compat_vfp_sigframe {
 	compat_ulong_t	magic;
 	compat_ulong_t	size;
 	struct compat_user_vfp {
@@ -36,24 +35,44 @@ struct a32_vfp_sigframe {
 } __attribute__((__aligned__(8)));
 
 #define VFP_MAGIC		0x56465001
-#define VFP_STORAGE_SIZE	sizeof(struct a32_vfp_sigframe)
+#define VFP_STORAGE_SIZE	sizeof(struct compat_vfp_sigframe)
 
 #define FSR_WRITE_SHIFT		(11)
 
-struct a32_aux_sigframe {
-	struct a32_vfp_sigframe	vfp;
+struct compat_aux_sigframe {
+	struct compat_vfp_sigframe	vfp;
 
 	/* Something that isn't a valid magic number for any coprocessor.  */
 	unsigned long			end_magic;
 } __attribute__((__aligned__(8)));
 
-#define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
+static inline int put_sigset_t(compat_sigset_t __user *uset, sigset_t *set)
+{
+	compat_sigset_t	cset;
+
+	cset.sig[0] = set->sig[0] & 0xffffffffull;
+	cset.sig[1] = set->sig[0] >> 32;
+
+	return copy_to_user(uset, &cset, sizeof(*uset));
+}
+
+static inline int get_sigset_t(sigset_t *set,
+			       const compat_sigset_t __user *uset)
+{
+	compat_sigset_t s32;
+
+	if (copy_from_user(&s32, uset, sizeof(*uset)))
+		return -EFAULT;
+
+	set->sig[0] = s32.sig[0] | (((long)s32.sig[1]) << 32);
+	return 0;
+}
 
 /*
  * VFP save/restore code.
  *
  * We have to be careful with endianness, since the fpsimd context-switch
- * code operates on 128-bit (Q) register values whereas the a32 ABI
+ * code operates on 128-bit (Q) register values whereas the compat ABI
  * uses an array of 64-bit (D) registers. Consequently, we need to swap
  * the two halves of each Q register when running on a big-endian CPU.
  */
@@ -70,7 +89,7 @@ union __fpsimd_vreg {
 	};
 };
 
-static int a32_preserve_vfp_context(struct a32_vfp_sigframe __user *frame)
+static int compat_preserve_vfp_context(struct compat_vfp_sigframe __user *frame)
 {
 	struct user_fpsimd_state const *fpsimd =
 		&current->thread.uw.fpsimd_state;
@@ -120,7 +139,7 @@ static int a32_preserve_vfp_context(struct a32_vfp_sigframe __user *frame)
 	return err ? -EFAULT : 0;
 }
 
-static int a32_restore_vfp_context(struct a32_vfp_sigframe __user *frame)
+static int compat_restore_vfp_context(struct compat_vfp_sigframe __user *frame)
 {
 	struct user_fpsimd_state fpsimd;
 	compat_ulong_t magic = VFP_MAGIC;
@@ -160,19 +179,17 @@ static int a32_restore_vfp_context(struct a32_vfp_sigframe __user *frame)
 	return err ? -EFAULT : 0;
 }
 
-static int a32_restore_sigframe(struct pt_regs *regs,
-				   struct a32_sigframe __user *sf)
+static int compat_restore_sigframe(struct pt_regs *regs,
+				   struct compat_sigframe __user *sf)
 {
 	int err;
 	sigset_t set;
-	struct a32_aux_sigframe __user *aux;
+	struct compat_aux_sigframe __user *aux;
 	unsigned long psr;
 
 	err = get_sigset_t(&set, &sf->uc.uc_sigmask);
-	if (err == 0) {
-		sigdelsetmask(&set, ~_BLOCKABLE);
+	if (err == 0)
 		set_current_blocked(&set);
-	}
 
 	__get_user_error(regs->regs[0], &sf->uc.uc_mcontext.arm_r0, err);
 	__get_user_error(regs->regs[1], &sf->uc.uc_mcontext.arm_r1, err);
@@ -201,9 +218,9 @@ static int a32_restore_sigframe(struct pt_regs *regs,
 
 	err |= !valid_user_regs(&regs->user_regs, current);
 
-	aux = (struct a32_aux_sigframe __user *) sf->uc.uc_regspace;
+	aux = (struct compat_aux_sigframe __user *) sf->uc.uc_regspace;
 	if (err == 0 && system_supports_fpsimd())
-		err |= a32_restore_vfp_context(&aux->vfp);
+		err |= compat_restore_vfp_context(&aux->vfp);
 
 	return err;
 }
@@ -211,7 +228,7 @@ static int a32_restore_sigframe(struct pt_regs *regs,
 COMPAT_SYSCALL_DEFINE0(sigreturn)
 {
 	struct pt_regs *regs = current_pt_regs();
-	struct a32_sigframe __user *frame;
+	struct compat_sigframe __user *frame;
 
 	/* Always make any pending restarted system calls return -EINTR */
 	current->restart_block.fn = do_no_restart_syscall;
@@ -224,12 +241,12 @@ COMPAT_SYSCALL_DEFINE0(sigreturn)
 	if (regs->compat_sp & 7)
 		goto badframe;
 
-	frame = (struct a32_sigframe __user *)regs->compat_sp;
+	frame = (struct compat_sigframe __user *)regs->compat_sp;
 
 	if (!access_ok(frame, sizeof (*frame)))
 		goto badframe;
 
-	if (a32_restore_sigframe(regs, frame))
+	if (compat_restore_sigframe(regs, frame))
 		goto badframe;
 
 	return regs->regs[0];
@@ -242,7 +259,7 @@ badframe:
 COMPAT_SYSCALL_DEFINE0(rt_sigreturn)
 {
 	struct pt_regs *regs = current_pt_regs();
-	struct a32_rt_sigframe __user *frame;
+	struct compat_rt_sigframe __user *frame;
 
 	/* Always make any pending restarted system calls return -EINTR */
 	current->restart_block.fn = do_no_restart_syscall;
@@ -255,12 +272,12 @@ COMPAT_SYSCALL_DEFINE0(rt_sigreturn)
 	if (regs->compat_sp & 7)
 		goto badframe;
 
-	frame = (struct a32_rt_sigframe __user *)regs->compat_sp;
+	frame = (struct compat_rt_sigframe __user *)regs->compat_sp;
 
 	if (!access_ok(frame, sizeof (*frame)))
 		goto badframe;
 
-	if (a32_restore_sigframe(regs, &frame->sig))
+	if (compat_restore_sigframe(regs, &frame->sig))
 		goto badframe;
 
 	if (compat_restore_altstack(&frame->sig.uc.uc_stack))
@@ -273,7 +290,7 @@ badframe:
 	return 0;
 }
 
-static void __user *a32_get_sigframe(struct ksignal *ksig,
+static void __user *compat_get_sigframe(struct ksignal *ksig,
 					struct pt_regs *regs,
 					int framesize)
 {
@@ -294,7 +311,7 @@ static void __user *a32_get_sigframe(struct ksignal *ksig,
 	return frame;
 }
 
-static void a32_setup_return(struct pt_regs *regs, struct k_sigaction *ka,
+static void compat_setup_return(struct pt_regs *regs, struct k_sigaction *ka,
 				compat_ulong_t __user *rc, void __user *frame,
 				int usig)
 {
@@ -337,10 +354,10 @@ static void a32_setup_return(struct pt_regs *regs, struct k_sigaction *ka,
 	regs->pstate	= spsr;
 }
 
-static int a32_setup_sigframe(struct a32_sigframe __user *sf,
+static int compat_setup_sigframe(struct compat_sigframe __user *sf,
 				 struct pt_regs *regs, sigset_t *set)
 {
-	struct a32_aux_sigframe __user *aux;
+	struct compat_aux_sigframe __user *aux;
 	unsigned long psr = pstate_to_compat_psr(regs->pstate);
 	int err = 0;
 
@@ -363,7 +380,7 @@ static int a32_setup_sigframe(struct a32_sigframe __user *sf,
 	__put_user_error(psr, &sf->uc.uc_mcontext.arm_cpsr, err);
 
 	__put_user_error((compat_ulong_t)0, &sf->uc.uc_mcontext.trap_no, err);
-	/* set the aarch32 FSR WnR */
+	/* set the compat FSR WnR */
 	__put_user_error(!!(current->thread.fault_code & ESR_ELx_WNR) <<
 			 FSR_WRITE_SHIFT, &sf->uc.uc_mcontext.error_code, err);
 	__put_user_error(current->thread.fault_address, &sf->uc.uc_mcontext.fault_address, err);
@@ -371,25 +388,25 @@ static int a32_setup_sigframe(struct a32_sigframe __user *sf,
 
 	err |= put_sigset_t(&sf->uc.uc_sigmask, set);
 
-	aux = (struct a32_aux_sigframe __user *) sf->uc.uc_regspace;
+	aux = (struct compat_aux_sigframe __user *) sf->uc.uc_regspace;
 
 	if (err == 0 && system_supports_fpsimd())
-		err |= a32_preserve_vfp_context(&aux->vfp);
+		err |= compat_preserve_vfp_context(&aux->vfp);
 	__put_user_error(0, &aux->end_magic, err);
 
 	return err;
 }
 
 /*
- * aarch32-bit signal handling routines called from signal.c
+ * 32-bit signal handling routines called from signal.c
  */
-int a32_setup_rt_frame(int usig, struct ksignal *ksig,
+int compat_setup_rt_frame(int usig, struct ksignal *ksig,
 			  sigset_t *set, struct pt_regs *regs)
 {
-	struct a32_rt_sigframe __user *frame;
+	struct compat_rt_sigframe __user *frame;
 	int err = 0;
 
-	frame = a32_get_sigframe(ksig, regs, sizeof(*frame));
+	frame = compat_get_sigframe(ksig, regs, sizeof(*frame));
 
 	if (!frame)
 		return 1;
@@ -401,10 +418,10 @@ int a32_setup_rt_frame(int usig, struct ksignal *ksig,
 
 	err |= __compat_save_altstack(&frame->sig.uc.uc_stack, regs->compat_sp);
 
-	err |= a32_setup_sigframe(&frame->sig, regs, set);
+	err |= compat_setup_sigframe(&frame->sig, regs, set);
 
 	if (err == 0) {
-		a32_setup_return(regs, &ksig->ka, frame->sig.retcode, frame, usig);
+		compat_setup_return(regs, &ksig->ka, frame->sig.retcode, frame, usig);
 		regs->regs[1] = (compat_ulong_t)(unsigned long)&frame->info;
 		regs->regs[2] = (compat_ulong_t)(unsigned long)&frame->sig.uc;
 	}
@@ -412,27 +429,67 @@ int a32_setup_rt_frame(int usig, struct ksignal *ksig,
 	return err;
 }
 
-int a32_setup_frame(int usig, struct ksignal *ksig, sigset_t *set,
+int compat_setup_frame(int usig, struct ksignal *ksig, sigset_t *set,
 		       struct pt_regs *regs)
 {
-	struct a32_sigframe __user *frame;
+	struct compat_sigframe __user *frame;
 	int err = 0;
 
-	frame = a32_get_sigframe(ksig, regs, sizeof(*frame));
+	frame = compat_get_sigframe(ksig, regs, sizeof(*frame));
 
 	if (!frame)
 		return 1;
 
 	__put_user_error(0x5ac3c35a, &frame->uc.uc_flags, err);
 
-	err |= a32_setup_sigframe(frame, regs, set);
+	err |= compat_setup_sigframe(frame, regs, set);
 	if (err == 0)
-		a32_setup_return(regs, &ksig->ka, frame->retcode, frame, usig);
+		compat_setup_return(regs, &ksig->ka, frame->retcode, frame, usig);
 
 	return err;
 }
 
-void a32_setup_restart_syscall(struct pt_regs *regs)
+void compat_setup_restart_syscall(struct pt_regs *regs)
 {
        regs->regs[7] = __NR_compat_restart_syscall;
 }
+
+/*
+ * Compile-time assertions for siginfo_t offsets. Check NSIG* as well, as
+ * changes likely come with new fields that should be added below.
+ */
+static_assert(NSIGILL	== 11);
+static_assert(NSIGFPE	== 15);
+static_assert(NSIGSEGV	== 9);
+static_assert(NSIGBUS	== 5);
+static_assert(NSIGTRAP	== 6);
+static_assert(NSIGCHLD	== 6);
+static_assert(NSIGSYS	== 2);
+static_assert(sizeof(compat_siginfo_t) == 128);
+static_assert(__alignof__(compat_siginfo_t) == 4);
+static_assert(offsetof(compat_siginfo_t, si_signo)	== 0x00);
+static_assert(offsetof(compat_siginfo_t, si_errno)	== 0x04);
+static_assert(offsetof(compat_siginfo_t, si_code)	== 0x08);
+static_assert(offsetof(compat_siginfo_t, si_pid)	== 0x0c);
+static_assert(offsetof(compat_siginfo_t, si_uid)	== 0x10);
+static_assert(offsetof(compat_siginfo_t, si_tid)	== 0x0c);
+static_assert(offsetof(compat_siginfo_t, si_overrun)	== 0x10);
+static_assert(offsetof(compat_siginfo_t, si_status)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_utime)	== 0x18);
+static_assert(offsetof(compat_siginfo_t, si_stime)	== 0x1c);
+static_assert(offsetof(compat_siginfo_t, si_value)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_int)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_ptr)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_addr)	== 0x0c);
+static_assert(offsetof(compat_siginfo_t, si_addr_lsb)	== 0x10);
+static_assert(offsetof(compat_siginfo_t, si_lower)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_upper)	== 0x18);
+static_assert(offsetof(compat_siginfo_t, si_pkey)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_perf_data)	== 0x10);
+static_assert(offsetof(compat_siginfo_t, si_perf_type)	== 0x14);
+static_assert(offsetof(compat_siginfo_t, si_perf_flags)	== 0x18);
+static_assert(offsetof(compat_siginfo_t, si_band)	== 0x0c);
+static_assert(offsetof(compat_siginfo_t, si_fd)		== 0x10);
+static_assert(offsetof(compat_siginfo_t, si_call_addr)	== 0x0c);
+static_assert(offsetof(compat_siginfo_t, si_syscall)	== 0x10);
+static_assert(offsetof(compat_siginfo_t, si_arch)	== 0x14);

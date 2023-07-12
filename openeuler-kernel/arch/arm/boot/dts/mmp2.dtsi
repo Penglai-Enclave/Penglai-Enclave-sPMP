@@ -6,6 +6,7 @@
 
 #include <dt-bindings/clock/marvell,mmp2.h>
 #include <dt-bindings/power/marvell,mmp2.h>
+#include <dt-bindings/clock/marvell,mmp2-audio.h>
 
 / {
 	#address-cells = <1>;
@@ -243,7 +244,7 @@
 				interrupts = <2>;
 				clock-names = "audio", "bitclk";
 				clocks = <&soc_clocks MMP2_CLK_AUDIO>,
-					 <&audio_clk 1>;
+					 <&audio_clk MMP2_CLK_AUDIO_SSPA0>;
 				power-domains = <&soc_clocks MMP2_POWER_DOMAIN_AUDIO>;
 				#sound-dai-cells = <0>;
 				status = "disabled";
@@ -256,7 +257,7 @@
 				interrupts = <3>;
 				clock-names = "audio", "bitclk";
 				clocks = <&soc_clocks MMP2_CLK_AUDIO>,
-					 <&audio_clk 2>;
+					 <&audio_clk MMP2_CLK_AUDIO_SSPA1>;
 				power-domains = <&soc_clocks MMP2_POWER_DOMAIN_AUDIO>;
 				#sound-dai-cells = <0>;
 				status = "disabled";
@@ -274,7 +275,9 @@
 				compatible = "marvell,pdma-1.0";
 				reg = <0xd4000000 0x10000>;
 				interrupts = <48>;
+				/* For backwards compatibility: */
 				#dma-channels = <16>;
+				dma-channels = <16>;
 				status = "disabled";
 			};
 

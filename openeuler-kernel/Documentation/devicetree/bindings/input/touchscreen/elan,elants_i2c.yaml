@@ -14,9 +14,13 @@ allOf:
 
 properties:
   compatible:
-    enum:
-      - elan,ektf3624
-      - elan,ekth3500
+    oneOf:
+      - enum:
+          - elan,ektf3624
+          - elan,ekth3500
+      - items:
+          - const: elan,ekth3915
+          - const: elan,ekth3500
 
   reg:
     maxItems: 1
@@ -29,6 +33,7 @@ properties:
     description: touchscreen can be used as a wakeup source.
 
   reset-gpios:
+    maxItems: 1
     description: reset gpio the chip is connected to.
 
   vcc33-supply:

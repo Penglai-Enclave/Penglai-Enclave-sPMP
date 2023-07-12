@@ -21,7 +21,6 @@
 #include <linux/uaccess.h>
 
 #include <asm/cp15.h>
-#include <asm/extable.h>
 #include <asm/system_info.h>
 #include <asm/unaligned.h>
 #include <asm/opcodes.h>
@@ -205,7 +204,10 @@ union offset_union {
 	"3:	mov	%0, #1\n"			\
 	"	b	2b\n"				\
 	"	.popsection\n"				\
-	"	ex_entry	1b, 3b\n"		\
+	"	.pushsection __ex_table,\"a\"\n"	\
+	"	.align	3\n"				\
+	"	.long	1b, 3b\n"			\
+	"	.popsection\n"				\
 	: "=r" (err), "=&r" (val), "=r" (addr)		\
 	: "0" (err), "2" (addr))
 
@@ -262,8 +264,11 @@ union offset_union {
 		"4:	mov	%0, #1\n"			\
 		"	b	3b\n"				\
 		"	.popsection\n"				\
-		"	ex_entry	1b, 4b\n"		\
-		"	ex_entry	2b, 4b\n"		\
+		"	.pushsection __ex_table,\"a\"\n"	\
+		"	.align	3\n"				\
+		"	.long	1b, 4b\n"			\
+		"	.long	2b, 4b\n"			\
+		"	.popsection\n"				\
 		: "=r" (err), "=&r" (v), "=&r" (a)		\
 		: "0" (err), "1" (v), "2" (a));			\
 		if (err)					\
@@ -299,10 +304,13 @@ union offset_union {
 		"6:	mov	%0, #1\n"			\
 		"	b	5b\n"				\
 		"	.popsection\n"				\
-		"	ex_entry	1b, 6b\n"		\
-		"	ex_entry	2b, 6b\n"		\
-		"	ex_entry	3b, 6b\n"		\
-		"	ex_entry	4b, 6b\n"		\
+		"	.pushsection __ex_table,\"a\"\n"	\
+		"	.align	3\n"				\
+		"	.long	1b, 6b\n"			\
+		"	.long	2b, 6b\n"			\
+		"	.long	3b, 6b\n"			\
+		"	.long	4b, 6b\n"			\
+		"	.popsection\n"				\
 		: "=r" (err), "=&r" (v), "=&r" (a)		\
 		: "0" (err), "1" (v), "2" (a));			\
 		if (err)					\
@@ -927,6 +935,9 @@ do_alignment(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	if (type == TYPE_LDST)
 		do_alignment_finish_ldst(addr, instr, regs, offset);
 
+	if (thumb_mode(regs))
+		regs->ARM_cpsr = it_advance(regs->ARM_cpsr);
+
 	return 0;
 
  bad_or_fault:
@@ -982,7 +993,7 @@ do_alignment(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		 * there is no work pending for this thread.
 		 */
 		raw_local_irq_disable();
-		if (!(current_thread_info()->flags & _TIF_WORK_MASK))
+		if (!(read_thread_flags() & _TIF_WORK_MASK))
 			set_cr(cr_no_alignment);
 	}
 
@@ -997,7 +1008,7 @@ static int __init noalign_setup(char *__unused)
 __setup("noalign", noalign_setup);
 
 /*
- * This needs to be done after sysctl_init, otherwise sys/ will be
+ * This needs to be done after sysctl_init_bases(), otherwise sys/ will be
  * overwritten.  Actually, this shouldn't be in sys/ at all since
  * it isn't a sysctl, and it doesn't contain sysctl information.
  * We now locate it in /proc/cpu/alignment instead.

@@ -5,7 +5,7 @@
 Types and flags used to represent the media graph elements
 ==========================================================
 
-..  tabularcolumns:: |p{8.2cm}|p{10.3cm}|
+..  tabularcolumns:: |p{8.2cm}|p{9.3cm}|
 
 .. _media-entity-functions:
 .. _MEDIA-ENT-F-UNKNOWN:
@@ -39,6 +39,7 @@ Types and flags used to represent the media graph elements
 .. _MEDIA-ENT-F-PROC-VIDEO-STATISTICS:
 .. _MEDIA-ENT-F-PROC-VIDEO-ENCODER:
 .. _MEDIA-ENT-F-PROC-VIDEO-DECODER:
+.. _MEDIA-ENT-F-PROC-VIDEO-ISP:
 .. _MEDIA-ENT-F-VID-MUX:
 .. _MEDIA-ENT-F-VID-IF-BRIDGE:
 .. _MEDIA-ENT-F-DV-DECODER:
@@ -201,6 +202,12 @@ Types and flags used to represent the media graph elements
           decompressing a compressed video stream into uncompressed video
 	  frames. Must have one sink pad and at least one source pad.
 
+    *  -  ``MEDIA_ENT_F_PROC_VIDEO_ISP``
+       -  An Image Signal Processor (ISP) device. ISPs generally are one of a
+	  kind devices that have their specific control interfaces using a
+	  combination of custom V4L2 controls and IOCTLs, and parameters
+	  supplied in a metadata buffer.
+
     *  -  ``MEDIA_ENT_F_VID_MUX``
        - Video multiplexer. An entity capable of multiplexing must have at
          least two sink pads and one source pad, and must pass the video
@@ -244,7 +251,7 @@ Types and flags used to represent the media graph elements
        -  The entity represents a connector.
 
 
-..  tabularcolumns:: |p{6.5cm}|p{6.0cm}|p{5.0cm}|
+..  tabularcolumns:: |p{6.5cm}|p{6.0cm}|p{4.8cm}|
 
 .. _media-intf-type:
 .. _MEDIA-INTF-T-DVB-FE:
@@ -405,14 +412,21 @@ must be set for every pad.
 	  is set by drivers and is read-only for applications.
 
     *  -  ``MEDIA_LNK_FL_LINK_TYPE``
-       -  This is a bitmask that defines the type of the link. Currently,
-	  two types of links are supported:
+       -  This is a bitmask that defines the type of the link. The following
+	  link types are currently supported:
 
 	  .. _MEDIA-LNK-FL-DATA-LINK:
 
-	  ``MEDIA_LNK_FL_DATA_LINK`` if the link is between two pads
+	  ``MEDIA_LNK_FL_DATA_LINK`` for links that represent a data connection
+	  between two pads.
 
 	  .. _MEDIA-LNK-FL-INTERFACE-LINK:
 
-	  ``MEDIA_LNK_FL_INTERFACE_LINK`` if the link is between an
-	  interface and an entity
+	  ``MEDIA_LNK_FL_INTERFACE_LINK`` for links that associate an entity to its
+	  interface.
+
+	  .. _MEDIA-LNK-FL-ANCILLARY-LINK:
+
+	  ``MEDIA_LNK_FL_ANCILLARY_LINK`` for links that represent a physical
+	  relationship between two entities. The link may or may not be
+	  immutable, so applications must not assume either case.

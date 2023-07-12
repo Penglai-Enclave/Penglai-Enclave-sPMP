@@ -167,9 +167,15 @@ static struct gpio_chip h1940_latch_gpiochip = {
 };
 
 static struct s3c2410_udc_mach_info h1940_udc_cfg __initdata = {
-	.vbus_pin		= S3C2410_GPG(5),
-	.vbus_pin_inverted	= 1,
-	.pullup_pin		= H1940_LATCH_USB_DP,
+};
+
+static struct gpiod_lookup_table h1940_udc_gpio_table = {
+	.dev_id = "s3c2410-usbgadget",
+	.table = {
+		GPIO_LOOKUP("GPIOG", 5, "vbus", GPIO_ACTIVE_LOW),
+		GPIO_LOOKUP("H1940_LATCH", 7, "pullup", GPIO_ACTIVE_HIGH),
+		{ },
+	},
 };
 
 static struct s3c2410_ts_mach_info h1940_ts_cfg __initdata = {
@@ -297,6 +303,15 @@ static const struct s3c_adc_bat_thresh bat_lut_acin[] = {
 	{ .volt = 3841, .cur = 0, .level = 0},
 };
 
+static struct gpiod_lookup_table h1940_bat_gpio_table = {
+	.dev_id = "s3c-adc-battery",
+	.table = {
+		/* Charge status S3C2410_GPF(3) */
+		GPIO_LOOKUP("GPIOF", 3, "charge-status", GPIO_ACTIVE_LOW),
+		{ },
+	},
+};
+
 static int h1940_bat_init(void)
 {
 	int ret;
@@ -330,8 +345,6 @@ static struct s3c_adc_bat_pdata h1940_bat_cfg = {
 	.exit = h1940_bat_exit,
 	.enable_charger = h1940_enable_charger,
 	.disable_charger = h1940_disable_charger,
-	.gpio_charge_finished = S3C2410_GPF(3),
-	.gpio_inverted = 1,
 	.lut_noac = bat_lut_noac,
 	.lut_noac_cnt = ARRAY_SIZE(bat_lut_noac),
 	.lut_acin = bat_lut_acin,
@@ -718,8 +731,10 @@ static void __init h1940_init(void)
 	u32 tmp;
 
 	s3c24xx_fb_set_platdata(&h1940_fb_info);
+	gpiod_add_lookup_table(&h1940_udc_gpio_table);
 	gpiod_add_lookup_table(&h1940_mmc_gpio_table);
 	gpiod_add_lookup_table(&h1940_audio_gpio_table);
+	gpiod_add_lookup_table(&h1940_bat_gpio_table);
 	/* Configure the I2S pins (GPE0...GPE4) in correct mode */
 	s3c_gpio_cfgall_range(S3C2410_GPE(0), 5, S3C_GPIO_SFN(2),
 			      S3C_GPIO_PULL_NONE);
@@ -785,6 +800,7 @@ static void __init h1940_init(void)
 MACHINE_START(H1940, "IPAQ-H1940")
 	/* Maintainer: Ben Dooks <ben-linux@fluff.org> */
 	.atag_offset	= 0x100,
+	.nr_irqs	= NR_IRQS_S3C2410,
 	.map_io		= h1940_map_io,
 	.reserve	= h1940_reserve,
 	.init_irq	= s3c2410_init_irq,
