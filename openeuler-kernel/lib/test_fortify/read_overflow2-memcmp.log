@@ -1,0 +1,25 @@
+ok: unsafe memcmp() usage correctly detected with '__read_overflow2' in lib/test_fortify/read_overflow2-memcmp.c
+lib/test_fortify/test_fortify.h: In function 'do_fortify_tests':
+lib/test_fortify/read_overflow2-memcmp.c:3:9: error: statement with no effect [-Werror=unused-value]
+    3 |         memcmp(large, small, sizeof(small) + 1)
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lib/test_fortify/test_fortify.h:34:9: note: in expansion of macro 'TEST'
+   34 |         TEST;
+      |         ^~~~
+In file included from ./include/linux/string.h:253,
+                 from ./include/linux/bitmap.h:11,
+                 from ./include/linux/cpumask.h:12,
+                 from ./include/linux/smp.h:13,
+                 from ./include/linux/lockdep.h:14,
+                 from ./include/linux/spinlock.h:63,
+                 from ./include/linux/mmzone.h:8,
+                 from ./include/linux/gfp.h:7,
+                 from ./include/linux/slab.h:15,
+                 from lib/test_fortify/test_fortify.h:4,
+                 from lib/test_fortify/read_overflow2-memcmp.c:5:
+In function 'memcmp',
+    inlined from 'do_fortify_tests' at lib/test_fortify/test_fortify.h:34:2:
+./include/linux/fortify-string.h:545:25: error: call to '__read_overflow2' declared with attribute error: detected read beyond size of object (2nd parameter)
+  545 |                         __read_overflow2();
+      |                         ^~~~~~~~~~~~~~~~~~
+cc1: all warnings being treated as errors

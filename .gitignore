@@ -29,3 +29,5 @@ fw_payload_oe_*
 Image-*
 *.zst
 opensbi-1.2-*
+
+*.zip
