@@ -3,7 +3,7 @@
  * Copyright (C) 2020 Western Digital Corporation or its affiliates.
  * Linker script variables to be set after section resolution, as
  * ld.lld does not like variables assigned before SECTIONS is processed.
- * Based on arch/arm64/kerne/image-vars.h
+ * Based on arch/arm64/kernel/image-vars.h
  */
 #ifndef __RISCV_KERNEL_IMAGE_VARS_H
 #define __RISCV_KERNEL_IMAGE_VARS_H
@@ -25,20 +25,11 @@
  */
 __efistub_memcmp		= memcmp;
 __efistub_memchr		= memchr;
-__efistub_memcpy		= memcpy;
-__efistub_memmove		= memmove;
-__efistub_memset		= memset;
 __efistub_strlen		= strlen;
 __efistub_strnlen		= strnlen;
 __efistub_strcmp		= strcmp;
 __efistub_strncmp		= strncmp;
 __efistub_strrchr		= strrchr;
-
-#ifdef CONFIG_KASAN
-__efistub___memcpy		= memcpy;
-__efistub___memmove		= memmove;
-__efistub___memset		= memset;
-#endif
 
 __efistub__start		= _start;
 __efistub__start_kernel		= _start_kernel;

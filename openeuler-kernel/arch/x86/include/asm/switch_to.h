@@ -71,25 +71,20 @@ static inline void update_task_stack(struct task_struct *task)
 	else
 		this_cpu_write(cpu_tss_rw.x86_tss.sp1, task->thread.sp0);
 #else
-	/*
-	 * x86-64 updates x86_tss.sp1 via cpu_current_top_of_stack. That
-	 * doesn't work on x86-32 because sp1 and
-	 * cpu_current_top_of_stack have different values (because of
-	 * the non-zero stack-padding on 32bit).
-	 */
+	/* Xen PV enters the kernel on the thread stack. */
 	if (static_cpu_has(X86_FEATURE_XENPV))
 		load_sp0(task_top_of_stack(task));
 #endif
 }
 
 static inline void kthread_frame_init(struct inactive_task_frame *frame,
-				      unsigned long fun, unsigned long arg)
+				      int (*fun)(void *), void *arg)
 {
-	frame->bx = fun;
+	frame->bx = (unsigned long)fun;
 #ifdef CONFIG_X86_32
-	frame->di = arg;
+	frame->di = (unsigned long)arg;
 #else
-	frame->r12 = arg;
+	frame->r12 = (unsigned long)arg;
 #endif
 }
 

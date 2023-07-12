@@ -22,13 +22,14 @@ struct adf_etr_ring_data {
 	spinlock_t lock;	/* protects ring data struct */
 	u16 head;
 	u16 tail;
+	u32 threshold;
 	u8 ring_number;
 	u8 ring_size;
 	u8 msg_size;
 };
 
 struct adf_etr_bank_data {
-	struct adf_etr_ring_data rings[ADF_ETR_MAX_RINGS_PER_BANK];
+	struct adf_etr_ring_data *rings;
 	struct tasklet_struct resp_handler;
 	void __iomem *csr_addr;
 	u32 irq_coalesc_timer;

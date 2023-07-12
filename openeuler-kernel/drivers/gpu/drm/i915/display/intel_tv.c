@@ -36,7 +36,10 @@
 
 #include "i915_drv.h"
 #include "intel_connector.h"
+#include "intel_crtc.h"
+#include "intel_de.h"
 #include "intel_display_types.h"
+#include "intel_dpll.h"
 #include "intel_hotplug.h"
 #include "intel_tv.h"
 
@@ -923,8 +926,7 @@ intel_enable_tv(struct intel_atomic_state *state,
 	struct drm_i915_private *dev_priv = to_i915(dev);
 
 	/* Prevents vblank waits from timing out in intel_tv_detect_type() */
-	intel_wait_for_vblank(dev_priv,
-			      to_intel_crtc(pipe_config->uapi.crtc)->pipe);
+	intel_crtc_wait_for_next_vblank(to_intel_crtc(pipe_config->uapi.crtc));
 
 	intel_de_write(dev_priv, TV_CTL,
 		       intel_de_read(dev_priv, TV_CTL) | TV_ENC_ENABLE);
@@ -981,10 +983,10 @@ intel_tv_mode_vdisplay(const struct tv_mode *tv_mode)
 
 static void
 intel_tv_mode_to_mode(struct drm_display_mode *mode,
-		      const struct tv_mode *tv_mode)
+		      const struct tv_mode *tv_mode,
+		      int clock)
 {
-	mode->clock = tv_mode->clock /
-		(tv_mode->oversample >> !tv_mode->progressive);
+	mode->clock = clock / (tv_mode->oversample >> !tv_mode->progressive);
 
 	/*
 	 * tv_mode horizontal timings:
@@ -1142,10 +1144,10 @@ intel_tv_get_config(struct intel_encoder *encoder,
 	xsize = tmp >> 16;
 	ysize = tmp & 0xffff;
 
-	intel_tv_mode_to_mode(&mode, &tv_mode);
+	intel_tv_mode_to_mode(&mode, &tv_mode, pipe_config->port_clock);
 
-	drm_dbg_kms(&dev_priv->drm, "TV mode:\n");
-	drm_mode_debug_printmodeline(&mode);
+	drm_dbg_kms(&dev_priv->drm, "TV mode: " DRM_MODE_FMT "\n",
+		    DRM_MODE_ARG(&mode));
 
 	intel_tv_scale_mode_horiz(&mode, hdisplay,
 				  xpos, mode.hdisplay - xsize - xpos);
@@ -1165,7 +1167,7 @@ intel_tv_get_config(struct intel_encoder *encoder,
 static bool intel_tv_source_too_wide(struct drm_i915_private *dev_priv,
 				     int hdisplay)
 {
-	return IS_GEN(dev_priv, 3) && hdisplay > 1024;
+	return DISPLAY_VER(dev_priv) == 3 && hdisplay > 1024;
 }
 
 static bool intel_tv_vert_scaling(const struct drm_display_mode *tv_mode,
@@ -1183,6 +1185,9 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 			struct intel_crtc_state *pipe_config,
 			struct drm_connector_state *conn_state)
 {
+	struct intel_atomic_state *state =
+		to_intel_atomic_state(pipe_config->uapi.state);
+	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_tv_connector_state *tv_conn_state =
 		to_intel_tv_connector_state(conn_state);
@@ -1191,6 +1196,7 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 		&pipe_config->hw.adjusted_mode;
 	int hdisplay = adjusted_mode->crtc_hdisplay;
 	int vdisplay = adjusted_mode->crtc_vdisplay;
+	int ret;
 
 	if (!tv_mode)
 		return -EINVAL;
@@ -1205,7 +1211,13 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 
 	pipe_config->port_clock = tv_mode->clock;
 
-	intel_tv_mode_to_mode(adjusted_mode, tv_mode);
+	ret = intel_dpll_crtc_compute_clock(state, crtc);
+	if (ret)
+		return ret;
+
+	pipe_config->clock_set = true;
+
+	intel_tv_mode_to_mode(adjusted_mode, tv_mode, pipe_config->port_clock);
 	drm_mode_set_crtcinfo(adjusted_mode, 0);
 
 	if (intel_tv_source_too_wide(dev_priv, hdisplay) ||
@@ -1249,8 +1261,8 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 		tv_conn_state->bypass_vfilter = false;
 	}
 
-	drm_dbg_kms(&dev_priv->drm, "TV mode:\n");
-	drm_mode_debug_printmodeline(adjusted_mode);
+	drm_dbg_kms(&dev_priv->drm, "TV mode: " DRM_MODE_FMT "\n",
+		    DRM_MODE_ARG(adjusted_mode));
 
 	/*
 	 * The pipe scanline counter behaviour looks as follows when
@@ -1306,7 +1318,7 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 	 * the active portion. Hence following this formula seems
 	 * more trouble that it's worth.
 	 *
-	 * if (IS_GEN(dev_priv, 4)) {
+	 * if (GRAPHICS_VER(dev_priv) == 4) {
 	 *	num = cdclk * (tv_mode->oversample >> !tv_mode->progressive);
 	 *	den = tv_mode->clock;
 	 * } else {
@@ -1419,7 +1431,7 @@ static void intel_tv_pre_enable(struct intel_atomic_state *state,
 				const struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
-	struct intel_crtc *intel_crtc = to_intel_crtc(pipe_config->uapi.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
 	struct intel_tv *intel_tv = enc_to_tv(encoder);
 	const struct intel_tv_connector_state *tv_conn_state =
 		to_intel_tv_connector_state(conn_state);
@@ -1465,7 +1477,7 @@ static void intel_tv_pre_enable(struct intel_atomic_state *state,
 		break;
 	}
 
-	tv_ctl |= TV_ENC_PIPE_SEL(intel_crtc->pipe);
+	tv_ctl |= TV_ENC_PIPE_SEL(crtc->pipe);
 
 	switch (tv_mode->oversample) {
 	case 8:
@@ -1519,7 +1531,7 @@ static void intel_tv_pre_enable(struct intel_atomic_state *state,
 
 	set_color_conversion(dev_priv, color_conversion);
 
-	if (INTEL_GEN(dev_priv) >= 4)
+	if (DISPLAY_VER(dev_priv) >= 4)
 		intel_de_write(dev_priv, TV_CLR_KNOBS, 0x00404000);
 	else
 		intel_de_write(dev_priv, TV_CLR_KNOBS, 0x00606000);
@@ -1528,7 +1540,7 @@ static void intel_tv_pre_enable(struct intel_atomic_state *state,
 		intel_de_write(dev_priv, TV_CLR_LEVEL,
 			       ((video_levels->black << TV_BLACK_LEVEL_SHIFT) | (video_levels->blank << TV_BLANK_LEVEL_SHIFT)));
 
-	assert_pipe_disabled(dev_priv, pipe_config->cpu_transcoder);
+	assert_transcoder_disabled(dev_priv, pipe_config->cpu_transcoder);
 
 	/* Filter ctl must be set before TV_WIN_SIZE */
 	tv_filter_ctl = TV_AUTO_SCALE;
@@ -1570,8 +1582,7 @@ static int
 intel_tv_detect_type(struct intel_tv *intel_tv,
 		      struct drm_connector *connector)
 {
-	struct drm_crtc *crtc = connector->state->crtc;
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_crtc *crtc = to_intel_crtc(connector->state->crtc);
 	struct drm_device *dev = connector->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	u32 tv_ctl, save_tv_ctl;
@@ -1593,7 +1604,7 @@ intel_tv_detect_type(struct intel_tv *intel_tv,
 	/* Poll for TV detection */
 	tv_ctl &= ~(TV_ENC_ENABLE | TV_ENC_PIPE_SEL_MASK | TV_TEST_MODE_MASK);
 	tv_ctl |= TV_TEST_MODE_MONITOR_DETECT;
-	tv_ctl |= TV_ENC_PIPE_SEL(intel_crtc->pipe);
+	tv_ctl |= TV_ENC_PIPE_SEL(crtc->pipe);
 
 	tv_dac &= ~(TVDAC_SENSE_MASK | DAC_A_MASK | DAC_B_MASK | DAC_C_MASK);
 	tv_dac |= (TVDAC_STATE_CHG_EN |
@@ -1618,7 +1629,7 @@ intel_tv_detect_type(struct intel_tv *intel_tv,
 	intel_de_write(dev_priv, TV_DAC, tv_dac);
 	intel_de_posting_read(dev_priv, TV_DAC);
 
-	intel_wait_for_vblank(dev_priv, intel_crtc->pipe);
+	intel_crtc_wait_for_next_vblank(crtc);
 
 	type = -1;
 	tv_dac = intel_de_read(dev_priv, TV_DAC);
@@ -1651,7 +1662,7 @@ intel_tv_detect_type(struct intel_tv *intel_tv,
 	intel_de_posting_read(dev_priv, TV_CTL);
 
 	/* For unknown reasons the hw barfs if we don't do this vblank wait. */
-	intel_wait_for_vblank(dev_priv, intel_crtc->pipe);
+	intel_crtc_wait_for_next_vblank(crtc);
 
 	/* Restore interrupt config */
 	if (connector->polled & DRM_CONNECTOR_POLL_HPD) {
@@ -1789,7 +1800,7 @@ intel_tv_get_modes(struct drm_connector *connector)
 			continue;
 
 		/* no vertical scaling with wide sources on gen3 */
-		if (IS_GEN(dev_priv, 3) && input->w > 1024 &&
+		if (DISPLAY_VER(dev_priv) == 3 && input->w > 1024 &&
 		    input->h > intel_tv_mode_vdisplay(tv_mode))
 			continue;
 
@@ -1804,10 +1815,10 @@ intel_tv_get_modes(struct drm_connector *connector)
 		 * about the actual timings of the mode. We
 		 * do ignore the margins though.
 		 */
-		intel_tv_mode_to_mode(mode, tv_mode);
+		intel_tv_mode_to_mode(mode, tv_mode, tv_mode->clock);
 		if (count == 0) {
-			drm_dbg_kms(&dev_priv->drm, "TV mode:\n");
-			drm_mode_debug_printmodeline(mode);
+			drm_dbg_kms(&dev_priv->drm, "TV mode: " DRM_MODE_FMT "\n",
+				    DRM_MODE_ARG(mode));
 		}
 		intel_tv_scale_mode_horiz(mode, input->w, 0, 0);
 		intel_tv_scale_mode_vert(mode, input->h, 0, 0);
@@ -1978,7 +1989,7 @@ intel_tv_init(struct drm_i915_private *dev_priv)
 	/* Create TV properties then attach current values */
 	for (i = 0; i < ARRAY_SIZE(tv_modes); i++) {
 		/* 1080p50/1080p60 not supported on gen3 */
-		if (IS_GEN(dev_priv, 3) &&
+		if (DISPLAY_VER(dev_priv) == 3 &&
 		    tv_modes[i].oversample == 1)
 			break;
 

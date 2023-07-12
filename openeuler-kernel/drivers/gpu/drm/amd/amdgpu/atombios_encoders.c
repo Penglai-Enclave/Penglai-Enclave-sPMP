@@ -26,6 +26,8 @@
 
 #include <linux/pci.h>
 
+#include <acpi/video.h>
+
 #include <drm/drm_crtc_helper.h>
 #include <drm/amdgpu_drm.h>
 #include "amdgpu.h"
@@ -118,8 +120,6 @@ amdgpu_atombios_encoder_set_backlight_level(struct amdgpu_encoder *amdgpu_encode
 	}
 }
 
-#if defined(CONFIG_BACKLIGHT_CLASS_DEVICE) || defined(CONFIG_BACKLIGHT_CLASS_DEVICE_MODULE)
-
 static u8 amdgpu_atombios_encoder_backlight_level(struct backlight_device *bd)
 {
 	u8 level;
@@ -171,7 +171,6 @@ void amdgpu_atombios_encoder_init_backlight(struct amdgpu_encoder *amdgpu_encode
 	struct backlight_properties props;
 	struct amdgpu_backlight_privdata *pdata;
 	struct amdgpu_encoder_atom_dig *dig;
-	u8 backlight_level;
 	char bl_name[16];
 
 	/* Mac laptops with multiple GPUs use the gmux driver for backlight
@@ -185,7 +184,12 @@ void amdgpu_atombios_encoder_init_backlight(struct amdgpu_encoder *amdgpu_encode
 		return;
 
 	if (!(adev->mode_info.firmware_flags & ATOM_BIOS_INFO_BL_CONTROLLED_BY_GPU))
-		return;
+		goto register_acpi_backlight;
+
+	if (!acpi_video_backlight_use_native()) {
+		drm_info(dev, "Skipping amdgpu atom DIG backlight registration\n");
+		goto register_acpi_backlight;
+	}
 
 	pdata = kmalloc(sizeof(struct amdgpu_backlight_privdata), GFP_KERNEL);
 	if (!pdata) {
@@ -207,8 +211,6 @@ void amdgpu_atombios_encoder_init_backlight(struct amdgpu_encoder *amdgpu_encode
 
 	pdata->encoder = amdgpu_encoder;
 
-	backlight_level = amdgpu_atombios_encoder_get_backlight_level_from_reg(adev);
-
 	dig = amdgpu_encoder->enc_priv;
 	dig->bl_dev = bd;
 
@@ -222,6 +224,11 @@ void amdgpu_atombios_encoder_init_backlight(struct amdgpu_encoder *amdgpu_encode
 
 error:
 	kfree(pdata);
+	return;
+
+register_acpi_backlight:
+	/* Try registering an ACPI video backlight device instead. */
+	acpi_video_register_backlight();
 	return;
 }
 
@@ -253,18 +260,6 @@ amdgpu_atombios_encoder_fini_backlight(struct amdgpu_encoder *amdgpu_encoder)
 		DRM_INFO("amdgpu atom LVDS backlight unloaded\n");
 	}
 }
-
-#else /* !CONFIG_BACKLIGHT_CLASS_DEVICE */
-
-void amdgpu_atombios_encoder_init_backlight(struct amdgpu_encoder *encoder)
-{
-}
-
-void amdgpu_atombios_encoder_fini_backlight(struct amdgpu_encoder *encoder)
-{
-}
-
-#endif
 
 bool amdgpu_atombios_encoder_is_digital(struct drm_encoder *encoder)
 {
@@ -472,7 +467,7 @@ int amdgpu_atombios_encoder_get_encoder_mode(struct drm_encoder *encoder)
 			if (amdgpu_connector->use_digital &&
 			    (amdgpu_connector->audio == AMDGPU_AUDIO_ENABLE))
 				return ATOM_ENCODER_MODE_HDMI;
-			else if (drm_detect_hdmi_monitor(amdgpu_connector_edid(connector)) &&
+			else if (connector->display_info.is_hdmi &&
 				 (amdgpu_connector->audio == AMDGPU_AUDIO_AUTO))
 				return ATOM_ENCODER_MODE_HDMI;
 			else if (amdgpu_connector->use_digital)
@@ -491,7 +486,7 @@ int amdgpu_atombios_encoder_get_encoder_mode(struct drm_encoder *encoder)
 		if (amdgpu_audio != 0) {
 			if (amdgpu_connector->audio == AMDGPU_AUDIO_ENABLE)
 				return ATOM_ENCODER_MODE_HDMI;
-			else if (drm_detect_hdmi_monitor(amdgpu_connector_edid(connector)) &&
+			else if (connector->display_info.is_hdmi &&
 				 (amdgpu_connector->audio == AMDGPU_AUDIO_AUTO))
 				return ATOM_ENCODER_MODE_HDMI;
 			else
@@ -499,10 +494,8 @@ int amdgpu_atombios_encoder_get_encoder_mode(struct drm_encoder *encoder)
 		} else {
 			return ATOM_ENCODER_MODE_DVI;
 		}
-		break;
 	case DRM_MODE_CONNECTOR_LVDS:
 		return ATOM_ENCODER_MODE_LVDS;
-		break;
 	case DRM_MODE_CONNECTOR_DisplayPort:
 		dig_connector = amdgpu_connector->con_priv;
 		if ((dig_connector->dp_sink_type == CONNECTOR_OBJECT_ID_DISPLAYPORT) ||
@@ -511,7 +504,7 @@ int amdgpu_atombios_encoder_get_encoder_mode(struct drm_encoder *encoder)
 		} else if (amdgpu_audio != 0) {
 			if (amdgpu_connector->audio == AMDGPU_AUDIO_ENABLE)
 				return ATOM_ENCODER_MODE_HDMI;
-			else if (drm_detect_hdmi_monitor(amdgpu_connector_edid(connector)) &&
+			else if (connector->display_info.is_hdmi &&
 				 (amdgpu_connector->audio == AMDGPU_AUDIO_AUTO))
 				return ATOM_ENCODER_MODE_HDMI;
 			else
@@ -519,20 +512,16 @@ int amdgpu_atombios_encoder_get_encoder_mode(struct drm_encoder *encoder)
 		} else {
 			return ATOM_ENCODER_MODE_DVI;
 		}
-		break;
 	case DRM_MODE_CONNECTOR_eDP:
 		return ATOM_ENCODER_MODE_DP;
 	case DRM_MODE_CONNECTOR_DVIA:
 	case DRM_MODE_CONNECTOR_VGA:
 		return ATOM_ENCODER_MODE_CRT;
-		break;
 	case DRM_MODE_CONNECTOR_Composite:
 	case DRM_MODE_CONNECTOR_SVIDEO:
 	case DRM_MODE_CONNECTOR_9PinDIN:
 		/* fix me */
 		return ATOM_ENCODER_MODE_TV;
-		/*return ATOM_ENCODER_MODE_CV;*/
-		break;
 	}
 }
 
@@ -774,7 +763,6 @@ amdgpu_atombios_encoder_setup_dig_transmitter(struct drm_encoder *encoder, int a
 	int dp_clock = 0;
 	int dp_lane_count = 0;
 	int connector_object_id = 0;
-	int igp_lane_info = 0;
 	int dig_encoder = dig->dig_encoder;
 	int hpd_id = AMDGPU_HPD_NONE;
 
@@ -856,26 +844,6 @@ amdgpu_atombios_encoder_setup_dig_transmitter(struct drm_encoder *encoder, int a
 				args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG2_ENCODER;
 			else
 				args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG1_ENCODER;
-
-			if ((adev->flags & AMD_IS_APU) &&
-			    (amdgpu_encoder->encoder_id == ENCODER_OBJECT_ID_INTERNAL_UNIPHY)) {
-				if (is_dp ||
-				    !amdgpu_dig_monitor_is_duallink(encoder, amdgpu_encoder->pixel_clock)) {
-					if (igp_lane_info & 0x1)
-						args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LANE_0_3;
-					else if (igp_lane_info & 0x2)
-						args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LANE_4_7;
-					else if (igp_lane_info & 0x4)
-						args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LANE_8_11;
-					else if (igp_lane_info & 0x8)
-						args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LANE_12_15;
-				} else {
-					if (igp_lane_info & 0x3)
-						args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LANE_0_7;
-					else if (igp_lane_info & 0xc)
-						args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LANE_8_15;
-				}
-			}
 
 			if (dig->linkb)
 				args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_LINKB;

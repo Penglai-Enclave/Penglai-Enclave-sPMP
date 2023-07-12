@@ -36,18 +36,15 @@
 #include <drm/drm_edid.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_framebuffer_helper.h>
-#include <drm/drm_plane_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
 #include <drm/radeon_drm.h>
 
 #include "atom.h"
 #include "radeon.h"
-
-u32 radeon_get_vblank_counter_kms(struct drm_crtc *crtc);
-int radeon_enable_vblank_kms(struct drm_crtc *crtc);
-void radeon_disable_vblank_kms(struct drm_crtc *crtc);
+#include "radeon_kms.h"
 
 static void avivo_crtc_load_lut(struct drm_crtc *crtc)
 {
@@ -260,7 +257,7 @@ static void radeon_crtc_destroy(struct drm_crtc *crtc)
 /**
  * radeon_unpin_work_func - unpin old buffer object
  *
- * @__work - kernel work item
+ * @__work: kernel work item
  *
  * Unpin the old frame buffer object outside of the interrupt handler
  */
@@ -273,10 +270,7 @@ static void radeon_unpin_work_func(struct work_struct *__work)
 	/* unpin of the old buffer */
 	r = radeon_bo_reserve(work->old_rbo, false);
 	if (likely(r == 0)) {
-		r = radeon_bo_unpin(work->old_rbo);
-		if (unlikely(r != 0)) {
-			DRM_ERROR("failed to unpin buffer after flip\n");
-		}
+		radeon_bo_unpin(work->old_rbo);
 		radeon_bo_unreserve(work->old_rbo);
 	} else
 		DRM_ERROR("failed to reserve buffer after flip\n");
@@ -405,7 +399,7 @@ void radeon_crtc_handle_flip(struct radeon_device *rdev, int crtc_id)
 /**
  * radeon_flip_work_func - page flip framebuffer
  *
- * @work - kernel work item
+ * @__work: kernel work item
  *
  * Wait for the buffer object to become idle and do the actual page flip
  */
@@ -539,7 +533,13 @@ static int radeon_crtc_page_flip_target(struct drm_crtc *crtc,
 		DRM_ERROR("failed to pin new rbo buffer before flip\n");
 		goto cleanup;
 	}
-	work->fence = dma_fence_get(dma_resv_get_excl(new_rbo->tbo.base.resv));
+	r = dma_resv_get_singleton(new_rbo->tbo.base.resv, DMA_RESV_USAGE_WRITE,
+				   &work->fence);
+	if (r) {
+		radeon_bo_unreserve(new_rbo);
+		DRM_ERROR("failed to get new rbo buffer fences\n");
+		goto cleanup;
+	}
 	radeon_bo_get_tiling_flags(new_rbo, &tiling_flags, NULL);
 	radeon_bo_unreserve(new_rbo);
 
@@ -607,9 +607,7 @@ pflip_cleanup:
 		DRM_ERROR("failed to reserve new rbo in error path\n");
 		goto cleanup;
 	}
-	if (unlikely(radeon_bo_unpin(new_rbo) != 0)) {
-		DRM_ERROR("failed to unpin new rbo in error path\n");
-	}
+	radeon_bo_unpin(new_rbo);
 	radeon_bo_unreserve(new_rbo);
 
 cleanup:
@@ -689,16 +687,11 @@ static void radeon_crtc_init(struct drm_device *dev, int index)
 	if (radeon_crtc == NULL)
 		return;
 
-	radeon_crtc->flip_queue = alloc_workqueue("radeon-crtc", WQ_HIGHPRI, 0);
-	if (!radeon_crtc->flip_queue) {
-		kfree(radeon_crtc);
-		return;
-	}
-
 	drm_crtc_init(dev, &radeon_crtc->base, &radeon_crtc_funcs);
 
 	drm_mode_crtc_set_gamma_size(&radeon_crtc->base, 256);
 	radeon_crtc->crtc_id = index;
+	radeon_crtc->flip_queue = alloc_workqueue("radeon-crtc", WQ_HIGHPRI, 0);
 	rdev->mode_info.crtcs[index] = radeon_crtc;
 
 	if (rdev->family >= CHIP_BONAIRE) {
@@ -951,11 +944,12 @@ static void avivo_get_fb_ref_div(unsigned nom, unsigned den, unsigned post_div,
  * radeon_compute_pll_avivo - compute PLL paramaters
  *
  * @pll: information about the PLL
+ * @freq: target frequency
  * @dot_clock_p: resulting pixel clock
- * fb_div_p: resulting feedback divider
- * frac_fb_div_p: fractional part of the feedback divider
- * ref_div_p: resulting reference divider
- * post_div_p: resulting reference divider
+ * @fb_div_p: resulting feedback divider
+ * @frac_fb_div_p: fractional part of the feedback divider
+ * @ref_div_p: resulting reference divider
+ * @post_div_p: resulting reference divider
  *
  * Try to calculate the PLL parameters to generate the given frequency:
  * dot_clock = (ref_freq * feedback_div) / (ref_div * post_div)
@@ -1105,11 +1099,9 @@ void radeon_compute_pll_avivo(struct radeon_pll *pll,
 /* pre-avivo */
 static inline uint32_t radeon_div(uint64_t n, uint32_t d)
 {
-	uint64_t mod;
-
 	n += d / 2;
 
-	mod = do_div(n, d);
+	do_div(n, d);
 	return n;
 }
 
@@ -1331,7 +1323,7 @@ radeon_user_framebuffer_create(struct drm_device *dev,
 
 	obj = drm_gem_object_lookup(file_priv, mode_cmd->handles[0]);
 	if (obj ==  NULL) {
-		dev_err(&dev->pdev->dev, "No GEM object associated to handle 0x%08X, "
+		dev_err(dev->dev, "No GEM object associated to handle 0x%08X, "
 			"can't create framebuffer\n", mode_cmd->handles[0]);
 		return ERR_PTR(-ENOENT);
 	}
@@ -1339,6 +1331,7 @@ radeon_user_framebuffer_create(struct drm_device *dev,
 	/* Handle is imported dma-buf, so cannot be migrated to VRAM for scanout */
 	if (obj->import_attach) {
 		DRM_DEBUG_KMS("Cannot create framebuffer from imported dma_buf\n");
+		drm_gem_object_put(obj);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -1608,6 +1601,8 @@ int radeon_modeset_init(struct radeon_device *rdev)
 
 	rdev->ddev->mode_config.preferred_depth = 24;
 	rdev->ddev->mode_config.prefer_shadow = 1;
+
+	rdev->ddev->mode_config.fb_modifiers_not_supported = true;
 
 	rdev->ddev->mode_config.fb_base = rdev->mc.aper_base;
 

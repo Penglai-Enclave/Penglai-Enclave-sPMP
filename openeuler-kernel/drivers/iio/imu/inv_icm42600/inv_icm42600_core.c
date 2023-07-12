@@ -565,7 +565,7 @@ int inv_icm42600_core_probe(struct regmap *regmap, int chip, int irq,
 	bool open_drain;
 	int ret;
 
-	if (chip < 0 || chip >= INV_CHIP_NB) {
+	if (chip <= INV_CHIP_INVALID || chip >= INV_CHIP_NB) {
 		dev_err(dev, "invalid chip = %d\n", chip);
 		return -ENODEV;
 	}
@@ -592,7 +592,7 @@ int inv_icm42600_core_probe(struct regmap *regmap, int chip, int irq,
 	st->chip = chip;
 	st->map = regmap;
 
-	ret = iio_read_mount_matrix(dev, "mount-matrix", &st->orientation);
+	ret = iio_read_mount_matrix(dev, &st->orientation);
 	if (ret) {
 		dev_err(dev, "failed to retrieve mounting matrix %d\n", ret);
 		return ret;

@@ -546,7 +546,7 @@ static int lp_open(struct inode *inode, struct file *file)
 	}
 	/* Determine if the peripheral supports ECP mode */
 	lp_claim_parport_or_block(&lp_table[minor]);
-	if ( (lp_table[minor].dev->port->modes & PARPORT_MODE_ECP) &&
+	if ((lp_table[minor].dev->port->modes & PARPORT_MODE_ECP) &&
 	     !parport_negotiate(lp_table[minor].dev->port,
 				 IEEE1284_MODE_ECP)) {
 		printk(KERN_INFO "lp%d: ECP mode\n", minor);
@@ -590,7 +590,7 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 		return -ENODEV;
 	if ((LP_F(minor) & LP_EXIST) == 0)
 		return -ENODEV;
-	switch ( cmd ) {
+	switch (cmd) {
 		case LPTIME:
 			if (arg > UINT_MAX / HZ)
 				return -EINVAL;
@@ -622,7 +622,6 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 			break;
 		case LPSETIRQ:
 			return -EINVAL;
-			break;
 		case LPGETIRQ:
 			if (copy_to_user(argp, &LP_IRQ(minor),
 					sizeof(int)))
@@ -1020,7 +1019,7 @@ static struct parport_driver lp_driver = {
 
 static int __init lp_init(void)
 {
-	int i, err = 0;
+	int i, err;
 
 	if (parport_nr[0] == LP_PARPORT_OFF)
 		return 0;

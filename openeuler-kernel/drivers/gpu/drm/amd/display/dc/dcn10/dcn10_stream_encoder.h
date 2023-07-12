@@ -52,6 +52,7 @@
 	SRI(AFMT_60958_1, DIG, id), \
 	SRI(AFMT_60958_2, DIG, id), \
 	SRI(DIG_FE_CNTL, DIG, id), \
+	SRI(DIG_FIFO_STATUS, DIG, id), \
 	SRI(HDMI_CONTROL, DIG, id), \
 	SRI(HDMI_DB_CONTROL, DIG, id), \
 	SRI(HDMI_GC, DIG, id), \
@@ -72,6 +73,7 @@
 	SRI(HDMI_ACR_48_1, DIG, id),\
 	SRI(DP_DB_CNTL, DP, id), \
 	SRI(DP_MSA_MISC, DP, id), \
+	SRI(DP_MSA_VBID_MISC, DP, id), \
 	SRI(DP_MSA_COLORIMETRY, DP, id), \
 	SRI(DP_MSA_TIMING_PARAM1, DP, id), \
 	SRI(DP_MSA_TIMING_PARAM2, DP, id), \
@@ -81,7 +83,9 @@
 	SRI(DP_MSE_RATE_UPDATE, DP, id), \
 	SRI(DP_PIXEL_FORMAT, DP, id), \
 	SRI(DP_SEC_CNTL, DP, id), \
+	SRI(DP_SEC_CNTL1, DP, id), \
 	SRI(DP_SEC_CNTL2, DP, id), \
+	SRI(DP_SEC_CNTL5, DP, id), \
 	SRI(DP_SEC_CNTL6, DP, id), \
 	SRI(DP_STEER_FIFO, DP, id), \
 	SRI(DP_VID_M, DP, id), \
@@ -89,6 +93,8 @@
 	SRI(DP_VID_STREAM_CNTL, DP, id), \
 	SRI(DP_VID_TIMING, DP, id), \
 	SRI(DP_SEC_AUD_N, DP, id), \
+	SRI(DP_SEC_AUD_N_READBACK, DP, id), \
+	SRI(DP_SEC_AUD_M_READBACK, DP, id), \
 	SRI(DP_SEC_TIMESTAMP, DP, id), \
 	SRI(DIG_CLOCK_PATTERN, DIG, id)
 
@@ -122,11 +128,14 @@ struct dcn10_stream_enc_registers {
 	uint32_t AFMT_60958_2;
 	uint32_t DIG_FE_CNTL;
 	uint32_t DIG_FE_CNTL2;
+	uint32_t DIG_FIFO_STATUS;
 	uint32_t DP_MSE_RATE_CNTL;
 	uint32_t DP_MSE_RATE_UPDATE;
 	uint32_t DP_PIXEL_FORMAT;
 	uint32_t DP_SEC_CNTL;
+	uint32_t DP_SEC_CNTL1;
 	uint32_t DP_SEC_CNTL2;
+	uint32_t DP_SEC_CNTL5;
 	uint32_t DP_SEC_CNTL6;
 	uint32_t DP_STEER_FIFO;
 	uint32_t DP_VID_M;
@@ -134,6 +143,8 @@ struct dcn10_stream_enc_registers {
 	uint32_t DP_VID_STREAM_CNTL;
 	uint32_t DP_VID_TIMING;
 	uint32_t DP_SEC_AUD_N;
+	uint32_t DP_SEC_AUD_N_READBACK;
+	uint32_t DP_SEC_AUD_M_READBACK;
 	uint32_t DP_SEC_TIMESTAMP;
 	uint32_t HDMI_CONTROL;
 	uint32_t HDMI_GC;
@@ -169,22 +180,21 @@ struct dcn10_stream_enc_registers {
 	uint32_t DP_SEC_METADATA_TRANSMISSION;
 	uint32_t HDMI_METADATA_PACKET_CONTROL;
 	uint32_t DP_SEC_FRAMING4;
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 	uint32_t DP_GSP11_CNTL;
 	uint32_t HDMI_GENERIC_PACKET_CONTROL6;
 	uint32_t HDMI_GENERIC_PACKET_CONTROL7;
 	uint32_t HDMI_GENERIC_PACKET_CONTROL8;
 	uint32_t HDMI_GENERIC_PACKET_CONTROL9;
 	uint32_t HDMI_GENERIC_PACKET_CONTROL10;
-#endif
 	uint32_t DIG_CLOCK_PATTERN;
+	uint32_t DIG_FIFO_CTRL0;
 };
 
 
 #define SE_SF(reg_name, field_name, post_fix)\
 	.field_name = reg_name ## __ ## field_name ## post_fix
 
-#define SE_COMMON_MASK_SH_LIST_SOC_BASE(mask_sh)\
+#define SE_COMMON_MASK_SH_LIST_SOC(mask_sh)\
 	SE_SF(DIG0_AFMT_VBI_PACKET_CONTROL, AFMT_GENERIC_INDEX, mask_sh),\
 	SE_SF(DIG0_AFMT_GENERIC_HDR, AFMT_GENERIC_HB0, mask_sh),\
 	SE_SF(DIG0_AFMT_GENERIC_HDR, AFMT_GENERIC_HB1, mask_sh),\
@@ -201,6 +211,7 @@ struct dcn10_stream_enc_registers {
 	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_GC_CONT, mask_sh),\
 	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_GC_SEND, mask_sh),\
 	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_NULL_SEND, mask_sh),\
+	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_ACP_SEND, mask_sh),\
 	SE_SF(DIG0_HDMI_INFOFRAME_CONTROL0, HDMI_AUDIO_INFO_SEND, mask_sh),\
 	SE_SF(DIG0_AFMT_INFOFRAME_CONTROL0, AFMT_AUDIO_INFO_UPDATE, mask_sh),\
 	SE_SF(DIG0_HDMI_INFOFRAME_CONTROL1, HDMI_AUDIO_INFO_LINE, mask_sh),\
@@ -252,6 +263,8 @@ struct dcn10_stream_enc_registers {
 	SE_SF(DIG0_AFMT_60958_2, AFMT_60958_CS_CHANNEL_NUMBER_6, mask_sh),\
 	SE_SF(DIG0_AFMT_60958_2, AFMT_60958_CS_CHANNEL_NUMBER_7, mask_sh),\
 	SE_SF(DP0_DP_SEC_AUD_N, DP_SEC_AUD_N, mask_sh),\
+	SE_SF(DP0_DP_SEC_AUD_N_READBACK, DP_SEC_AUD_N_READBACK, mask_sh),\
+	SE_SF(DP0_DP_SEC_AUD_M_READBACK, DP_SEC_AUD_M_READBACK, mask_sh),\
 	SE_SF(DP0_DP_SEC_TIMESTAMP, DP_SEC_TIMESTAMP_MODE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_ASP_ENABLE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_ATP_ENABLE, mask_sh),\
@@ -264,6 +277,17 @@ struct dcn10_stream_enc_registers {
 	SE_SF(DIG0_DIG_FE_CNTL, TMDS_COLOR_FORMAT, mask_sh),\
 	SE_SF(DIG0_DIG_FE_CNTL, DIG_STEREOSYNC_SELECT, mask_sh),\
 	SE_SF(DIG0_DIG_FE_CNTL, DIG_STEREOSYNC_GATE_EN, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_LEVEL_ERROR, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_USE_OVERWRITE_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_OVERWRITE_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_ERROR_ACK, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_CAL_AVERAGE_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_MAXIMUM_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_MINIMUM_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_READ_CLOCK_SRC, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_CALIBRATED, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_FORCE_RECAL_AVERAGE, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_FORCE_RECOMP_MINMAX, mask_sh),\
 	SE_SF(DIG0_AFMT_VBI_PACKET_CONTROL, AFMT_GENERIC_LOCK_STATUS, mask_sh),\
 	SE_SF(DIG0_AFMT_VBI_PACKET_CONTROL, AFMT_GENERIC_CONFLICT, mask_sh),\
 	SE_SF(DIG0_AFMT_VBI_PACKET_CONTROL, AFMT_GENERIC_CONFLICT_CLR, mask_sh),\
@@ -315,9 +339,6 @@ struct dcn10_stream_enc_registers {
 	SE_SF(DP0_DP_VID_TIMING, DP_VID_N_MUL, mask_sh),\
 	SE_SF(DIG0_DIG_FE_CNTL, DIG_SOURCE_SELECT, mask_sh),\
 	SE_SF(DIG0_DIG_CLOCK_PATTERN, DIG_CLOCK_PATTERN, mask_sh)
-
-#define SE_COMMON_MASK_SH_LIST_SOC(mask_sh)\
-	SE_COMMON_MASK_SH_LIST_SOC_BASE(mask_sh)
 
 #define SE_COMMON_MASK_SH_LIST_DCN10(mask_sh)\
 	SE_COMMON_MASK_SH_LIST_SOC(mask_sh),\
@@ -413,6 +434,8 @@ struct dcn10_stream_enc_registers {
 	type DP_SEC_GSP3_ENABLE;\
 	type DP_SEC_GSP4_ENABLE;\
 	type DP_SEC_GSP5_ENABLE;\
+	type DP_SEC_GSP5_LINE_NUM;\
+	type DP_SEC_GSP5_LINE_REFERENCE;\
 	type DP_SEC_GSP6_ENABLE;\
 	type DP_SEC_GSP7_ENABLE;\
 	type DP_SEC_GSP7_PPS;\
@@ -456,6 +479,8 @@ struct dcn10_stream_enc_registers {
 	type AFMT_60958_CS_CHANNEL_NUMBER_6;\
 	type AFMT_60958_CS_CHANNEL_NUMBER_7;\
 	type DP_SEC_AUD_N;\
+	type DP_SEC_AUD_N_READBACK;\
+	type DP_SEC_AUD_M_READBACK;\
 	type DP_SEC_TIMESTAMP_MODE;\
 	type DP_SEC_ASP_ENABLE;\
 	type DP_SEC_ATP_ENABLE;\
@@ -484,6 +509,17 @@ struct dcn10_stream_enc_registers {
 	type DP_VID_N_MUL;\
 	type DP_VID_M_DOUBLE_VALUE_EN;\
 	type DIG_SOURCE_SELECT;\
+	type DIG_FIFO_LEVEL_ERROR;\
+	type DIG_FIFO_USE_OVERWRITE_LEVEL;\
+	type DIG_FIFO_OVERWRITE_LEVEL;\
+	type DIG_FIFO_ERROR_ACK;\
+	type DIG_FIFO_CAL_AVERAGE_LEVEL;\
+	type DIG_FIFO_MAXIMUM_LEVEL;\
+	type DIG_FIFO_MINIMUM_LEVEL;\
+	type DIG_FIFO_READ_CLOCK_SRC;\
+	type DIG_FIFO_CALIBRATED;\
+	type DIG_FIFO_FORCE_RECAL_AVERAGE;\
+	type DIG_FIFO_FORCE_RECOMP_MINMAX;\
 	type DIG_CLOCK_PATTERN
 
 #define SE_REG_FIELD_LIST_DCN2_0(type) \
@@ -505,7 +541,6 @@ struct dcn10_stream_enc_registers {
 	type DP_PIXEL_COMBINE;\
 	type DP_SST_SDP_SPLITTING
 
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 #define SE_REG_FIELD_LIST_DCN3_0(type) \
 	type HDMI_GENERIC8_CONT;\
 	type HDMI_GENERIC8_SEND;\
@@ -531,22 +566,32 @@ struct dcn10_stream_enc_registers {
 	type DP_SEC_GSP11_PPS;\
 	type DP_SEC_GSP11_ENABLE;\
 	type DP_SEC_GSP11_LINE_NUM
-#endif
+
+#define SE_REG_FIELD_LIST_DCN3_2(type) \
+	type DIG_FIFO_OUTPUT_PIXEL_MODE;\
+	type DP_PIXEL_PER_CYCLE_PROCESSING_MODE;\
+	type DIG_SYMCLK_FE_ON;\
+	type DIG_FIFO_READ_START_LEVEL;\
+	type DIG_FIFO_ENABLE;\
+	type DIG_FIFO_RESET;\
+	type DIG_FIFO_RESET_DONE
 
 struct dcn10_stream_encoder_shift {
 	SE_REG_FIELD_LIST_DCN1_0(uint8_t);
+	uint8_t HDMI_ACP_SEND;
 	SE_REG_FIELD_LIST_DCN2_0(uint8_t);
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 	SE_REG_FIELD_LIST_DCN3_0(uint8_t);
-#endif
+	SE_REG_FIELD_LIST_DCN3_2(uint8_t);
+
 };
 
 struct dcn10_stream_encoder_mask {
 	SE_REG_FIELD_LIST_DCN1_0(uint32_t);
+	uint32_t HDMI_ACP_SEND;
 	SE_REG_FIELD_LIST_DCN2_0(uint32_t);
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 	SE_REG_FIELD_LIST_DCN3_0(uint32_t);
-#endif
+	SE_REG_FIELD_LIST_DCN3_2(uint32_t);
+
 };
 
 struct dcn10_stream_encoder {
@@ -604,10 +649,15 @@ void enc1_stream_encoder_send_immediate_sdp_message(
 void enc1_stream_encoder_stop_dp_info_packets(
 	struct stream_encoder *enc);
 
+void enc1_stream_encoder_reset_fifo(
+	struct stream_encoder *enc);
+
 void enc1_stream_encoder_dp_blank(
+	struct dc_link *link,
 	struct stream_encoder *enc);
 
 void enc1_stream_encoder_dp_unblank(
+	struct dc_link *link,
 	struct stream_encoder *enc,
 	const struct encoder_unblank_param *param);
 

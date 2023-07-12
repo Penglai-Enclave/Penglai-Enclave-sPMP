@@ -15,7 +15,7 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/of_irq.h>
-#include <asm/prom.h>
+
 #include <asm/pmac_low_i2c.h>
 
 MODULE_AUTHOR("Benjamin Herrenschmidt <benh@kernel.crashing.org>");
@@ -76,11 +76,6 @@ static s32 i2c_powermac_smbus_xfer(	struct i2c_adapter*	adap,
 	 * but I think the current API makes no sense and I don't want
 	 * any driver that I haven't verified for correctness to go
 	 * anywhere near a pmac i2c bus anyway ...
-	 *
-	 * I'm also not completely sure what kind of phases to do between
-	 * the actual command and the data (what I am _supposed_ to do that
-	 * is). For now, I assume writes are a single stream and reads have
-	 * a repeat start/addr phase (but not stop in between)
 	 */
         case I2C_SMBUS_BLOCK_DATA:
 		buf = data->block;

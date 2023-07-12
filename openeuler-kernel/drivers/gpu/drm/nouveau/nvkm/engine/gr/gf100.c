@@ -1922,8 +1922,8 @@ gf100_gr_oneinit_tiles(struct gf100_gr *gr)
 
 	for (i = 0; i < gr->gpc_nr; i++) {
 		init_frac[i] = gr->tpc_nr[gpc_map[i]] * gr->gpc_nr * mul_factor;
-		 init_err[i] = i * gr->tpc_max * mul_factor - comm_denom/2;
-		  run_err[i] = init_frac[i] + init_err[i];
+		init_err[i] = i * gr->tpc_max * mul_factor - comm_denom/2;
+		run_err[i] = init_frac[i] + init_err[i];
 	}
 
 	for (i = 0; i < gr->tpc_total;) {
@@ -2087,8 +2087,8 @@ gf100_gr_flcn = {
 };
 
 int
-gf100_gr_new_(const struct gf100_gr_fwif *fwif,
-	      struct nvkm_device *device, int index, struct nvkm_gr **pgr)
+gf100_gr_new_(const struct gf100_gr_fwif *fwif, struct nvkm_device *device,
+	      enum nvkm_subdev_type type, int inst, struct nvkm_gr **pgr)
 {
 	struct gf100_gr *gr;
 	int ret;
@@ -2097,7 +2097,7 @@ gf100_gr_new_(const struct gf100_gr_fwif *fwif,
 		return -ENOMEM;
 	*pgr = &gr->base;
 
-	ret = nvkm_gr_ctor(&gf100_gr_, device, index, true, &gr->base);
+	ret = nvkm_gr_ctor(&gf100_gr_, device, type, inst, true, &gr->base);
 	if (ret)
 		return ret;
 
@@ -2483,7 +2483,7 @@ gf100_gr_fwif[] = {
 };
 
 int
-gf100_gr_new(struct nvkm_device *device, int index, struct nvkm_gr **pgr)
+gf100_gr_new(struct nvkm_device *device, enum nvkm_subdev_type type, int inst, struct nvkm_gr **pgr)
 {
-	return gf100_gr_new_(gf100_gr_fwif, device, index, pgr);
+	return gf100_gr_new_(gf100_gr_fwif, device, type, inst, pgr);
 }

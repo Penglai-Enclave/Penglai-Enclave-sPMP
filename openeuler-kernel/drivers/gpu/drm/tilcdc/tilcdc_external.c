@@ -60,11 +60,13 @@ struct drm_connector *tilcdc_encoder_find_connector(struct drm_device *ddev,
 int tilcdc_add_component_encoder(struct drm_device *ddev)
 {
 	struct tilcdc_drm_private *priv = ddev->dev_private;
-	struct drm_encoder *encoder;
+	struct drm_encoder *encoder = NULL, *iter;
 
-	list_for_each_entry(encoder, &ddev->mode_config.encoder_list, head)
-		if (encoder->possible_crtcs & (1 << priv->crtc->index))
+	list_for_each_entry(iter, &ddev->mode_config.encoder_list, head)
+		if (iter->possible_crtcs & (1 << priv->crtc->index)) {
+			encoder = iter;
 			break;
+		}
 
 	if (!encoder) {
 		dev_err(ddev->dev, "%s: No suitable encoder found\n", __func__);
@@ -93,10 +95,8 @@ int tilcdc_attach_bridge(struct drm_device *ddev, struct drm_bridge *bridge)
 	priv->external_encoder->possible_crtcs = BIT(0);
 
 	ret = drm_bridge_attach(priv->external_encoder, bridge, NULL, 0);
-	if (ret) {
-		dev_err(ddev->dev, "drm_bridge_attach() failed %d\n", ret);
+	if (ret)
 		return ret;
-	}
 
 	tilcdc_crtc_set_panel_info(priv->crtc, &panel_info_default);
 

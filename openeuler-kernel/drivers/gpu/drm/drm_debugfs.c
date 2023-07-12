@@ -91,6 +91,7 @@ static int drm_clients_info(struct seq_file *m, void *data)
 	mutex_lock(&dev->filelist_mutex);
 	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
 		struct task_struct *task;
+		bool is_current_master = drm_is_current_master(priv);
 
 		rcu_read_lock(); /* locks pid_task()->comm */
 		task = pid_task(priv->pid, PIDTYPE_PID);
@@ -99,7 +100,7 @@ static int drm_clients_info(struct seq_file *m, void *data)
 			   task ? task->comm : "<unknown>",
 			   pid_vnr(priv->pid),
 			   priv->minor->index,
-			   drm_is_current_master(priv) ? 'y' : 'n',
+			   is_current_master ? 'y' : 'n',
 			   priv->authenticated ? 'y' : 'n',
 			   from_kuid_munged(seq_user_ns(m), uid),
 			   priv->magic);
@@ -349,31 +350,20 @@ static ssize_t edid_write(struct file *file, const char __user *ubuf,
 	struct seq_file *m = file->private_data;
 	struct drm_connector *connector = m->private;
 	char *buf;
-	struct edid *edid;
 	int ret;
 
 	buf = memdup_user(ubuf, len);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
-	edid = (struct edid *) buf;
-
-	if (len == 5 && !strncmp(buf, "reset", 5)) {
-		connector->override_edid = false;
-		ret = drm_connector_update_edid_property(connector, NULL);
-	} else if (len < EDID_LENGTH ||
-		   EDID_LENGTH * (1 + edid->extensions) > len)
-		ret = -EINVAL;
-	else {
-		connector->override_edid = false;
-		ret = drm_connector_update_edid_property(connector, edid);
-		if (!ret)
-			connector->override_edid = true;
-	}
+	if (len == 5 && !strncmp(buf, "reset", 5))
+		ret = drm_edid_override_reset(connector);
+	else
+		ret = drm_edid_override_set(connector, buf, len);
 
 	kfree(buf);
 
-	return (ret) ? ret : len;
+	return ret ? ret : len;
 }
 
 /*
@@ -387,12 +377,29 @@ static int vrr_range_show(struct seq_file *m, void *data)
 	if (connector->status != connector_status_connected)
 		return -ENODEV;
 
-	seq_printf(m, "Min: %u\n", (u8)connector->display_info.monitor_range.min_vfreq);
-	seq_printf(m, "Max: %u\n", (u8)connector->display_info.monitor_range.max_vfreq);
+	seq_printf(m, "Min: %u\n", connector->display_info.monitor_range.min_vfreq);
+	seq_printf(m, "Max: %u\n", connector->display_info.monitor_range.max_vfreq);
 
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(vrr_range);
+
+/*
+ * Returns Connector's max supported bpc through debugfs file.
+ * Example usage: cat /sys/kernel/debug/dri/0/DP-1/output_bpc
+ */
+static int output_bpc_show(struct seq_file *m, void *data)
+{
+	struct drm_connector *connector = m->private;
+
+	if (connector->status != connector_status_connected)
+		return -ENODEV;
+
+	seq_printf(m, "Maximum: %u\n", connector->display_info.bpc);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(output_bpc);
 
 static const struct file_operations drm_edid_fops = {
 	.owner = THIS_MODULE,
@@ -435,6 +442,13 @@ void drm_debugfs_connector_add(struct drm_connector *connector)
 	/* vrr range */
 	debugfs_create_file("vrr_range", S_IRUGO, root, connector,
 			    &vrr_range_fops);
+
+	/* max bpc */
+	debugfs_create_file("output_bpc", 0444, root, connector,
+			    &output_bpc_fops);
+
+	if (connector->funcs->debugfs_init)
+		connector->funcs->debugfs_init(connector, root);
 }
 
 void drm_debugfs_connector_remove(struct drm_connector *connector)

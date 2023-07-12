@@ -7,9 +7,6 @@
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/idle.h>
-#ifdef CONFIG_ARM64
-#include <linux/cpu.h>
-#endif
 
 #define POLL_IDLE_RELAX_COUNT	200
 

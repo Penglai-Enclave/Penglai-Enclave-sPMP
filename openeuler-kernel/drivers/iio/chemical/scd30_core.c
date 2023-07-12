@@ -517,7 +517,7 @@ static const struct iio_chan_spec scd30_channels[] = {
 	IIO_CHAN_SOFT_TIMESTAMP(3),
 };
 
-int __maybe_unused scd30_suspend(struct device *dev)
+static int scd30_suspend(struct device *dev)
 {
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct scd30_state *state  = iio_priv(indio_dev);
@@ -529,9 +529,8 @@ int __maybe_unused scd30_suspend(struct device *dev)
 
 	return regulator_disable(state->vdd);
 }
-EXPORT_SYMBOL(scd30_suspend);
 
-int __maybe_unused scd30_resume(struct device *dev)
+static int scd30_resume(struct device *dev)
 {
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct scd30_state *state = iio_priv(indio_dev);
@@ -543,7 +542,8 @@ int __maybe_unused scd30_resume(struct device *dev)
 
 	return scd30_command_write(state, CMD_START_MEAS, state->pressure_comp);
 }
-EXPORT_SYMBOL(scd30_resume);
+
+EXPORT_NS_SIMPLE_DEV_PM_OPS(scd30_pm_ops, scd30_suspend, scd30_resume, IIO_SCD30);
 
 static void scd30_stop_meas(void *data)
 {
@@ -640,13 +640,13 @@ static int scd30_setup_trigger(struct iio_dev *indio_dev)
 	struct iio_trigger *trig;
 	int ret;
 
-	trig = devm_iio_trigger_alloc(dev, "%s-dev%d", indio_dev->name, indio_dev->id);
+	trig = devm_iio_trigger_alloc(dev, "%s-dev%d", indio_dev->name,
+				      iio_device_id(indio_dev));
 	if (!trig) {
 		dev_err(dev, "failed to allocate trigger\n");
 		return -ENOMEM;
 	}
 
-	trig->dev.parent = dev;
 	trig->ops = &scd30_trigger_ops;
 	iio_trigger_set_drvdata(trig, indio_dev);
 
@@ -656,18 +656,18 @@ static int scd30_setup_trigger(struct iio_dev *indio_dev)
 
 	indio_dev->trig = iio_trigger_get(trig);
 
+	/*
+	 * Interrupt is enabled just before taking a fresh measurement
+	 * and disabled afterwards. This means we need to ensure it is not
+	 * enabled here to keep calls to enable/disable balanced.
+	 */
 	ret = devm_request_threaded_irq(dev, state->irq, scd30_irq_handler,
-					scd30_irq_thread_handler, IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+					scd30_irq_thread_handler,
+					IRQF_TRIGGER_HIGH | IRQF_ONESHOT |
+					IRQF_NO_AUTOEN,
 					indio_dev->name, indio_dev);
 	if (ret)
 		dev_err(dev, "failed to request irq\n");
-
-	/*
-	 * Interrupt is enabled just before taking a fresh measurement
-	 * and disabled afterwards. This means we need to disable it here
-	 * to keep calls to enable/disable balanced.
-	 */
-	disable_irq(state->irq);
 
 	return ret;
 }
@@ -759,7 +759,7 @@ int scd30_probe(struct device *dev, int irq, const char *name, void *priv,
 
 	return devm_iio_device_register(dev, indio_dev);
 }
-EXPORT_SYMBOL(scd30_probe);
+EXPORT_SYMBOL_NS(scd30_probe, IIO_SCD30);
 
 MODULE_AUTHOR("Tomasz Duszynski <tomasz.duszynski@octakon.com>");
 MODULE_DESCRIPTION("Sensirion SCD30 carbon dioxide sensor core driver");

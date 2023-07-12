@@ -34,14 +34,13 @@ struct udl_device;
 struct urb_node {
 	struct list_head entry;
 	struct udl_device *dev;
-	struct delayed_work release_urb_work;
 	struct urb *urb;
 };
 
 struct urb_list {
 	struct list_head list;
 	spinlock_t lock;
-	struct semaphore limit_sem;
+	wait_queue_head_t sleep;
 	int available;
 	int count;
 	size_t size;
@@ -51,7 +50,6 @@ struct udl_device {
 	struct drm_device drm;
 	struct device *dev;
 	struct device *dmadev;
-	struct usb_device *udev;
 
 	struct drm_simple_display_pipe display_pipe;
 
@@ -67,6 +65,11 @@ struct udl_device {
 
 #define to_udl(x) container_of(x, struct udl_device, drm)
 
+static inline struct usb_device *udl_to_usb_device(struct udl_device *udl)
+{
+	return interface_to_usbdev(to_usb_interface(udl->drm.dev));
+}
+
 /* modeset */
 int udl_modeset_init(struct drm_device *dev);
 struct drm_connector *udl_connector_init(struct drm_device *dev);
@@ -74,6 +77,7 @@ struct drm_connector *udl_connector_init(struct drm_device *dev);
 struct urb *udl_get_urb(struct drm_device *dev);
 
 int udl_submit_urb(struct drm_device *dev, struct urb *urb, size_t len);
+void udl_sync_pending_urbs(struct drm_device *dev);
 void udl_urb_completion(struct urb *urb);
 
 int udl_init(struct udl_device *udl);
@@ -83,6 +87,7 @@ int udl_render_hline(struct drm_device *dev, int log_bpp, struct urb **urb_ptr,
 		     u32 byte_offset, u32 device_byte_offset, u32 byte_width);
 
 int udl_drop_usb(struct drm_device *dev);
+int udl_select_std_channel(struct udl_device *udl);
 
 #define CMD_WRITE_RAW8   "\xAF\x60" /**< 8 bit raw write command. */
 #define CMD_WRITE_RL8    "\xAF\x61" /**< 8 bit run length command. */

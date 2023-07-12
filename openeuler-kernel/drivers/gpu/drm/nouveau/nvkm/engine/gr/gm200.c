@@ -26,7 +26,6 @@
 
 #include <core/firmware.h>
 #include <subdev/acr.h>
-#include <subdev/secboot.h>
 
 #include <nvfw/flcn.h>
 
@@ -288,7 +287,7 @@ gm200_gr_fwif[] = {
 };
 
 int
-gm200_gr_new(struct nvkm_device *device, int index, struct nvkm_gr **pgr)
+gm200_gr_new(struct nvkm_device *device, enum nvkm_subdev_type type, int inst, struct nvkm_gr **pgr)
 {
-	return gf100_gr_new_(gm200_gr_fwif, device, index, pgr);
+	return gf100_gr_new_(gm200_gr_fwif, device, type, inst, pgr);
 }

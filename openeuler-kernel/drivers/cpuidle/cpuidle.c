@@ -8,6 +8,7 @@
  * This code is licenced under the GPL.
  */
 
+#include "linux/percpu-defs.h"
 #include <linux/clockchips.h>
 #include <linux/kernel.h>
 #include <linux/mutex.h>
@@ -23,6 +24,7 @@
 #include <linux/suspend.h>
 #include <linux/tick.h>
 #include <linux/mmu_context.h>
+#include <linux/context_tracking.h>
 #include <trace/events/power.h>
 
 #include "cpuidle.h"
@@ -150,12 +152,12 @@ static void enter_s2idle_proper(struct cpuidle_driver *drv,
 	 */
 	stop_critical_timings();
 	if (!(target_state->flags & CPUIDLE_FLAG_RCU_IDLE))
-		rcu_idle_enter();
+		ct_idle_enter();
 	target_state->enter_s2idle(dev, drv, index);
 	if (WARN_ON_ONCE(!irqs_disabled()))
 		local_irq_disable();
 	if (!(target_state->flags & CPUIDLE_FLAG_RCU_IDLE))
-		rcu_idle_exit();
+		ct_idle_exit();
 	tick_unfreeze();
 	start_critical_timings();
 
@@ -233,10 +235,10 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 
 	stop_critical_timings();
 	if (!(target_state->flags & CPUIDLE_FLAG_RCU_IDLE))
-		rcu_idle_enter();
+		ct_idle_enter();
 	entered_state = target_state->enter(dev, drv, index);
 	if (!(target_state->flags & CPUIDLE_FLAG_RCU_IDLE))
-		rcu_idle_exit();
+		ct_idle_exit();
 	start_critical_timings();
 
 	sched_clock_idle_wakeup_event();
@@ -278,6 +280,7 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 
 				/* Shallower states are enabled, so update. */
 				dev->states_usage[entered_state].above++;
+				trace_cpu_idle_miss(dev->cpu, entered_state, false);
 				break;
 			}
 		} else if (diff > delay) {
@@ -289,8 +292,10 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 				 * Update if a deeper state would have been a
 				 * better match for the observed idle duration.
 				 */
-				if (diff - delay >= drv->states[i].target_residency_ns)
+				if (diff - delay >= drv->states[i].target_residency_ns) {
 					dev->states_usage[entered_state].below++;
+					trace_cpu_idle_miss(dev->cpu, entered_state, true);
+				}
 
 				break;
 			}
@@ -368,6 +373,19 @@ void cpuidle_reflect(struct cpuidle_device *dev, int index)
 		cpuidle_curr_governor->reflect(dev, index);
 }
 
+/*
+ * Min polling interval of 10usec is a guess. It is assuming that
+ * for most users, the time for a single ping-pong workload like
+ * perf bench pipe would generally complete within 10usec but
+ * this is hardware dependant. Actual time can be estimated with
+ *
+ * perf bench sched pipe -l 10000
+ *
+ * Run multiple times to avoid cpufreq effects.
+ */
+#define CPUIDLE_POLL_MIN 10000
+#define CPUIDLE_POLL_MAX (TICK_NSEC / 16)
+
 /**
  * cpuidle_poll_time - return amount of time to poll for,
  * governors can override dev->poll_limit_ns if necessary
@@ -382,15 +400,23 @@ u64 cpuidle_poll_time(struct cpuidle_driver *drv,
 	int i;
 	u64 limit_ns;
 
+	BUILD_BUG_ON(CPUIDLE_POLL_MIN > CPUIDLE_POLL_MAX);
+
 	if (dev->poll_limit_ns)
 		return dev->poll_limit_ns;
 
-	limit_ns = TICK_NSEC;
+	limit_ns = CPUIDLE_POLL_MAX;
 	for (i = 1; i < drv->state_count; i++) {
+		u64 state_limit;
+
 		if (dev->states_usage[i].disable)
 			continue;
 
-		limit_ns = drv->states[i].target_residency_ns;
+		state_limit = drv->states[i].target_residency_ns;
+		if (state_limit < CPUIDLE_POLL_MIN)
+			continue;
+
+		limit_ns = min_t(u64, state_limit, CPUIDLE_POLL_MAX);
 		break;
 	}
 

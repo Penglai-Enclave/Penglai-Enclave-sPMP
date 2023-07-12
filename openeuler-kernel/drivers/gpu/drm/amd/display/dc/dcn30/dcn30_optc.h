@@ -28,6 +28,7 @@
 
 #include "dcn20/dcn20_optc.h"
 
+#define V_TOTAL_REGS_DCN30_SRI(inst)
 
 #define OPTC_COMMON_REG_LIST_DCN3_BASE(inst) \
 	SRI(OTG_VSTARTUP_PARAM, OTG, inst),\
@@ -55,6 +56,7 @@
 	SRI(OTG_V_TOTAL_MAX, OTG, inst),\
 	SRI(OTG_V_TOTAL_MIN, OTG, inst),\
 	SRI(OTG_V_TOTAL_CONTROL, OTG, inst),\
+	V_TOTAL_REGS_DCN30_SRI(inst)\
 	SRI(OTG_TRIGA_CNTL, OTG, inst),\
 	SRI(OTG_FORCE_COUNT_NOW_CNTL, OTG, inst),\
 	SRI(OTG_STATIC_SCREEN_CONTROL, OTG, inst),\
@@ -80,6 +82,7 @@
 	SRI(OTG_VERT_SYNC_CONTROL, OTG, inst),\
 	SRI(OTG_GSL_CONTROL, OTG, inst),\
 	SRI(OTG_CRC_CNTL, OTG, inst),\
+	SRI(OTG_CRC_CNTL2, OTG, inst),\
 	SRI(OTG_CRC0_DATA_RG, OTG, inst),\
 	SRI(OTG_CRC0_DATA_B, OTG, inst),\
 	SRI(OTG_CRC0_WINDOWA_X_CONTROL, OTG, inst),\
@@ -87,7 +90,8 @@
 	SRI(OTG_CRC0_WINDOWB_X_CONTROL, OTG, inst),\
 	SRI(OTG_CRC0_WINDOWB_Y_CONTROL, OTG, inst),\
 	SR(GSL_SOURCE_SELECT),\
-	SRI(OTG_TRIGA_MANUAL_TRIG, OTG, inst)
+	SRI(OTG_TRIGA_MANUAL_TRIG, OTG, inst),\
+	SRI(OTG_DRR_CONTROL, OTG, inst)
 
 
 #define OPTC_COMMON_REG_LIST_DCN3_0(inst) \
@@ -107,6 +111,7 @@
 	SRI(OPTC_MEMORY_CONFIG, ODM, inst),\
 	SR(DWB_SOURCE_SELECT)
 
+#define DCN30_VTOTAL_REGS_SF(mask_sh)
 
 #define OPTC_COMMON_MASK_SH_LIST_DCN3_BASE(mask_sh)\
 	SF(OTG0_OTG_VSTARTUP_PARAM, VSTARTUP_START, mask_sh),\
@@ -160,6 +165,7 @@
 	SF(OTG0_OTG_V_TOTAL_CONTROL, OTG_SET_V_TOTAL_MIN_MASK, mask_sh),\
 	SF(OTG0_OTG_V_TOTAL_CONTROL, OTG_VTOTAL_MID_REPLACING_MIN_EN, mask_sh),\
 	SF(OTG0_OTG_V_TOTAL_CONTROL, OTG_VTOTAL_MID_REPLACING_MAX_EN, mask_sh),\
+	DCN30_VTOTAL_REGS_SF(mask_sh)\
 	SF(OTG0_OTG_FORCE_COUNT_NOW_CNTL, OTG_FORCE_COUNT_NOW_CLEAR, mask_sh),\
 	SF(OTG0_OTG_FORCE_COUNT_NOW_CNTL, OTG_FORCE_COUNT_NOW_MODE, mask_sh),\
 	SF(OTG0_OTG_FORCE_COUNT_NOW_CNTL, OTG_FORCE_COUNT_NOW_OCCURRED, mask_sh),\
@@ -218,6 +224,10 @@
 	SF(OTG0_OTG_CRC_CNTL, OTG_CRC_CONT_EN, mask_sh),\
 	SF(OTG0_OTG_CRC_CNTL, OTG_CRC0_SELECT, mask_sh),\
 	SF(OTG0_OTG_CRC_CNTL, OTG_CRC_EN, mask_sh),\
+	SF(OTG0_OTG_CRC_CNTL2, OTG_CRC_DSC_MODE, mask_sh),\
+	SF(OTG0_OTG_CRC_CNTL2, OTG_CRC_DATA_STREAM_COMBINE_MODE, mask_sh),\
+	SF(OTG0_OTG_CRC_CNTL2, OTG_CRC_DATA_STREAM_SPLIT_MODE, mask_sh),\
+	SF(OTG0_OTG_CRC_CNTL2, OTG_CRC_DATA_FORMAT, mask_sh),\
 	SF(OTG0_OTG_CRC0_DATA_RG, CRC0_R_CR, mask_sh),\
 	SF(OTG0_OTG_CRC0_DATA_RG, CRC0_G_Y, mask_sh),\
 	SF(OTG0_OTG_CRC0_DATA_B, CRC0_B_CB, mask_sh),\
@@ -233,7 +243,8 @@
 	SF(GSL_SOURCE_SELECT, GSL0_READY_SOURCE_SEL, mask_sh),\
 	SF(GSL_SOURCE_SELECT, GSL1_READY_SOURCE_SEL, mask_sh),\
 	SF(GSL_SOURCE_SELECT, GSL2_READY_SOURCE_SEL, mask_sh),\
-	SF(OTG0_OTG_GLOBAL_CONTROL2, MANUAL_FLOW_CONTROL_SEL, mask_sh)
+	SF(OTG0_OTG_GLOBAL_CONTROL2, MANUAL_FLOW_CONTROL_SEL, mask_sh),\
+	SF(OTG0_OTG_DRR_CONTROL, OTG_V_TOTAL_LAST_USED_BY_DRR, mask_sh)
 
 #define OPTC_COMMON_MASK_SH_LIST_DCN3_0(mask_sh)\
 	OPTC_COMMON_MASK_SH_LIST_DCN3_BASE(mask_sh),\
@@ -268,6 +279,7 @@
 	SF(OTG0_OTG_DRR_TRIGGER_WINDOW, OTG_DRR_TRIGGER_WINDOW_END_X, mask_sh),\
 	SF(OTG0_OTG_DRR_V_TOTAL_CHANGE, OTG_DRR_V_TOTAL_CHANGE_LIMIT, mask_sh),\
 	SF(OTG0_OTG_H_TIMING_CNTL, OTG_H_TIMING_DIV_BY2, mask_sh),\
+	SF(OTG0_OTG_DOUBLE_BUFFER_CONTROL, OTG_DRR_TIMING_DBUF_UPDATE_PENDING, mask_sh),\
 	SF(OTG0_OTG_DOUBLE_BUFFER_CONTROL, OTG_DRR_TIMING_DBUF_UPDATE_MODE, mask_sh),\
 	SF(OTG0_OTG_DOUBLE_BUFFER_CONTROL, OTG_BLANK_DATA_DOUBLE_BUFFER_EN, mask_sh)
 
@@ -306,6 +318,7 @@
 	SF(OTG0_OTG_DRR_TRIGGER_WINDOW, OTG_DRR_TRIGGER_WINDOW_END_X, mask_sh),\
 	SF(OTG0_OTG_DRR_V_TOTAL_CHANGE, OTG_DRR_V_TOTAL_CHANGE_LIMIT, mask_sh),\
 	SF(OTG0_OTG_H_TIMING_CNTL, OTG_H_TIMING_DIV_MODE, mask_sh),\
+	SF(OTG0_OTG_DOUBLE_BUFFER_CONTROL, OTG_DRR_TIMING_DBUF_UPDATE_PENDING, mask_sh),\
 	SF(OTG0_OTG_DOUBLE_BUFFER_CONTROL, OTG_DRR_TIMING_DBUF_UPDATE_MODE, mask_sh)
 
 void dcn30_timing_generator_init(struct optc *optc1);
@@ -317,9 +330,6 @@ void optc3_lock(struct timing_generator *optc);
 void optc3_lock_doublebuffer_enable(struct timing_generator *optc);
 
 void optc3_lock_doublebuffer_disable(struct timing_generator *optc);
-
-void optc3_set_vrr_m_const(struct timing_generator *optc,
-		double vtotal_avg);
 
 void optc3_set_drr_trigger_window(struct timing_generator *optc,
 		uint32_t window_start, uint32_t window_end);
@@ -342,5 +352,5 @@ void optc3_set_timing_db_mode(struct timing_generator *optc, bool enable);
 void optc3_set_odm_bypass(struct timing_generator *optc,
 		const struct dc_crtc_timing *dc_crtc_timing);
 void optc3_tg_init(struct timing_generator *optc);
-
+void optc3_set_vtotal_min_max(struct timing_generator *optc, int vtotal_min, int vtotal_max);
 #endif /* __DC_OPTC_DCN30_H__ */

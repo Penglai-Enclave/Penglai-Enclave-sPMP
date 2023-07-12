@@ -23,8 +23,6 @@
  *
  */
 
-#include <linux/slab.h>
-
 #include "dm_services.h"
 
 #include "include/irq_service_interface.h"
@@ -37,13 +35,8 @@
 #endif
 
 #include "dce80/irq_service_dce80.h"
-
 #include "dce120/irq_service_dce120.h"
-
-
-#if defined(CONFIG_DRM_AMD_DC_DCN)
 #include "dcn10/irq_service_dcn10.h"
-#endif
 
 #include "reg_helper.h"
 #include "irq_service.h"
@@ -79,7 +72,7 @@ void dal_irq_service_destroy(struct irq_service **irq_service)
 	*irq_service = NULL;
 }
 
-const struct irq_source_info *find_irq_source_info(
+static const struct irq_source_info *find_irq_source_info(
 	struct irq_service *irq_service,
 	enum dc_irq_source source)
 {
@@ -119,7 +112,7 @@ bool dal_irq_service_set(
 
 	dal_irq_service_ack(irq_service, source);
 
-	if (info->funcs->set)
+	if (info->funcs && info->funcs->set)
 		return info->funcs->set(irq_service, info, enable);
 
 	dal_irq_service_set_generic(irq_service, info, enable);
@@ -153,7 +146,7 @@ bool dal_irq_service_ack(
 		return false;
 	}
 
-	if (info->funcs->ack)
+	if (info->funcs && info->funcs->ack)
 		return info->funcs->ack(irq_service, info);
 
 	dal_irq_service_ack_generic(irq_service, info);

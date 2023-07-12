@@ -23,8 +23,6 @@
  *
  */
 
-#include <linux/mm.h>
-
 /* DC interface (public) */
 #include "dm_services.h"
 #include "dc.h"
@@ -60,6 +58,8 @@ static void dc_plane_construct(struct dc_context *ctx, struct dc_plane_state *pl
 	if (plane_state->blend_tf != NULL) {
 		plane_state->blend_tf->type = TF_TYPE_BYPASS;
 	}
+
+	plane_state->pre_multiplied_alpha = true;
 
 }
 
@@ -115,7 +115,7 @@ struct dc_plane_state *dc_create_plane_state(struct dc *dc)
 	return plane_state;
 }
 
-/**
+/*
  *****************************************************************************
  *  Function: dc_plane_get_status
  *

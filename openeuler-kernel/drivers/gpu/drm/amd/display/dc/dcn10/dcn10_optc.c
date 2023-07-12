@@ -165,6 +165,7 @@ void optc1_program_timing(
 	optc1->vupdate_width = vupdate_width;
 	patched_crtc_timing = *dc_crtc_timing;
 	apply_front_porch_workaround(&patched_crtc_timing);
+	optc1->orginal_patched_timing = patched_crtc_timing;
 
 	/* Load horizontal timing */
 
@@ -206,10 +207,7 @@ void optc1_program_timing(
 	/* In case of V_TOTAL_CONTROL is on, make sure OTG_V_TOTAL_MAX and
 	 * OTG_V_TOTAL_MIN are equal to V_TOTAL.
 	 */
-	REG_SET(OTG_V_TOTAL_MAX, 0,
-		OTG_V_TOTAL_MAX, v_total);
-	REG_SET(OTG_V_TOTAL_MIN, 0,
-		OTG_V_TOTAL_MIN, v_total);
+	optc->funcs->set_vtotal_min_max(optc, v_total, v_total);
 
 	/* v_sync_start = 0, v_sync_end = v_sync_width */
 	v_sync_end = patched_crtc_timing.v_sync_width;
@@ -272,7 +270,7 @@ void optc1_program_timing(
 			vupdate_offset,
 			vupdate_width);
 
-	optc->funcs->set_vtg_params(optc, dc_crtc_timing);
+	optc->funcs->set_vtg_params(optc, dc_crtc_timing, true);
 
 	/* TODO
 	 * patched_crtc_timing.flags.HORZ_COUNT_BY_TWO == 1
@@ -288,7 +286,7 @@ void optc1_program_timing(
 	if (optc1_is_two_pixels_per_containter(&patched_crtc_timing) || optc1->opp_count == 2)
 		h_div = H_TIMING_DIV_BY2;
 
-	if (REG(OPTC_DATA_FORMAT_CONTROL)) {
+	if (REG(OPTC_DATA_FORMAT_CONTROL) && optc1->tg_mask->OPTC_DATA_FORMAT != 0) {
 		uint32_t data_fmt = 0;
 
 		if (patched_crtc_timing.pixel_encoding == PIXEL_ENCODING_YCBCR422)
@@ -299,23 +297,34 @@ void optc1_program_timing(
 		REG_UPDATE(OPTC_DATA_FORMAT_CONTROL, OPTC_DATA_FORMAT, data_fmt);
 	}
 
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 	if (optc1->tg_mask->OTG_H_TIMING_DIV_MODE != 0) {
 		if (optc1->opp_count == 4)
 			h_div = H_TIMING_DIV_BY4;
 
 		REG_UPDATE(OTG_H_TIMING_CNTL,
 		OTG_H_TIMING_DIV_MODE, h_div);
-	} else
-#endif
-	{
+	} else {
 		REG_UPDATE(OTG_H_TIMING_CNTL,
 		OTG_H_TIMING_DIV_BY2, h_div);
 	}
 }
 
+/**
+ * optc1_set_vtg_params - Set Vertical Timing Generator (VTG) parameters
+ *
+ * @optc: timing_generator struct used to extract the optc parameters
+ * @dc_crtc_timing: Timing parameters configured
+ * @program_fp2: Boolean value indicating if FP2 will be programmed or not
+ *
+ * OTG is responsible for generating the global sync signals, including
+ * vertical timing information for each HUBP in the dcfclk domain. Each VTG is
+ * associated with one OTG that provides HUBP with vertical timing information
+ * (i.e., there is 1:1 correspondence between OTG and VTG). This function is
+ * responsible for setting the OTG parameters to the VTG during the pipe
+ * programming.
+ */
 void optc1_set_vtg_params(struct timing_generator *optc,
-		const struct dc_crtc_timing *dc_crtc_timing)
+		const struct dc_crtc_timing *dc_crtc_timing, bool program_fp2)
 {
 	struct dc_crtc_timing patched_crtc_timing;
 	uint32_t asic_blank_end;
@@ -351,9 +360,12 @@ void optc1_set_vtg_params(struct timing_generator *optc,
 		}
 	}
 
-	REG_UPDATE_2(CONTROL,
-			VTG0_FP2, v_fp2,
-			VTG0_VCOUNT_INIT, v_init);
+	if (program_fp2)
+		REG_UPDATE_2(CONTROL,
+				VTG0_FP2, v_fp2,
+				VTG0_VCOUNT_INIT, v_init);
+	else
+		REG_UPDATE(CONTROL, VTG0_VCOUNT_INIT, v_init);
 }
 
 void optc1_set_blank_data_double_buffer(struct timing_generator *optc, bool enable)
@@ -464,6 +476,11 @@ void optc1_enable_optc_clock(struct timing_generator *optc, bool enable)
 				OTG_CLOCK_ON, 1,
 				1, 1000);
 	} else  {
+
+		//last chance to clear underflow, otherwise, it will always there due to clock is off.
+		if (optc->funcs->is_optc_underflow_occurred(optc) == true)
+			optc->funcs->clear_optc_underflow(optc);
+
 		REG_UPDATE_2(OTG_CLOCK_CONTROL,
 				OTG_CLOCK_GATE_DIS, 0,
 				OTG_CLOCK_EN, 0);
@@ -629,13 +646,6 @@ uint32_t optc1_get_vblank_counter(struct timing_generator *optc)
 void optc1_lock(struct timing_generator *optc)
 {
 	struct optc *optc1 = DCN10TG_FROM_TG(optc);
-	uint32_t regval = 0;
-
-	regval = REG_READ(OTG_CONTROL);
-
-	/* otg is not running, do not need to be locked */
-	if ((regval & 0x1) == 0x0)
-		return;
 
 	REG_SET(OTG_GLOBAL_CONTROL0, 0,
 			OTG_MASTER_UPDATE_LOCK_SEL, optc->inst);
@@ -643,12 +653,10 @@ void optc1_lock(struct timing_generator *optc)
 			OTG_MASTER_UPDATE_LOCK, 1);
 
 	/* Should be fast, status does not update on maximus */
-	if (optc->ctx->dce_environment != DCE_ENV_FPGA_MAXIMUS) {
-
+	if (optc->ctx->dce_environment != DCE_ENV_FPGA_MAXIMUS)
 		REG_WAIT(OTG_MASTER_UPDATE_LOCK,
 				UPDATE_LOCK_STATUS, 1,
 				1, 10);
-	}
 }
 
 void optc1_unlock(struct timing_generator *optc)
@@ -850,7 +858,7 @@ void optc1_set_static_screen_control(
 			OTG_STATIC_SCREEN_FRAME_COUNT, num_frames);
 }
 
-void optc1_setup_manual_trigger(struct timing_generator *optc)
+static void optc1_setup_manual_trigger(struct timing_generator *optc)
 {
 	struct optc *optc1 = DCN10TG_FROM_TG(optc);
 
@@ -868,7 +876,7 @@ void optc1_setup_manual_trigger(struct timing_generator *optc)
 			OTG_TRIGA_CLEAR, 1);
 }
 
-void optc1_program_manual_trigger(struct timing_generator *optc)
+static void optc1_program_manual_trigger(struct timing_generator *optc)
 {
 	struct optc *optc1 = DCN10TG_FROM_TG(optc);
 
@@ -911,11 +919,7 @@ void optc1_set_drr(
 
 		}
 
-		REG_SET(OTG_V_TOTAL_MAX, 0,
-			OTG_V_TOTAL_MAX, params->vertical_total_max - 1);
-
-		REG_SET(OTG_V_TOTAL_MIN, 0,
-			OTG_V_TOTAL_MIN, params->vertical_total_min - 1);
+		optc->funcs->set_vtotal_min_max(optc, params->vertical_total_min - 1, params->vertical_total_max - 1);
 
 		REG_UPDATE_5(OTG_V_TOTAL_CONTROL,
 				OTG_V_TOTAL_MIN_SEL, 1,
@@ -934,12 +938,19 @@ void optc1_set_drr(
 				OTG_V_TOTAL_MAX_SEL, 0,
 				OTG_FORCE_LOCK_ON_EVENT, 0);
 
-		REG_SET(OTG_V_TOTAL_MIN, 0,
-			OTG_V_TOTAL_MIN, 0);
-
-		REG_SET(OTG_V_TOTAL_MAX, 0,
-			OTG_V_TOTAL_MAX, 0);
+		optc->funcs->set_vtotal_min_max(optc, 0, 0);
 	}
+}
+
+void optc1_set_vtotal_min_max(struct timing_generator *optc, int vtotal_min, int vtotal_max)
+{
+	struct optc *optc1 = DCN10TG_FROM_TG(optc);
+
+	REG_SET(OTG_V_TOTAL_MAX, 0,
+		OTG_V_TOTAL_MAX, vtotal_max);
+
+	REG_SET(OTG_V_TOTAL_MIN, 0,
+		OTG_V_TOTAL_MIN, vtotal_min);
 }
 
 static void optc1_set_test_pattern(
@@ -1045,7 +1056,7 @@ static void optc1_set_test_pattern(
 				src_color[index] >> (src_bpc - dst_bpc);
 		/* CRTC_TEST_PATTERN_DATA has 16 bits,
 		 * lowest 6 are hardwired to ZERO
-		 * color bits should be left aligned aligned to MSB
+		 * color bits should be left aligned to MSB
 		 * XXXXXXXXXX000000 for 10 bit,
 		 * XXXXXXXX00000000 for 8 bit and XXXXXX0000000000 for 6
 		 */
@@ -1351,6 +1362,18 @@ void optc1_read_otg_state(struct optc *optc1,
 
 	REG_GET(OPTC_INPUT_GLOBAL_CONTROL,
 			OPTC_UNDERFLOW_OCCURRED_STATUS, &s->underflow_occurred_status);
+
+	REG_GET(OTG_VERTICAL_INTERRUPT1_CONTROL,
+			OTG_VERTICAL_INTERRUPT1_INT_ENABLE, &s->vertical_interrupt1_en);
+
+	REG_GET(OTG_VERTICAL_INTERRUPT1_POSITION,
+				OTG_VERTICAL_INTERRUPT1_LINE_START, &s->vertical_interrupt1_line);
+
+	REG_GET(OTG_VERTICAL_INTERRUPT2_CONTROL,
+			OTG_VERTICAL_INTERRUPT2_INT_ENABLE, &s->vertical_interrupt2_en);
+
+	REG_GET(OTG_VERTICAL_INTERRUPT2_POSITION,
+			OTG_VERTICAL_INTERRUPT2_LINE_START, &s->vertical_interrupt2_line);
 }
 
 bool optc1_get_otg_active_size(struct timing_generator *optc,
@@ -1465,8 +1488,23 @@ bool optc1_configure_crc(struct timing_generator *optc,
 	return true;
 }
 
+/**
+ * optc1_get_crc - Capture CRC result per component
+ *
+ * @optc: timing_generator instance.
+ * @r_cr: 16-bit primary CRC signature for red data.
+ * @g_y: 16-bit primary CRC signature for green data.
+ * @b_cb: 16-bit primary CRC signature for blue data.
+ *
+ * This function reads the CRC signature from the OPTC registers. Notice that
+ * we have three registers to keep the CRC result per color component (RGB).
+ *
+ * Returns:
+ * If CRC is disabled, return false; otherwise, return true, and the CRC
+ * results in the parameters.
+ */
 bool optc1_get_crc(struct timing_generator *optc,
-		    uint32_t *r_cr, uint32_t *g_y, uint32_t *b_cb)
+		   uint32_t *r_cr, uint32_t *g_y, uint32_t *b_cb)
 {
 	uint32_t field = 0;
 	struct optc *optc1 = DCN10TG_FROM_TG(optc);
@@ -1477,12 +1515,14 @@ bool optc1_get_crc(struct timing_generator *optc,
 	if (!field)
 		return false;
 
+	/* OTG_CRC0_DATA_RG has the CRC16 results for the red and green component */
 	REG_GET_2(OTG_CRC0_DATA_RG,
-			CRC0_R_CR, r_cr,
-			CRC0_G_Y, g_y);
+		  CRC0_R_CR, r_cr,
+		  CRC0_G_Y, g_y);
 
+	/* OTG_CRC0_DATA_B has the CRC16 results for the blue component */
 	REG_GET(OTG_CRC0_DATA_B,
-			CRC0_B_CB, b_cb);
+		CRC0_B_CB, b_cb);
 
 	return true;
 }
@@ -1516,6 +1556,8 @@ static const struct timing_generator_funcs dcn10_tg_funcs = {
 		.unlock = optc1_unlock,
 		.enable_optc_clock = optc1_enable_optc_clock,
 		.set_drr = optc1_set_drr,
+		.get_last_used_drr_vtotal = NULL,
+		.set_vtotal_min_max = optc1_set_vtotal_min_max,
 		.set_static_screen_control = optc1_set_static_screen_control,
 		.set_test_pattern = optc1_set_test_pattern,
 		.program_stereo = optc1_program_stereo,
@@ -1543,7 +1585,7 @@ void dcn10_timing_generator_init(struct optc *optc1)
 	optc1->min_h_blank = 32;
 	optc1->min_v_blank = 3;
 	optc1->min_v_blank_interlace = 5;
-	optc1->min_h_sync_width = 8;
+	optc1->min_h_sync_width = 4;
 	optc1->min_v_sync_width = 1;
 }
 

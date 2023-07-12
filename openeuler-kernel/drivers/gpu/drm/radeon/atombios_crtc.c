@@ -28,6 +28,7 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_fixed.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_vblank.h>
 #include <drm/radeon_drm.h>
 
@@ -616,13 +617,6 @@ static u32 atombios_adjust_pll(struct drm_crtc *crtc,
 		}
 	}
 
-	if (radeon_encoder->is_mst_encoder) {
-		struct radeon_encoder_mst *mst_enc = radeon_encoder->enc_priv;
-		struct radeon_connector_atom_dig *dig_connector = mst_enc->connector->con_priv;
-
-		dp_clock = dig_connector->dp_clock;
-	}
-
 	/* use recommended ref_div for ss */
 	if (radeon_encoder->devices & (ATOM_DEVICE_LCD_SUPPORT)) {
 		if (radeon_crtc->ss_enabled) {
@@ -971,9 +965,7 @@ static bool atombios_crtc_prepare_pll(struct drm_crtc *crtc, struct drm_display_
 	radeon_crtc->bpc = 8;
 	radeon_crtc->ss_enabled = false;
 
-	if (radeon_encoder->is_mst_encoder) {
-		radeon_dp_mst_prepare_pll(crtc, mode);
-	} else if ((radeon_encoder->active_device & (ATOM_DEVICE_LCD_SUPPORT | ATOM_DEVICE_DFP_SUPPORT)) ||
+	if ((radeon_encoder->active_device & (ATOM_DEVICE_LCD_SUPPORT | ATOM_DEVICE_DFP_SUPPORT)) ||
 	    (radeon_encoder_get_dp_bridge_encoder_id(radeon_crtc->encoder) != ENCODER_OBJECT_ID_NONE)) {
 		struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
 		struct drm_connector *connector =
@@ -1157,7 +1149,6 @@ static int dce4_crtc_do_set_base(struct drm_crtc *crtc,
 	u32 tmp, viewport_w, viewport_h;
 	int r;
 	bool bypass_lut = false;
-	struct drm_format_name_buf format_name;
 
 	/* no fb bound */
 	if (!atomic && !crtc->primary->fb) {
@@ -1267,8 +1258,8 @@ static int dce4_crtc_do_set_base(struct drm_crtc *crtc,
 #endif
 		break;
 	default:
-		DRM_ERROR("Unsupported screen format %s\n",
-		          drm_get_format_name(target_fb->format->format, &format_name));
+		DRM_ERROR("Unsupported screen format %p4cc\n",
+			  &target_fb->format->format);
 		return -EINVAL;
 	}
 
@@ -1478,7 +1469,6 @@ static int avivo_crtc_do_set_base(struct drm_crtc *crtc,
 	u32 viewport_w, viewport_h;
 	int r;
 	bool bypass_lut = false;
-	struct drm_format_name_buf format_name;
 
 	/* no fb bound */
 	if (!atomic && !crtc->primary->fb) {
@@ -1579,8 +1569,8 @@ static int avivo_crtc_do_set_base(struct drm_crtc *crtc,
 #endif
 		break;
 	default:
-		DRM_ERROR("Unsupported screen format %s\n",
-		          drm_get_format_name(target_fb->format->format, &format_name));
+		DRM_ERROR("Unsupported screen format %p4cc\n",
+			  &target_fb->format->format);
 		return -EINVAL;
 	}
 
@@ -1787,7 +1777,6 @@ static int radeon_get_shared_dp_ppll(struct drm_crtc *crtc)
  * radeon_get_shared_nondp_ppll - return the PPLL used by another non-DP crtc
  *
  * @crtc: drm crtc
- * @encoder: drm encoder
  *
  * Returns the PPLL (Pixel PLL) used by another non-DP crtc/encoder which can
  * be shared (i.e., same clock).

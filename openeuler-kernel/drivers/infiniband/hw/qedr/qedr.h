@@ -418,6 +418,7 @@ struct qedr_qp {
 	u32 sq_psn;
 	u32 qkey;
 	u32 dest_qp_num;
+	u8 timeout;
 
 	/* Relevant to qps created from kernel space only (ULPs) */
 	u8 prev_wqe_size;
@@ -455,6 +456,7 @@ struct qedr_qp {
 	/* synchronization objects used with iwarp ep */
 	struct kref refcnt;
 	struct completion iwarp_cm_comp;
+	struct completion qp_rel_comp;
 	unsigned long iwarp_cm_flags; /* enum iwarp_cm_flags */
 };
 
@@ -617,18 +619,18 @@ static inline bool qedr_qp_has_srq(struct qedr_qp *qp)
 static inline bool qedr_qp_has_sq(struct qedr_qp *qp)
 {
 	if (qp->qp_type == IB_QPT_GSI || qp->qp_type == IB_QPT_XRC_TGT)
-		return 0;
+		return false;
 
-	return 1;
+	return true;
 }
 
 static inline bool qedr_qp_has_rq(struct qedr_qp *qp)
 {
 	if (qp->qp_type == IB_QPT_GSI || qp->qp_type == IB_QPT_XRC_INI ||
 	    qp->qp_type == IB_QPT_XRC_TGT || qedr_qp_has_srq(qp))
-		return 0;
+		return false;
 
-	return 1;
+	return true;
 }
 
 static inline struct qedr_user_mmap_entry *

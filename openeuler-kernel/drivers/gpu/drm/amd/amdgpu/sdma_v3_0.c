@@ -350,7 +350,7 @@ out:
 static uint64_t sdma_v3_0_ring_get_rptr(struct amdgpu_ring *ring)
 {
 	/* XXX check if swapping is necessary on BE */
-	return ring->adev->wb.wb[ring->rptr_offs] >> 2;
+	return *ring->rptr_cpu_addr >> 2;
 }
 
 /**
@@ -367,7 +367,7 @@ static uint64_t sdma_v3_0_ring_get_wptr(struct amdgpu_ring *ring)
 
 	if (ring->use_doorbell || ring->use_pollmem) {
 		/* XXX check if swapping is necessary on BE */
-		wptr = ring->adev->wb.wb[ring->wptr_offs] >> 2;
+		wptr = *ring->wptr_cpu_addr >> 2;
 	} else {
 		wptr = RREG32(mmSDMA0_GFX_RB_WPTR + sdma_offsets[ring->me]) >> 2;
 	}
@@ -387,16 +387,16 @@ static void sdma_v3_0_ring_set_wptr(struct amdgpu_ring *ring)
 	struct amdgpu_device *adev = ring->adev;
 
 	if (ring->use_doorbell) {
-		u32 *wb = (u32 *)&adev->wb.wb[ring->wptr_offs];
+		u32 *wb = (u32 *)ring->wptr_cpu_addr;
 		/* XXX check if swapping is necessary on BE */
-		WRITE_ONCE(*wb, (lower_32_bits(ring->wptr) << 2));
-		WDOORBELL32(ring->doorbell_index, lower_32_bits(ring->wptr) << 2);
+		WRITE_ONCE(*wb, ring->wptr << 2);
+		WDOORBELL32(ring->doorbell_index, ring->wptr << 2);
 	} else if (ring->use_pollmem) {
-		u32 *wb = (u32 *)&adev->wb.wb[ring->wptr_offs];
+		u32 *wb = (u32 *)ring->wptr_cpu_addr;
 
-		WRITE_ONCE(*wb, (lower_32_bits(ring->wptr) << 2));
+		WRITE_ONCE(*wb, ring->wptr << 2);
 	} else {
-		WREG32(mmSDMA0_GFX_RB_WPTR + sdma_offsets[ring->me], lower_32_bits(ring->wptr) << 2);
+		WREG32(mmSDMA0_GFX_RB_WPTR + sdma_offsets[ring->me], ring->wptr << 2);
 	}
 }
 
@@ -417,7 +417,9 @@ static void sdma_v3_0_ring_insert_nop(struct amdgpu_ring *ring, uint32_t count)
  * sdma_v3_0_ring_emit_ib - Schedule an IB on the DMA engine
  *
  * @ring: amdgpu ring pointer
+ * @job: job to retrieve vmid from
  * @ib: IB object to schedule
+ * @flags: unused
  *
  * Schedule an IB in the DMA ring (VI).
  */
@@ -473,7 +475,9 @@ static void sdma_v3_0_ring_emit_hdp_flush(struct amdgpu_ring *ring)
  * sdma_v3_0_ring_emit_fence - emit a fence on the DMA ring
  *
  * @ring: amdgpu ring pointer
- * @fence: amdgpu fence object
+ * @addr: address
+ * @seq: sequence number
+ * @flags: fence related flags
  *
  * Add a DMA fence packet to the ring to write
  * the fence seq number and DMA trap packet to generate
@@ -512,14 +516,10 @@ static void sdma_v3_0_ring_emit_fence(struct amdgpu_ring *ring, u64 addr, u64 se
  */
 static void sdma_v3_0_gfx_stop(struct amdgpu_device *adev)
 {
-	struct amdgpu_ring *sdma0 = &adev->sdma.instance[0].ring;
-	struct amdgpu_ring *sdma1 = &adev->sdma.instance[1].ring;
 	u32 rb_cntl, ib_cntl;
 	int i;
 
-	if ((adev->mman.buffer_funcs_ring == sdma0) ||
-	    (adev->mman.buffer_funcs_ring == sdma1))
-		amdgpu_ttm_set_buffer_funcs_status(adev, false);
+	amdgpu_sdma_unset_buffer_funcs_helper(adev);
 
 	for (i = 0; i < adev->sdma.num_instances; i++) {
 		rb_cntl = RREG32(mmSDMA0_GFX_RB_CNTL + sdma_offsets[i]);
@@ -645,7 +645,6 @@ static int sdma_v3_0_gfx_resume(struct amdgpu_device *adev)
 	struct amdgpu_ring *ring;
 	u32 rb_cntl, ib_cntl, wptr_poll_cntl;
 	u32 rb_bufsz;
-	u32 wb_offset;
 	u32 doorbell;
 	u64 wptr_gpu_addr;
 	int i, j, r;
@@ -653,7 +652,6 @@ static int sdma_v3_0_gfx_resume(struct amdgpu_device *adev)
 	for (i = 0; i < adev->sdma.num_instances; i++) {
 		ring = &adev->sdma.instance[i].ring;
 		amdgpu_ring_clear_ring(ring);
-		wb_offset = (ring->rptr_offs * 4);
 
 		mutex_lock(&adev->srbm_mutex);
 		for (j = 0; j < 16; j++) {
@@ -690,9 +688,9 @@ static int sdma_v3_0_gfx_resume(struct amdgpu_device *adev)
 
 		/* set the wb address whether it's enabled or not */
 		WREG32(mmSDMA0_GFX_RB_RPTR_ADDR_HI + sdma_offsets[i],
-		       upper_32_bits(adev->wb.gpu_addr + wb_offset) & 0xFFFFFFFF);
+		       upper_32_bits(ring->rptr_gpu_addr) & 0xFFFFFFFF);
 		WREG32(mmSDMA0_GFX_RB_RPTR_ADDR_LO + sdma_offsets[i],
-		       lower_32_bits(adev->wb.gpu_addr + wb_offset) & 0xFFFFFFFC);
+		       lower_32_bits(ring->rptr_gpu_addr) & 0xFFFFFFFC);
 
 		rb_cntl = REG_SET_FIELD(rb_cntl, SDMA0_GFX_RB_CNTL, RPTR_WRITEBACK_ENABLE, 1);
 
@@ -711,7 +709,7 @@ static int sdma_v3_0_gfx_resume(struct amdgpu_device *adev)
 		WREG32(mmSDMA0_GFX_DOORBELL + sdma_offsets[i], doorbell);
 
 		/* setup the wptr shadow polling */
-		wptr_gpu_addr = adev->wb.gpu_addr + (ring->wptr_offs * 4);
+		wptr_gpu_addr = ring->wptr_gpu_addr;
 
 		WREG32(mmSDMA0_GFX_RB_WPTR_POLL_ADDR_LO + sdma_offsets[i],
 		       lower_32_bits(wptr_gpu_addr));
@@ -862,6 +860,7 @@ error_free_wb:
  * sdma_v3_0_ring_test_ib - test an IB on the DMA engine
  *
  * @ring: amdgpu_ring structure holding ring information
+ * @timeout: timeout value in jiffies, or MAX_SCHEDULE_TIMEOUT
  *
  * Test a simple IB in the DMA ring (VI).
  * Returns 0 on success, error on failure.
@@ -1011,6 +1010,7 @@ static void sdma_v3_0_vm_set_pte_pde(struct amdgpu_ib *ib, uint64_t pe,
 /**
  * sdma_v3_0_ring_pad_ib - pad the IB to the required number of dw
  *
+ * @ring: amdgpu_ring structure holding ring information
  * @ib: indirect buffer to fill with padding
  *
  */
@@ -1060,7 +1060,8 @@ static void sdma_v3_0_ring_emit_pipeline_sync(struct amdgpu_ring *ring)
  * sdma_v3_0_ring_emit_vm_flush - cik vm flush using sDMA
  *
  * @ring: amdgpu_ring pointer
- * @vm: amdgpu_vm pointer
+ * @vmid: vmid number to use
+ * @pd_addr: address
  *
  * Update the page table base and flush the VM TLB
  * using sDMA (VI).
@@ -1153,12 +1154,10 @@ static int sdma_v3_0_sw_init(void *handle)
 		}
 
 		sprintf(ring->name, "sdma%d", i);
-		r = amdgpu_ring_init(adev, ring, 1024,
-				     &adev->sdma.trap_irq,
-				     (i == 0) ?
-				     AMDGPU_SDMA_IRQ_INSTANCE0 :
+		r = amdgpu_ring_init(adev, ring, 1024, &adev->sdma.trap_irq,
+				     (i == 0) ? AMDGPU_SDMA_IRQ_INSTANCE0 :
 				     AMDGPU_SDMA_IRQ_INSTANCE1,
-				     AMDGPU_RING_PRIO_DEFAULT);
+				     AMDGPU_RING_PRIO_DEFAULT, NULL);
 		if (r)
 			return r;
 	}
@@ -1530,7 +1529,7 @@ static int sdma_v3_0_set_powergating_state(void *handle,
 	return 0;
 }
 
-static void sdma_v3_0_get_clockgating_state(void *handle, u32 *flags)
+static void sdma_v3_0_get_clockgating_state(void *handle, u64 *flags)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
 	int data;
@@ -1575,6 +1574,7 @@ static const struct amdgpu_ring_funcs sdma_v3_0_ring_funcs = {
 	.align_mask = 0xf,
 	.nop = SDMA_PKT_NOP_HEADER_OP(SDMA_OP_NOP),
 	.support_64bit_ptrs = false,
+	.secure_submission_supported = true,
 	.get_rptr = sdma_v3_0_ring_get_rptr,
 	.get_wptr = sdma_v3_0_ring_get_wptr,
 	.set_wptr = sdma_v3_0_ring_set_wptr,
@@ -1626,10 +1626,11 @@ static void sdma_v3_0_set_irq_funcs(struct amdgpu_device *adev)
 /**
  * sdma_v3_0_emit_copy_buffer - copy buffer using the sDMA engine
  *
- * @ring: amdgpu_ring structure holding ring information
+ * @ib: indirect buffer to copy to
  * @src_offset: src GPU address
  * @dst_offset: dst GPU address
  * @byte_count: number of bytes to xfer
+ * @tmz: unused
  *
  * Copy GPU buffers using the DMA engine (VI).
  * Used by the amdgpu ttm implementation to move pages if
@@ -1654,7 +1655,7 @@ static void sdma_v3_0_emit_copy_buffer(struct amdgpu_ib *ib,
 /**
  * sdma_v3_0_emit_fill_buffer - fill buffer using the sDMA engine
  *
- * @ring: amdgpu_ring structure holding ring information
+ * @ib: indirect buffer to copy to
  * @src_data: value to write to buffer
  * @dst_offset: dst GPU address
  * @byte_count: number of bytes to xfer

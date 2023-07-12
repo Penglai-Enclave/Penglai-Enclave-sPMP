@@ -11,8 +11,8 @@
 static void tdp_iter_refresh_sptep(struct tdp_iter *iter)
 {
 	iter->sptep = iter->pt_path[iter->level - 1] +
-		SHADOW_PT_INDEX(iter->gfn << PAGE_SHIFT, iter->level);
-	iter->old_spte = READ_ONCE(*iter->sptep);
+		SPTE_INDEX(iter->gfn << PAGE_SHIFT, iter->level);
+	iter->old_spte = kvm_tdp_mmu_read_spte(iter->sptep);
 }
 
 static gfn_t round_gfn_for_level(gfn_t gfn, int level)
@@ -21,21 +21,14 @@ static gfn_t round_gfn_for_level(gfn_t gfn, int level)
 }
 
 /*
- * Sets a TDP iterator to walk a pre-order traversal of the paging structure
- * rooted at root_pt, starting with the walk to translate next_last_level_gfn.
+ * Return the TDP iterator to the root PT and allow it to continue its
+ * traversal over the paging structure from there.
  */
-void tdp_iter_start(struct tdp_iter *iter, u64 *root_pt, int root_level,
-		    int min_level, gfn_t next_last_level_gfn)
+void tdp_iter_restart(struct tdp_iter *iter)
 {
-	WARN_ON(root_level < 1);
-	WARN_ON(root_level > PT64_ROOT_MAX_LEVEL);
-
-	iter->next_last_level_gfn = next_last_level_gfn;
+	iter->yielded = false;
 	iter->yielded_gfn = iter->next_last_level_gfn;
-	iter->root_level = root_level;
-	iter->min_level = min_level;
-	iter->level = root_level;
-	iter->pt_path[iter->level - 1] = root_pt;
+	iter->level = iter->root_level;
 
 	iter->gfn = round_gfn_for_level(iter->next_last_level_gfn, iter->level);
 	tdp_iter_refresh_sptep(iter);
@@ -44,11 +37,32 @@ void tdp_iter_start(struct tdp_iter *iter, u64 *root_pt, int root_level,
 }
 
 /*
+ * Sets a TDP iterator to walk a pre-order traversal of the paging structure
+ * rooted at root_pt, starting with the walk to translate next_last_level_gfn.
+ */
+void tdp_iter_start(struct tdp_iter *iter, struct kvm_mmu_page *root,
+		    int min_level, gfn_t next_last_level_gfn)
+{
+	int root_level = root->role.level;
+
+	WARN_ON(root_level < 1);
+	WARN_ON(root_level > PT64_ROOT_MAX_LEVEL);
+
+	iter->next_last_level_gfn = next_last_level_gfn;
+	iter->root_level = root_level;
+	iter->min_level = min_level;
+	iter->pt_path[iter->root_level - 1] = (tdp_ptep_t)root->spt;
+	iter->as_id = kvm_mmu_page_as_id(root);
+
+	tdp_iter_restart(iter);
+}
+
+/*
  * Given an SPTE and its level, returns a pointer containing the host virtual
  * address of the child page table referenced by the SPTE. Returns null if
  * there is no such entry.
  */
-u64 *spte_to_child_pt(u64 spte, int level)
+tdp_ptep_t spte_to_child_pt(u64 spte, int level)
 {
 	/*
 	 * There's no child entry if this entry isn't present or is a
@@ -57,7 +71,7 @@ u64 *spte_to_child_pt(u64 spte, int level)
 	if (!is_shadow_present_pte(spte) || is_last_spte(spte, level))
 		return NULL;
 
-	return __va(spte_to_pfn(spte) << PAGE_SHIFT);
+	return (tdp_ptep_t)__va(spte_to_pfn(spte) << PAGE_SHIFT);
 }
 
 /*
@@ -66,7 +80,7 @@ u64 *spte_to_child_pt(u64 spte, int level)
  */
 static bool try_step_down(struct tdp_iter *iter)
 {
-	u64 *child_pt;
+	tdp_ptep_t child_pt;
 
 	if (iter->level == iter->min_level)
 		return false;
@@ -75,7 +89,7 @@ static bool try_step_down(struct tdp_iter *iter)
 	 * Reread the SPTE before stepping down to avoid traversing into page
 	 * tables that are no longer linked from this entry.
 	 */
-	iter->old_spte = READ_ONCE(*iter->sptep);
+	iter->old_spte = kvm_tdp_mmu_read_spte(iter->sptep);
 
 	child_pt = spte_to_child_pt(iter->old_spte, iter->level);
 	if (!child_pt)
@@ -102,14 +116,14 @@ static bool try_step_side(struct tdp_iter *iter)
 	 * Check if the iterator is already at the end of the current page
 	 * table.
 	 */
-	if (SHADOW_PT_INDEX(iter->gfn << PAGE_SHIFT, iter->level) ==
-            (PT64_ENT_PER_PAGE - 1))
+	if (SPTE_INDEX(iter->gfn << PAGE_SHIFT, iter->level) ==
+	    (SPTE_ENT_PER_PAGE - 1))
 		return false;
 
 	iter->gfn += KVM_PAGES_PER_HPAGE(iter->level);
 	iter->next_last_level_gfn = iter->gfn;
 	iter->sptep++;
-	iter->old_spte = READ_ONCE(*iter->sptep);
+	iter->old_spte = kvm_tdp_mmu_read_spte(iter->sptep);
 
 	return true;
 }
@@ -149,6 +163,11 @@ static bool try_step_up(struct tdp_iter *iter)
  */
 void tdp_iter_next(struct tdp_iter *iter)
 {
+	if (iter->yielded) {
+		tdp_iter_restart(iter);
+		return;
+	}
+
 	if (try_step_down(iter))
 		return;
 
@@ -157,10 +176,5 @@ void tdp_iter_next(struct tdp_iter *iter)
 			return;
 	} while (try_step_up(iter));
 	iter->valid = false;
-}
-
-u64 *tdp_iter_root_pt(struct tdp_iter *iter)
-{
-	return iter->pt_path[iter->root_level - 1];
 }
 

@@ -50,7 +50,7 @@ struct ad5272_data {
 	struct i2c_client       *client;
 	struct mutex            lock;
 	const struct ad5272_cfg *cfg;
-	u8                      buf[2] ____cacheline_aligned;
+	u8                      buf[2] __aligned(IIO_DMA_MINALIGN);
 };
 
 static const struct iio_chan_spec ad5272_channel = {
@@ -143,13 +143,13 @@ static int ad5272_reset(struct ad5272_data *data)
 	struct gpio_desc *reset_gpio;
 
 	reset_gpio = devm_gpiod_get_optional(&data->client->dev, "reset",
-		GPIOD_OUT_LOW);
+		GPIOD_OUT_HIGH);
 	if (IS_ERR(reset_gpio))
 		return PTR_ERR(reset_gpio);
 
 	if (reset_gpio) {
 		udelay(1);
-		gpiod_set_value(reset_gpio, 1);
+		gpiod_set_value(reset_gpio, 0);
 	} else {
 		ad5272_write(data, AD5272_RESET, 0);
 	}

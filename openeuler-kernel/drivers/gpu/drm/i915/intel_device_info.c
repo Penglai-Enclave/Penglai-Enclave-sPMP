@@ -22,6 +22,8 @@
  *
  */
 
+#include <linux/string_helpers.h>
+
 #include <drm/drm_print.h>
 #include <drm/i915_pciids.h>
 
@@ -29,6 +31,7 @@
 #include "display/intel_de.h"
 #include "intel_device_info.h"
 #include "i915_drv.h"
+#include "i915_utils.h"
 
 #define PLATFORM_NAME(x) [INTEL_##x] = #x
 static const char * const platform_names[] = {
@@ -59,12 +62,18 @@ static const char * const platform_names[] = {
 	PLATFORM_NAME(GEMINILAKE),
 	PLATFORM_NAME(COFFEELAKE),
 	PLATFORM_NAME(COMETLAKE),
-	PLATFORM_NAME(CANNONLAKE),
 	PLATFORM_NAME(ICELAKE),
 	PLATFORM_NAME(ELKHARTLAKE),
+	PLATFORM_NAME(JASPERLAKE),
 	PLATFORM_NAME(TIGERLAKE),
 	PLATFORM_NAME(ROCKETLAKE),
 	PLATFORM_NAME(DG1),
+	PLATFORM_NAME(ALDERLAKE_S),
+	PLATFORM_NAME(ALDERLAKE_P),
+	PLATFORM_NAME(XEHPSDV),
+	PLATFORM_NAME(DG2),
+	PLATFORM_NAME(PONTEVECCHIO),
+	PLATFORM_NAME(METEORLAKE),
 };
 #undef PLATFORM_NAME
 
@@ -79,187 +88,57 @@ const char *intel_platform_name(enum intel_platform platform)
 	return platform_names[platform];
 }
 
-static const char *iommu_name(void)
+void intel_device_info_print(const struct intel_device_info *info,
+			     const struct intel_runtime_info *runtime,
+			     struct drm_printer *p)
 {
-	const char *msg = "n/a";
+	if (runtime->graphics.ip.rel)
+		drm_printf(p, "graphics version: %u.%02u\n",
+			   runtime->graphics.ip.ver,
+			   runtime->graphics.ip.rel);
+	else
+		drm_printf(p, "graphics version: %u\n",
+			   runtime->graphics.ip.ver);
 
-#ifdef CONFIG_INTEL_IOMMU
-	msg = enableddisabled(intel_iommu_gfx_mapped);
-#endif
+	if (runtime->media.ip.rel)
+		drm_printf(p, "media version: %u.%02u\n",
+			   runtime->media.ip.ver,
+			   runtime->media.ip.rel);
+	else
+		drm_printf(p, "media version: %u\n",
+			   runtime->media.ip.ver);
 
-	return msg;
-}
+	if (runtime->display.ip.rel)
+		drm_printf(p, "display version: %u.%02u\n",
+			   runtime->display.ip.ver,
+			   runtime->display.ip.rel);
+	else
+		drm_printf(p, "display version: %u\n",
+			   runtime->display.ip.ver);
 
-void intel_device_info_print_static(const struct intel_device_info *info,
-				    struct drm_printer *p)
-{
-	drm_printf(p, "gen: %d\n", info->gen);
 	drm_printf(p, "gt: %d\n", info->gt);
-	drm_printf(p, "iommu: %s\n", iommu_name());
-	drm_printf(p, "memory-regions: %x\n", info->memory_regions);
-	drm_printf(p, "page-sizes: %x\n", info->page_sizes);
+	drm_printf(p, "memory-regions: %x\n", runtime->memory_regions);
+	drm_printf(p, "page-sizes: %x\n", runtime->page_sizes);
 	drm_printf(p, "platform: %s\n", intel_platform_name(info->platform));
-	drm_printf(p, "ppgtt-size: %d\n", info->ppgtt_size);
-	drm_printf(p, "ppgtt-type: %d\n", info->ppgtt_type);
+	drm_printf(p, "ppgtt-size: %d\n", runtime->ppgtt_size);
+	drm_printf(p, "ppgtt-type: %d\n", runtime->ppgtt_type);
 	drm_printf(p, "dma_mask_size: %u\n", info->dma_mask_size);
 
-#define PRINT_FLAG(name) drm_printf(p, "%s: %s\n", #name, yesno(info->name));
+#define PRINT_FLAG(name) drm_printf(p, "%s: %s\n", #name, str_yes_no(info->name))
 	DEV_INFO_FOR_EACH_FLAG(PRINT_FLAG);
 #undef PRINT_FLAG
 
-#define PRINT_FLAG(name) drm_printf(p, "%s: %s\n", #name, yesno(info->display.name));
+	drm_printf(p, "has_pooled_eu: %s\n", str_yes_no(runtime->has_pooled_eu));
+
+#define PRINT_FLAG(name) drm_printf(p, "%s: %s\n", #name, str_yes_no(info->display.name))
 	DEV_INFO_DISPLAY_FOR_EACH_FLAG(PRINT_FLAG);
 #undef PRINT_FLAG
-}
 
-void intel_device_info_print_runtime(const struct intel_runtime_info *info,
-				     struct drm_printer *p)
-{
-	drm_printf(p, "rawclk rate: %u kHz\n", info->rawclk_freq);
-	drm_printf(p, "CS timestamp frequency: %u Hz\n",
-		   info->cs_timestamp_frequency_hz);
-}
+	drm_printf(p, "has_hdcp: %s\n", str_yes_no(runtime->has_hdcp));
+	drm_printf(p, "has_dmc: %s\n", str_yes_no(runtime->has_dmc));
+	drm_printf(p, "has_dsc: %s\n", str_yes_no(runtime->has_dsc));
 
-static u32 read_reference_ts_freq(struct drm_i915_private *dev_priv)
-{
-	u32 ts_override = intel_uncore_read(&dev_priv->uncore,
-					    GEN9_TIMESTAMP_OVERRIDE);
-	u32 base_freq, frac_freq;
-
-	base_freq = ((ts_override & GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DIVIDER_MASK) >>
-		     GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DIVIDER_SHIFT) + 1;
-	base_freq *= 1000000;
-
-	frac_freq = ((ts_override &
-		      GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DENOMINATOR_MASK) >>
-		     GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DENOMINATOR_SHIFT);
-	frac_freq = 1000000 / (frac_freq + 1);
-
-	return base_freq + frac_freq;
-}
-
-static u32 gen10_get_crystal_clock_freq(struct drm_i915_private *dev_priv,
-					u32 rpm_config_reg)
-{
-	u32 f19_2_mhz = 19200000;
-	u32 f24_mhz = 24000000;
-	u32 crystal_clock = (rpm_config_reg &
-			     GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_MASK) >>
-			    GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_SHIFT;
-
-	switch (crystal_clock) {
-	case GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_19_2_MHZ:
-		return f19_2_mhz;
-	case GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_24_MHZ:
-		return f24_mhz;
-	default:
-		MISSING_CASE(crystal_clock);
-		return 0;
-	}
-}
-
-static u32 gen11_get_crystal_clock_freq(struct drm_i915_private *dev_priv,
-					u32 rpm_config_reg)
-{
-	u32 f19_2_mhz = 19200000;
-	u32 f24_mhz = 24000000;
-	u32 f25_mhz = 25000000;
-	u32 f38_4_mhz = 38400000;
-	u32 crystal_clock = (rpm_config_reg &
-			     GEN11_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_MASK) >>
-			    GEN11_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_SHIFT;
-
-	switch (crystal_clock) {
-	case GEN11_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_24_MHZ:
-		return f24_mhz;
-	case GEN11_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_19_2_MHZ:
-		return f19_2_mhz;
-	case GEN11_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_38_4_MHZ:
-		return f38_4_mhz;
-	case GEN11_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_25_MHZ:
-		return f25_mhz;
-	default:
-		MISSING_CASE(crystal_clock);
-		return 0;
-	}
-}
-
-static u32 read_timestamp_frequency(struct drm_i915_private *dev_priv)
-{
-	struct intel_uncore *uncore = &dev_priv->uncore;
-	u32 f12_5_mhz = 12500000;
-	u32 f19_2_mhz = 19200000;
-	u32 f24_mhz = 24000000;
-
-	if (INTEL_GEN(dev_priv) <= 4) {
-		/* PRMs say:
-		 *
-		 *     "The value in this register increments once every 16
-		 *      hclks." (through the “Clocking Configuration”
-		 *      (“CLKCFG”) MCHBAR register)
-		 */
-		return RUNTIME_INFO(dev_priv)->rawclk_freq * 1000 / 16;
-	} else if (INTEL_GEN(dev_priv) <= 8) {
-		/* PRMs say:
-		 *
-		 *     "The PCU TSC counts 10ns increments; this timestamp
-		 *      reflects bits 38:3 of the TSC (i.e. 80ns granularity,
-		 *      rolling over every 1.5 hours).
-		 */
-		return f12_5_mhz;
-	} else if (INTEL_GEN(dev_priv) <= 9) {
-		u32 ctc_reg = intel_uncore_read(uncore, CTC_MODE);
-		u32 freq = 0;
-
-		if ((ctc_reg & CTC_SOURCE_PARAMETER_MASK) == CTC_SOURCE_DIVIDE_LOGIC) {
-			freq = read_reference_ts_freq(dev_priv);
-		} else {
-			freq = IS_GEN9_LP(dev_priv) ? f19_2_mhz : f24_mhz;
-
-			/* Now figure out how the command stream's timestamp
-			 * register increments from this frequency (it might
-			 * increment only every few clock cycle).
-			 */
-			freq >>= 3 - ((ctc_reg & CTC_SHIFT_PARAMETER_MASK) >>
-				      CTC_SHIFT_PARAMETER_SHIFT);
-		}
-
-		return freq;
-	} else if (INTEL_GEN(dev_priv) <= 12) {
-		u32 ctc_reg = intel_uncore_read(uncore, CTC_MODE);
-		u32 freq = 0;
-
-		/* First figure out the reference frequency. There are 2 ways
-		 * we can compute the frequency, either through the
-		 * TIMESTAMP_OVERRIDE register or through RPM_CONFIG. CTC_MODE
-		 * tells us which one we should use.
-		 */
-		if ((ctc_reg & CTC_SOURCE_PARAMETER_MASK) == CTC_SOURCE_DIVIDE_LOGIC) {
-			freq = read_reference_ts_freq(dev_priv);
-		} else {
-			u32 rpm_config_reg = intel_uncore_read(uncore, RPM_CONFIG0);
-
-			if (INTEL_GEN(dev_priv) <= 10)
-				freq = gen10_get_crystal_clock_freq(dev_priv,
-								rpm_config_reg);
-			else
-				freq = gen11_get_crystal_clock_freq(dev_priv,
-								rpm_config_reg);
-
-			/* Now figure out how the command stream's timestamp
-			 * register increments from this frequency (it might
-			 * increment only every few clock cycle).
-			 */
-			freq >>= 3 - ((rpm_config_reg &
-				       GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_MASK) >>
-				      GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_SHIFT);
-		}
-
-		return freq;
-	}
-
-	MISSING_CASE("Unknown gen, unable to read command streamer timestamp frequency\n");
-	return 0;
+	drm_printf(p, "rawclk rate: %u kHz\n", runtime->rawclk_freq);
 }
 
 #undef INTEL_VGA_DEVICE
@@ -304,8 +183,42 @@ static const u16 subplatform_ulx_ids[] = {
 };
 
 static const u16 subplatform_portf_ids[] = {
-	INTEL_CNL_PORT_F_IDS(0),
 	INTEL_ICL_PORT_F_IDS(0),
+};
+
+static const u16 subplatform_uy_ids[] = {
+	INTEL_TGL_12_GT2_IDS(0),
+};
+
+static const u16 subplatform_n_ids[] = {
+	INTEL_ADLN_IDS(0),
+};
+
+static const u16 subplatform_rpl_ids[] = {
+	INTEL_RPLS_IDS(0),
+	INTEL_RPLP_IDS(0),
+};
+
+static const u16 subplatform_g10_ids[] = {
+	INTEL_DG2_G10_IDS(0),
+	INTEL_ATS_M150_IDS(0),
+};
+
+static const u16 subplatform_g11_ids[] = {
+	INTEL_DG2_G11_IDS(0),
+	INTEL_ATS_M75_IDS(0),
+};
+
+static const u16 subplatform_g12_ids[] = {
+	INTEL_DG2_G12_IDS(0),
+};
+
+static const u16 subplatform_m_ids[] = {
+	INTEL_MTL_M_IDS(0),
+};
+
+static const u16 subplatform_p_ids[] = {
+	INTEL_MTL_P_IDS(0),
 };
 
 static bool find_devid(u16 id, const u16 *p, unsigned int num)
@@ -344,28 +257,33 @@ void intel_device_info_subplatform_init(struct drm_i915_private *i915)
 	} else if (find_devid(devid, subplatform_portf_ids,
 			      ARRAY_SIZE(subplatform_portf_ids))) {
 		mask = BIT(INTEL_SUBPLATFORM_PORTF);
+	} else if (find_devid(devid, subplatform_uy_ids,
+			   ARRAY_SIZE(subplatform_uy_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_UY);
+	} else if (find_devid(devid, subplatform_n_ids,
+				ARRAY_SIZE(subplatform_n_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_N);
+	} else if (find_devid(devid, subplatform_rpl_ids,
+			      ARRAY_SIZE(subplatform_rpl_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_RPL);
+	} else if (find_devid(devid, subplatform_g10_ids,
+			      ARRAY_SIZE(subplatform_g10_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_G10);
+	} else if (find_devid(devid, subplatform_g11_ids,
+			      ARRAY_SIZE(subplatform_g11_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_G11);
+	} else if (find_devid(devid, subplatform_g12_ids,
+			      ARRAY_SIZE(subplatform_g12_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_G12);
+	} else if (find_devid(devid, subplatform_m_ids,
+			      ARRAY_SIZE(subplatform_m_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_M);
+	} else if (find_devid(devid, subplatform_p_ids,
+			      ARRAY_SIZE(subplatform_p_ids))) {
+		mask = BIT(INTEL_SUBPLATFORM_P);
 	}
 
-	if (IS_TIGERLAKE(i915)) {
-		struct pci_dev *root, *pdev = i915->drm.pdev;
-
-		root = list_first_entry(&pdev->bus->devices, typeof(*root), bus_list);
-
-		drm_WARN_ON(&i915->drm, mask);
-		drm_WARN_ON(&i915->drm, (root->device & TGL_ROOT_DEVICE_MASK) !=
-			    TGL_ROOT_DEVICE_ID);
-
-		switch (root->device & TGL_ROOT_DEVICE_SKU_MASK) {
-		case TGL_ROOT_DEVICE_SKU_ULX:
-			mask = BIT(INTEL_SUBPLATFORM_ULX);
-			break;
-		case TGL_ROOT_DEVICE_SKU_ULT:
-			mask = BIT(INTEL_SUBPLATFORM_ULT);
-			break;
-		}
-	}
-
-	GEM_BUG_ON(mask & ~INTEL_SUBPLATFORM_BITS);
+	GEM_BUG_ON(mask & ~INTEL_SUBPLATFORM_MASK);
 
 	RUNTIME_INFO(i915)->platform_mask[pi] |= mask;
 }
@@ -392,10 +310,14 @@ void intel_device_info_runtime_init(struct drm_i915_private *dev_priv)
 	struct intel_runtime_info *runtime = RUNTIME_INFO(dev_priv);
 	enum pipe pipe;
 
-	if (INTEL_GEN(dev_priv) >= 10) {
+	/* Wa_14011765242: adl-s A0,A1 */
+	if (IS_ADLS_DISPLAY_STEP(dev_priv, STEP_A0, STEP_A2))
+		for_each_pipe(dev_priv, pipe)
+			runtime->num_scalers[pipe] = 0;
+	else if (DISPLAY_VER(dev_priv) >= 11) {
 		for_each_pipe(dev_priv, pipe)
 			runtime->num_scalers[pipe] = 2;
-	} else if (IS_GEN(dev_priv, 9)) {
+	} else if (DISPLAY_VER(dev_priv) >= 9) {
 		runtime->num_scalers[PIPE_A] = 2;
 		runtime->num_scalers[PIPE_B] = 2;
 		runtime->num_scalers[PIPE_C] = 1;
@@ -403,13 +325,13 @@ void intel_device_info_runtime_init(struct drm_i915_private *dev_priv)
 
 	BUILD_BUG_ON(BITS_PER_TYPE(intel_engine_mask_t) < I915_NUM_ENGINES);
 
-	if (IS_ROCKETLAKE(dev_priv))
+	if (DISPLAY_VER(dev_priv) >= 13 || HAS_D12_PLANE_MINIMIZATION(dev_priv))
 		for_each_pipe(dev_priv, pipe)
 			runtime->num_sprites[pipe] = 4;
-	else if (INTEL_GEN(dev_priv) >= 11)
+	else if (DISPLAY_VER(dev_priv) >= 11)
 		for_each_pipe(dev_priv, pipe)
 			runtime->num_sprites[pipe] = 6;
-	else if (IS_GEN(dev_priv, 10) || IS_GEMINILAKE(dev_priv))
+	else if (DISPLAY_VER(dev_priv) == 10)
 		for_each_pipe(dev_priv, pipe)
 			runtime->num_sprites[pipe] = 3;
 	else if (IS_BROXTON(dev_priv)) {
@@ -428,12 +350,12 @@ void intel_device_info_runtime_init(struct drm_i915_private *dev_priv)
 	} else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) {
 		for_each_pipe(dev_priv, pipe)
 			runtime->num_sprites[pipe] = 2;
-	} else if (INTEL_GEN(dev_priv) >= 5 || IS_G4X(dev_priv)) {
+	} else if (DISPLAY_VER(dev_priv) >= 5 || IS_G4X(dev_priv)) {
 		for_each_pipe(dev_priv, pipe)
 			runtime->num_sprites[pipe] = 1;
 	}
 
-	if (HAS_DISPLAY(dev_priv) && IS_GEN_RANGE(dev_priv, 7, 8) &&
+	if (HAS_DISPLAY(dev_priv) && IS_GRAPHICS_VER(dev_priv, 7, 8) &&
 	    HAS_PCH_SPLIT(dev_priv)) {
 		u32 fuse_strap = intel_de_read(dev_priv, FUSE_STRAP);
 		u32 sfuse_strap = intel_de_read(dev_priv, SFUSE_STRAP);
@@ -453,76 +375,72 @@ void intel_device_info_runtime_init(struct drm_i915_private *dev_priv)
 		     !(sfuse_strap & SFUSE_STRAP_FUSE_LOCK))) {
 			drm_info(&dev_priv->drm,
 				 "Display fused off, disabling\n");
-			info->pipe_mask = 0;
-			info->cpu_transcoder_mask = 0;
+			runtime->pipe_mask = 0;
+			runtime->cpu_transcoder_mask = 0;
+			runtime->fbc_mask = 0;
 		} else if (fuse_strap & IVB_PIPE_C_DISABLE) {
 			drm_info(&dev_priv->drm, "PipeC fused off\n");
-			info->pipe_mask &= ~BIT(PIPE_C);
-			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_C);
+			runtime->pipe_mask &= ~BIT(PIPE_C);
+			runtime->cpu_transcoder_mask &= ~BIT(TRANSCODER_C);
 		}
-	} else if (HAS_DISPLAY(dev_priv) && INTEL_GEN(dev_priv) >= 9) {
+	} else if (HAS_DISPLAY(dev_priv) && DISPLAY_VER(dev_priv) >= 9) {
 		u32 dfsm = intel_de_read(dev_priv, SKL_DFSM);
 
 		if (dfsm & SKL_DFSM_PIPE_A_DISABLE) {
-			info->pipe_mask &= ~BIT(PIPE_A);
-			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_A);
+			runtime->pipe_mask &= ~BIT(PIPE_A);
+			runtime->cpu_transcoder_mask &= ~BIT(TRANSCODER_A);
+			runtime->fbc_mask &= ~BIT(INTEL_FBC_A);
 		}
 		if (dfsm & SKL_DFSM_PIPE_B_DISABLE) {
-			info->pipe_mask &= ~BIT(PIPE_B);
-			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_B);
+			runtime->pipe_mask &= ~BIT(PIPE_B);
+			runtime->cpu_transcoder_mask &= ~BIT(TRANSCODER_B);
 		}
 		if (dfsm & SKL_DFSM_PIPE_C_DISABLE) {
-			info->pipe_mask &= ~BIT(PIPE_C);
-			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_C);
+			runtime->pipe_mask &= ~BIT(PIPE_C);
+			runtime->cpu_transcoder_mask &= ~BIT(TRANSCODER_C);
 		}
-		if (INTEL_GEN(dev_priv) >= 12 &&
+
+		if (DISPLAY_VER(dev_priv) >= 12 &&
 		    (dfsm & TGL_DFSM_PIPE_D_DISABLE)) {
-			info->pipe_mask &= ~BIT(PIPE_D);
-			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_D);
+			runtime->pipe_mask &= ~BIT(PIPE_D);
+			runtime->cpu_transcoder_mask &= ~BIT(TRANSCODER_D);
 		}
 
 		if (dfsm & SKL_DFSM_DISPLAY_HDCP_DISABLE)
-			info->display.has_hdcp = 0;
+			runtime->has_hdcp = 0;
 
 		if (dfsm & SKL_DFSM_DISPLAY_PM_DISABLE)
-			info->display.has_fbc = 0;
+			runtime->fbc_mask = 0;
 
-		if (INTEL_GEN(dev_priv) >= 11 && (dfsm & ICL_DFSM_DMC_DISABLE))
-			info->display.has_csr = 0;
+		if (DISPLAY_VER(dev_priv) >= 11 && (dfsm & ICL_DFSM_DMC_DISABLE))
+			runtime->has_dmc = 0;
 
-		if (INTEL_GEN(dev_priv) >= 10 &&
-		    (dfsm & CNL_DFSM_DISPLAY_DSC_DISABLE))
-			info->display.has_dsc = 0;
+		if (DISPLAY_VER(dev_priv) >= 10 &&
+		    (dfsm & GLK_DFSM_DISPLAY_DSC_DISABLE))
+			runtime->has_dsc = 0;
 	}
 
-	if (IS_GEN(dev_priv, 6) && intel_vtd_active()) {
+	if (GRAPHICS_VER(dev_priv) == 6 && i915_vtd_active(dev_priv)) {
 		drm_info(&dev_priv->drm,
 			 "Disabling ppGTT for VT-d support\n");
-		info->ppgtt_type = INTEL_PPGTT_NONE;
+		runtime->ppgtt_type = INTEL_PPGTT_NONE;
 	}
 
 	runtime->rawclk_freq = intel_read_rawclk(dev_priv);
 	drm_dbg(&dev_priv->drm, "rawclk rate: %d kHz\n", runtime->rawclk_freq);
 
-	/* Initialize command stream timestamp frequency */
-	runtime->cs_timestamp_frequency_hz =
-		read_timestamp_frequency(dev_priv);
-	if (runtime->cs_timestamp_frequency_hz) {
-		runtime->cs_timestamp_period_ns =
-			i915_cs_timestamp_ticks_to_ns(dev_priv, 1);
-		drm_dbg(&dev_priv->drm,
-			"CS timestamp wraparound in %lldms\n",
-			div_u64(mul_u32_u32(runtime->cs_timestamp_period_ns,
-					    S32_MAX),
-				USEC_PER_SEC));
-	}
-
 	if (!HAS_DISPLAY(dev_priv)) {
 		dev_priv->drm.driver_features &= ~(DRIVER_MODESET |
 						   DRIVER_ATOMIC);
 		memset(&info->display, 0, sizeof(info->display));
+
+		runtime->cpu_transcoder_mask = 0;
 		memset(runtime->num_sprites, 0, sizeof(runtime->num_sprites));
 		memset(runtime->num_scalers, 0, sizeof(runtime->num_scalers));
+		runtime->fbc_mask = 0;
+		runtime->has_hdcp = false;
+		runtime->has_dmc = false;
+		runtime->has_dsc = false;
 	}
 }
 
@@ -530,6 +448,6 @@ void intel_driver_caps_print(const struct intel_driver_caps *caps,
 			     struct drm_printer *p)
 {
 	drm_printf(p, "Has logical contexts? %s\n",
-		   yesno(caps->has_logical_contexts));
+		   str_yes_no(caps->has_logical_contexts));
 	drm_printf(p, "scheduler: %x\n", caps->scheduler);
 }

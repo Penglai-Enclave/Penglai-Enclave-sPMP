@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/**
+/*
  * opt3001.c - Texas Instruments OPT3001 Light Sensor
  *
  * Copyright (C) 2014 Texas Instruments Incorporated - https://www.ti.com
@@ -276,6 +276,8 @@ static int opt3001_get_lux(struct opt3001 *opt, int *val, int *val2)
 		ret = wait_event_timeout(opt->result_ready_queue,
 				opt->result_ready,
 				msecs_to_jiffies(OPT3001_RESULT_READY_LONG));
+		if (ret == 0)
+			return -ETIMEDOUT;
 	} else {
 		/* Sleep for result ready time */
 		timeout = (opt->int_time == OPT3001_INT_TIME_SHORT) ?
@@ -312,9 +314,7 @@ err:
 		/* Disallow IRQ to access the device while lock is active */
 		opt->ok_to_ignore_lock = false;
 
-	if (ret == 0)
-		return -ETIMEDOUT;
-	else if (ret < 0)
+	if (ret < 0)
 		return ret;
 
 	if (opt->use_irq) {
@@ -794,7 +794,7 @@ static int opt3001_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int opt3001_remove(struct i2c_client *client)
+static void opt3001_remove(struct i2c_client *client)
 {
 	struct iio_dev *iio = i2c_get_clientdata(client);
 	struct opt3001 *opt = iio_priv(iio);
@@ -808,7 +808,7 @@ static int opt3001_remove(struct i2c_client *client)
 	if (ret < 0) {
 		dev_err(opt->dev, "failed to read register %02x\n",
 				OPT3001_CONFIGURATION);
-		return ret;
+		return;
 	}
 
 	reg = ret;
@@ -819,10 +819,7 @@ static int opt3001_remove(struct i2c_client *client)
 	if (ret < 0) {
 		dev_err(opt->dev, "failed to write register %02x\n",
 				OPT3001_CONFIGURATION);
-		return ret;
 	}
-
-	return 0;
 }
 
 static const struct i2c_device_id opt3001_id[] = {

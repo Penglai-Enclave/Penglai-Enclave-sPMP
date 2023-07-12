@@ -195,7 +195,6 @@ static int init_powerplay_table_information(
 	struct phm_ppt_v3_information *pptable_information =
 		(struct phm_ppt_v3_information *)hwmgr->pptable;
 	uint32_t disable_power_control = 0;
-	int result;
 
 	hwmgr->thermal_controller.ucType = powerplay_table->ucThermalControllerType;
 	pptable_information->uc_thermal_controller_type = powerplay_table->ucThermalControllerType;
@@ -252,15 +251,12 @@ static int init_powerplay_table_information(
 	phm_copy_clock_limits_array(hwmgr, &pptable_information->power_saving_clock_max, powerplay_table->PowerSavingClockMax, ATOM_VEGA12_PPCLOCK_COUNT);
 	phm_copy_clock_limits_array(hwmgr, &pptable_information->power_saving_clock_min, powerplay_table->PowerSavingClockMin, ATOM_VEGA12_PPCLOCK_COUNT);
 
-	pptable_information->smc_pptable = kmalloc(sizeof(PPTable_t), GFP_KERNEL);
+	pptable_information->smc_pptable = kmemdup(&(powerplay_table->smcPPTable),
+						   sizeof(PPTable_t), GFP_KERNEL);
 	if (pptable_information->smc_pptable == NULL)
 		return -ENOMEM;
 
-	memcpy(pptable_information->smc_pptable, &(powerplay_table->smcPPTable), sizeof(PPTable_t));
-
-	result = append_vbios_pptable(hwmgr, (pptable_information->smc_pptable));
-
-	return result;
+	return append_vbios_pptable(hwmgr, (pptable_information->smc_pptable));
 }
 
 static int vega12_pp_tables_initialize(struct pp_hwmgr *hwmgr)

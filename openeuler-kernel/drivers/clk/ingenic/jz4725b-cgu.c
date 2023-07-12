@@ -10,7 +10,7 @@
 #include <linux/delay.h>
 #include <linux/of.h>
 
-#include <dt-bindings/clock/jz4725b-cgu.h>
+#include <dt-bindings/clock/ingenic,jz4725b-cgu.h>
 
 #include "cgu.h"
 #include "pm.h"
@@ -80,16 +80,21 @@ static const struct ingenic_cgu_clk_info jz4725b_cgu_clocks[] = {
 		"pll half", CGU_CLK_DIV,
 		.parents = { JZ4725B_CLK_PLL, -1, -1, -1 },
 		.div = {
-			CGU_REG_CPCCR, 21, 1, 1, -1, -1, -1,
+			CGU_REG_CPCCR, 21, 1, 1, -1, -1, -1, 0,
 			jz4725b_cgu_pll_half_div_table,
 		},
 	},
 
 	[JZ4725B_CLK_CCLK] = {
 		"cclk", CGU_CLK_DIV,
+		/*
+		 * Disabling the CPU clock or any parent clocks will hang the
+		 * system; mark it critical.
+		 */
+		.flags = CLK_IS_CRITICAL,
 		.parents = { JZ4725B_CLK_PLL, -1, -1, -1 },
 		.div = {
-			CGU_REG_CPCCR, 0, 1, 4, 22, -1, -1,
+			CGU_REG_CPCCR, 0, 1, 4, 22, -1, -1, 0,
 			jz4725b_cgu_cpccr_div_table,
 		},
 	},
@@ -98,7 +103,7 @@ static const struct ingenic_cgu_clk_info jz4725b_cgu_clocks[] = {
 		"hclk", CGU_CLK_DIV,
 		.parents = { JZ4725B_CLK_PLL, -1, -1, -1 },
 		.div = {
-			CGU_REG_CPCCR, 4, 1, 4, 22, -1, -1,
+			CGU_REG_CPCCR, 4, 1, 4, 22, -1, -1, 0,
 			jz4725b_cgu_cpccr_div_table,
 		},
 	},
@@ -107,16 +112,21 @@ static const struct ingenic_cgu_clk_info jz4725b_cgu_clocks[] = {
 		"pclk", CGU_CLK_DIV,
 		.parents = { JZ4725B_CLK_PLL, -1, -1, -1 },
 		.div = {
-			CGU_REG_CPCCR, 8, 1, 4, 22, -1, -1,
+			CGU_REG_CPCCR, 8, 1, 4, 22, -1, -1, 0,
 			jz4725b_cgu_cpccr_div_table,
 		},
 	},
 
 	[JZ4725B_CLK_MCLK] = {
 		"mclk", CGU_CLK_DIV,
+		/*
+		 * Disabling MCLK or its parents will render DRAM
+		 * inaccessible; mark it critical.
+		 */
+		.flags = CLK_IS_CRITICAL,
 		.parents = { JZ4725B_CLK_PLL, -1, -1, -1 },
 		.div = {
-			CGU_REG_CPCCR, 12, 1, 4, 22, -1, -1,
+			CGU_REG_CPCCR, 12, 1, 4, 22, -1, -1, 0,
 			jz4725b_cgu_cpccr_div_table,
 		},
 	},
@@ -125,7 +135,7 @@ static const struct ingenic_cgu_clk_info jz4725b_cgu_clocks[] = {
 		"ipu", CGU_CLK_DIV | CGU_CLK_GATE,
 		.parents = { JZ4725B_CLK_PLL, -1, -1, -1 },
 		.div = {
-			CGU_REG_CPCCR, 16, 1, 4, 22, -1, -1,
+			CGU_REG_CPCCR, 16, 1, 4, 22, -1, -1, 0,
 			jz4725b_cgu_cpccr_div_table,
 		},
 		.gate = { CGU_REG_CLKGR, 13 },
@@ -139,11 +149,10 @@ static const struct ingenic_cgu_clk_info jz4725b_cgu_clocks[] = {
 	},
 
 	[JZ4725B_CLK_I2S] = {
-		"i2s", CGU_CLK_MUX | CGU_CLK_DIV | CGU_CLK_GATE,
+		"i2s", CGU_CLK_MUX | CGU_CLK_DIV,
 		.parents = { JZ4725B_CLK_EXT, JZ4725B_CLK_PLL_HALF, -1, -1 },
 		.mux = { CGU_REG_CPCCR, 31, 1 },
 		.div = { CGU_REG_I2SCDR, 0, 1, 9, -1, -1, -1 },
-		.gate = { CGU_REG_CLKGR, 6 },
 	},
 
 	[JZ4725B_CLK_SPI] = {

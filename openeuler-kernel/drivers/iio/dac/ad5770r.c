@@ -118,7 +118,7 @@ struct ad5770r_out_range {
 };
 
 /**
- * struct ad5770R_state - driver instance specific data
+ * struct ad5770r_state - driver instance specific data
  * @spi:		spi_device
  * @regmap:		regmap
  * @vref_reg:		fixed regulator for reference configuration
@@ -140,7 +140,7 @@ struct ad5770r_state {
 	bool				ch_pwr_down[AD5770R_MAX_CHANNELS];
 	bool				internal_ref;
 	bool				external_res;
-	u8				transf_buf[2] ____cacheline_aligned;
+	u8				transf_buf[2] __aligned(IIO_DMA_MINALIGN);
 };
 
 static const struct regmap_config ad5770r_spi_regmap_config = {
@@ -433,7 +433,7 @@ static ssize_t ad5770r_read_dac_powerdown(struct iio_dev *indio_dev,
 {
 	struct ad5770r_state *st = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n", st->ch_pwr_down[chan->channel]);
+	return sysfs_emit(buf, "%d\n", st->ch_pwr_down[chan->channel]);
 }
 
 static ssize_t ad5770r_write_dac_powerdown(struct iio_dev *indio_dev,
@@ -522,25 +522,31 @@ static int ad5770r_channel_config(struct ad5770r_state *st)
 		return -EINVAL;
 
 	device_for_each_child_node(&st->spi->dev, child) {
-		ret = fwnode_property_read_u32(child, "num", &num);
+		ret = fwnode_property_read_u32(child, "reg", &num);
 		if (ret)
-			return ret;
-		if (num >= AD5770R_MAX_CHANNELS)
-			return -EINVAL;
+			goto err_child_out;
+		if (num >= AD5770R_MAX_CHANNELS) {
+			ret = -EINVAL;
+			goto err_child_out;
+		}
 
 		ret = fwnode_property_read_u32_array(child,
 						     "adi,range-microamp",
 						     tmp, 2);
 		if (ret)
-			return ret;
+			goto err_child_out;
 
 		min = tmp[0] / 1000;
 		max = tmp[1] / 1000;
 		ret = ad5770r_store_output_range(st, min, max, num);
 		if (ret)
-			return ret;
+			goto err_child_out;
 	}
 
+	return 0;
+
+err_child_out:
+	fwnode_handle_put(child);
 	return ret;
 }
 

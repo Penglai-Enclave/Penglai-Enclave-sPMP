@@ -21,22 +21,80 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
+#include <drm/drm_aperture.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_debugfs.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
-#include <drm/drm_irq.h>
 #include <drm/drm_modeset_helper.h>
+#include <drm/drm_module.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
 
 #include "hdlcd_drv.h"
 #include "hdlcd_regs.h"
+
+static irqreturn_t hdlcd_irq(int irq, void *arg)
+{
+	struct hdlcd_drm_private *hdlcd = arg;
+	unsigned long irq_status;
+
+	irq_status = hdlcd_read(hdlcd, HDLCD_REG_INT_STATUS);
+
+#ifdef CONFIG_DEBUG_FS
+	if (irq_status & HDLCD_INTERRUPT_UNDERRUN)
+		atomic_inc(&hdlcd->buffer_underrun_count);
+
+	if (irq_status & HDLCD_INTERRUPT_DMA_END)
+		atomic_inc(&hdlcd->dma_end_count);
+
+	if (irq_status & HDLCD_INTERRUPT_BUS_ERROR)
+		atomic_inc(&hdlcd->bus_error_count);
+
+	if (irq_status & HDLCD_INTERRUPT_VSYNC)
+		atomic_inc(&hdlcd->vsync_count);
+
+#endif
+	if (irq_status & HDLCD_INTERRUPT_VSYNC)
+		drm_crtc_handle_vblank(&hdlcd->crtc);
+
+	/* acknowledge interrupt(s) */
+	hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR, irq_status);
+
+	return IRQ_HANDLED;
+}
+
+static int hdlcd_irq_install(struct hdlcd_drm_private *hdlcd)
+{
+	int ret;
+
+	/* Ensure interrupts are disabled */
+	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, 0);
+	hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR, ~0);
+
+	ret = request_irq(hdlcd->irq, hdlcd_irq, 0, "hdlcd", hdlcd);
+	if (ret)
+		return ret;
+
+#ifdef CONFIG_DEBUG_FS
+	/* enable debug interrupts */
+	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, HDLCD_DEBUG_INT_MASK);
+#endif
+
+	return 0;
+}
+
+static void hdlcd_irq_uninstall(struct hdlcd_drm_private *hdlcd)
+{
+	/* disable all the interrupts that we might have enabled */
+	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, 0);
+
+	free_irq(hdlcd->irq, hdlcd);
+}
 
 static int hdlcd_load(struct drm_device *drm, unsigned long flags)
 {
@@ -90,7 +148,12 @@ static int hdlcd_load(struct drm_device *drm, unsigned long flags)
 		goto setup_fail;
 	}
 
-	ret = drm_irq_install(drm, platform_get_irq(pdev, 0));
+	ret = platform_get_irq(pdev, 0);
+	if (ret < 0)
+		goto irq_fail;
+	hdlcd->irq = ret;
+
+	ret = hdlcd_irq_install(hdlcd);
 	if (ret < 0) {
 		DRM_ERROR("failed to install IRQ handler\n");
 		goto irq_fail;
@@ -120,76 +183,6 @@ static void hdlcd_setup_mode_config(struct drm_device *drm)
 	drm->mode_config.max_width = HDLCD_MAX_XRES;
 	drm->mode_config.max_height = HDLCD_MAX_YRES;
 	drm->mode_config.funcs = &hdlcd_mode_config_funcs;
-}
-
-static irqreturn_t hdlcd_irq(int irq, void *arg)
-{
-	struct drm_device *drm = arg;
-	struct hdlcd_drm_private *hdlcd = drm->dev_private;
-	unsigned long irq_status;
-
-	irq_status = hdlcd_read(hdlcd, HDLCD_REG_INT_STATUS);
-
-#ifdef CONFIG_DEBUG_FS
-	if (irq_status & HDLCD_INTERRUPT_UNDERRUN)
-		atomic_inc(&hdlcd->buffer_underrun_count);
-
-	if (irq_status & HDLCD_INTERRUPT_DMA_END)
-		atomic_inc(&hdlcd->dma_end_count);
-
-	if (irq_status & HDLCD_INTERRUPT_BUS_ERROR)
-		atomic_inc(&hdlcd->bus_error_count);
-
-	if (irq_status & HDLCD_INTERRUPT_VSYNC)
-		atomic_inc(&hdlcd->vsync_count);
-
-#endif
-	if (irq_status & HDLCD_INTERRUPT_VSYNC)
-		drm_crtc_handle_vblank(&hdlcd->crtc);
-
-	/* acknowledge interrupt(s) */
-	hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR, irq_status);
-
-	return IRQ_HANDLED;
-}
-
-static void hdlcd_irq_preinstall(struct drm_device *drm)
-{
-	struct hdlcd_drm_private *hdlcd = drm->dev_private;
-	/* Ensure interrupts are disabled */
-	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, 0);
-	hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR, ~0);
-}
-
-static int hdlcd_irq_postinstall(struct drm_device *drm)
-{
-#ifdef CONFIG_DEBUG_FS
-	struct hdlcd_drm_private *hdlcd = drm->dev_private;
-	unsigned long irq_mask = hdlcd_read(hdlcd, HDLCD_REG_INT_MASK);
-
-	/* enable debug interrupts */
-	irq_mask |= HDLCD_DEBUG_INT_MASK;
-
-	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, irq_mask);
-#endif
-	return 0;
-}
-
-static void hdlcd_irq_uninstall(struct drm_device *drm)
-{
-	struct hdlcd_drm_private *hdlcd = drm->dev_private;
-	/* disable all the interrupts that we might have enabled */
-	unsigned long irq_mask = hdlcd_read(hdlcd, HDLCD_REG_INT_MASK);
-
-#ifdef CONFIG_DEBUG_FS
-	/* disable debug interrupts */
-	irq_mask &= ~HDLCD_DEBUG_INT_MASK;
-#endif
-
-	/* disable vsync interrupts */
-	irq_mask &= ~HDLCD_INTERRUPT_VSYNC;
-
-	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, irq_mask);
 }
 
 #ifdef CONFIG_DEBUG_FS
@@ -232,15 +225,11 @@ static void hdlcd_debugfs_init(struct drm_minor *minor)
 }
 #endif
 
-DEFINE_DRM_GEM_CMA_FOPS(fops);
+DEFINE_DRM_GEM_DMA_FOPS(fops);
 
-static struct drm_driver hdlcd_driver = {
+static const struct drm_driver hdlcd_driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
-	.irq_handler = hdlcd_irq,
-	.irq_preinstall = hdlcd_irq_preinstall,
-	.irq_postinstall = hdlcd_irq_postinstall,
-	.irq_uninstall = hdlcd_irq_uninstall,
-	DRM_GEM_CMA_DRIVER_OPS,
+	DRM_GEM_DMA_DRIVER_OPS,
 #ifdef CONFIG_DEBUG_FS
 	.debugfs_init = hdlcd_debugfs_init,
 #endif
@@ -295,6 +284,15 @@ static int hdlcd_drm_bind(struct device *dev)
 		goto err_vblank;
 	}
 
+	/*
+	 * If EFI left us running, take over from simple framebuffer
+	 * drivers. Read HDLCD_REG_COMMAND to see if we are enabled.
+	 */
+	if (hdlcd_read(hdlcd, HDLCD_REG_COMMAND)) {
+		hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 0);
+		drm_aperture_remove_framebuffers(false, &hdlcd_driver);
+	}
+
 	drm_mode_config_reset(drm);
 	drm_kms_helper_poll_init(drm);
 
@@ -316,7 +314,7 @@ err_pm_active:
 err_unload:
 	of_node_put(hdlcd->crtc.port);
 	hdlcd->crtc.port = NULL;
-	drm_irq_uninstall(drm);
+	hdlcd_irq_uninstall(hdlcd);
 	of_reserved_mem_device_release(drm->dev);
 err_free:
 	drm_mode_config_cleanup(drm);
@@ -338,7 +336,7 @@ static void hdlcd_drm_unbind(struct device *dev)
 	hdlcd->crtc.port = NULL;
 	pm_runtime_get_sync(dev);
 	drm_atomic_helper_shutdown(drm);
-	drm_irq_uninstall(drm);
+	hdlcd_irq_uninstall(hdlcd);
 	pm_runtime_put(dev);
 	if (pm_runtime_enabled(dev))
 		pm_runtime_disable(dev);
@@ -416,7 +414,7 @@ static struct platform_driver hdlcd_platform_driver = {
 	},
 };
 
-module_platform_driver(hdlcd_platform_driver);
+drm_module_platform_driver(hdlcd_platform_driver);
 
 MODULE_AUTHOR("Liviu Dudau");
 MODULE_DESCRIPTION("ARM HDLCD DRM driver");

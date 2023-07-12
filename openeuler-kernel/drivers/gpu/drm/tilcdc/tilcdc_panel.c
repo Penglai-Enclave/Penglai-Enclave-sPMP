@@ -4,6 +4,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  */
 
+#include <linux/backlight.h>
 #include <linux/gpio/consumer.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
@@ -399,7 +400,6 @@ static struct platform_driver panel_driver = {
 	.probe = panel_probe,
 	.remove = panel_remove,
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "tilcdc-panel",
 		.of_match_table = panel_of_match,
 	},

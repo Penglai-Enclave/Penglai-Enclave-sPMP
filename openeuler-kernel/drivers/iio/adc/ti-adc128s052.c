@@ -29,7 +29,7 @@ struct adc128 {
 	struct regulator *reg;
 	struct mutex lock;
 
-	u8 buffer[2] ____cacheline_aligned;
+	u8 buffer[2] __aligned(IIO_DMA_MINALIGN);
 };
 
 static int adc128_adc_conversion(struct adc128 *adc, u8 channel)
@@ -132,6 +132,11 @@ static const struct iio_info adc128_info = {
 	.read_raw = adc128_read_raw,
 };
 
+static void adc128_disable_regulator(void *reg)
+{
+	regulator_disable(reg);
+}
+
 static int adc128_probe(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev;
@@ -151,8 +156,6 @@ static int adc128_probe(struct spi_device *spi)
 	adc = iio_priv(indio_dev);
 	adc->spi = spi;
 
-	spi_set_drvdata(spi, indio_dev);
-
 	indio_dev->name = spi_get_device_id(spi)->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &adc128_info;
@@ -167,33 +170,24 @@ static int adc128_probe(struct spi_device *spi)
 	ret = regulator_enable(adc->reg);
 	if (ret < 0)
 		return ret;
+	ret = devm_add_action_or_reset(&spi->dev, adc128_disable_regulator,
+				       adc->reg);
+	if (ret)
+		return ret;
 
 	mutex_init(&adc->lock);
 
-	ret = iio_device_register(indio_dev);
-
-	return ret;
-}
-
-static int adc128_remove(struct spi_device *spi)
-{
-	struct iio_dev *indio_dev = spi_get_drvdata(spi);
-	struct adc128 *adc = iio_priv(indio_dev);
-
-	iio_device_unregister(indio_dev);
-	regulator_disable(adc->reg);
-
-	return 0;
+	return devm_iio_device_register(&spi->dev, indio_dev);
 }
 
 static const struct of_device_id adc128_of_match[] = {
-	{ .compatible = "ti,adc128s052", },
-	{ .compatible = "ti,adc122s021", },
-	{ .compatible = "ti,adc122s051", },
-	{ .compatible = "ti,adc122s101", },
-	{ .compatible = "ti,adc124s021", },
-	{ .compatible = "ti,adc124s051", },
-	{ .compatible = "ti,adc124s101", },
+	{ .compatible = "ti,adc128s052", .data = (void*)0L, },
+	{ .compatible = "ti,adc122s021", .data = (void*)1L, },
+	{ .compatible = "ti,adc122s051", .data = (void*)1L, },
+	{ .compatible = "ti,adc122s101", .data = (void*)1L, },
+	{ .compatible = "ti,adc124s021", .data = (void*)2L, },
+	{ .compatible = "ti,adc124s051", .data = (void*)2L, },
+	{ .compatible = "ti,adc124s101", .data = (void*)2L, },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, adc128_of_match);
@@ -225,7 +219,6 @@ static struct spi_driver adc128_driver = {
 		.acpi_match_table = ACPI_PTR(adc128_acpi_match),
 	},
 	.probe = adc128_probe,
-	.remove = adc128_remove,
 	.id_table = adc128_id,
 };
 module_spi_driver(adc128_driver);

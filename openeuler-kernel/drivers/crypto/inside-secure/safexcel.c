@@ -688,7 +688,7 @@ static int safexcel_hw_init(struct safexcel_crypto_priv *priv)
 		/* Leave the DSE threads reset state */
 		writel(0, EIP197_HIA_DSE_THR(priv) + EIP197_HIA_DSE_THR_CTRL(pe));
 
-		/* Configure the procesing engine thresholds */
+		/* Configure the processing engine thresholds */
 		writel(EIP197_PE_OUT_DBUF_THRES_MIN(opbuflo) |
 		       EIP197_PE_OUT_DBUF_THRES_MAX(opbufhi),
 		       EIP197_PE(priv) + EIP197_PE_OUT_DBUF_THRES(pe));
@@ -1166,11 +1166,8 @@ static int safexcel_request_ring_irq(void *pdev, int irqid,
 		dev = &plf_pdev->dev;
 		irq = platform_get_irq_byname(plf_pdev, irq_name);
 
-		if (irq < 0) {
-			dev_err(dev, "unable to get IRQ '%s' (err %d)\n",
-				irq_name, irq);
+		if (irq < 0)
 			return irq;
-		}
 	} else {
 		return -ENXIO;
 	}
@@ -1834,6 +1831,8 @@ static const struct of_device_id safexcel_of_match_table[] = {
 	{},
 };
 
+MODULE_DEVICE_TABLE(of, safexcel_of_match_table);
+
 static struct platform_driver  crypto_safexcel = {
 	.probe		= safexcel_probe,
 	.remove		= safexcel_remove,
@@ -1999,3 +1998,13 @@ MODULE_AUTHOR("Ofer Heifetz <oferh@marvell.com>");
 MODULE_AUTHOR("Igal Liberman <igall@marvell.com>");
 MODULE_DESCRIPTION("Support for SafeXcel cryptographic engines: EIP97 & EIP197");
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS(CRYPTO_INTERNAL);
+
+MODULE_FIRMWARE("ifpp.bin");
+MODULE_FIRMWARE("ipue.bin");
+MODULE_FIRMWARE("inside-secure/eip197b/ifpp.bin");
+MODULE_FIRMWARE("inside-secure/eip197b/ipue.bin");
+MODULE_FIRMWARE("inside-secure/eip197d/ifpp.bin");
+MODULE_FIRMWARE("inside-secure/eip197d/ipue.bin");
+MODULE_FIRMWARE("inside-secure/eip197_minifw/ifpp.bin");
+MODULE_FIRMWARE("inside-secure/eip197_minifw/ipue.bin");

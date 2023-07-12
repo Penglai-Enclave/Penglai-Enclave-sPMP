@@ -16,7 +16,8 @@
 #include <crypto/aead.h>
 #include <crypto/arc4.h>
 #include <crypto/gcm.h>
-#include <crypto/sha.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2.h>
 #include <crypto/sha3.h>
 
 #include "spu.h"
@@ -230,7 +231,7 @@ struct iproc_ctx_s {
 
 	/*
 	 * shash descriptor - needed to perform incremental hashing in
-	 * in software, when hw doesn't support it.
+	 * software, when hw doesn't support it.
 	 */
 	struct shash_desc *shash;
 

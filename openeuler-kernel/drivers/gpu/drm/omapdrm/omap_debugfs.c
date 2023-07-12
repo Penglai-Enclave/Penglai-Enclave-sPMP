@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2011 Texas Instruments Incorporated - https://www.ti.com/
  * Author: Rob Clark <rob.clark@linaro.org>
  */
 
@@ -10,6 +10,7 @@
 #include <drm/drm_debugfs.h>
 #include <drm/drm_file.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_framebuffer.h>
 
 #include "omap_drv.h"
 #include "omap_dmm_tiler.h"

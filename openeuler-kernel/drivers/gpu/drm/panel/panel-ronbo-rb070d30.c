@@ -75,13 +75,8 @@ static int rb070d30_panel_unprepare(struct drm_panel *panel)
 static int rb070d30_panel_enable(struct drm_panel *panel)
 {
 	struct rb070d30_panel *ctx = panel_to_rb070d30_panel(panel);
-	int ret;
 
-	ret = mipi_dsi_dcs_exit_sleep_mode(ctx->dsi);
-	if (ret)
-		return ret;
-
-	return 0;
+	return mipi_dsi_dcs_exit_sleep_mode(ctx->dsi);
 }
 
 static int rb070d30_panel_disable(struct drm_panel *panel)
@@ -204,17 +199,21 @@ static int rb070d30_panel_dsi_probe(struct mipi_dsi_device *dsi)
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->lanes = 4;
 
-	return mipi_dsi_attach(dsi);
+	ret = mipi_dsi_attach(dsi);
+	if (ret < 0) {
+		drm_panel_remove(&ctx->panel);
+		return ret;
+	}
+
+	return 0;
 }
 
-static int rb070d30_panel_dsi_remove(struct mipi_dsi_device *dsi)
+static void rb070d30_panel_dsi_remove(struct mipi_dsi_device *dsi)
 {
 	struct rb070d30_panel *ctx = mipi_dsi_get_drvdata(dsi);
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
-
-	return 0;
 }
 
 static const struct of_device_id rb070d30_panel_of_match[] = {

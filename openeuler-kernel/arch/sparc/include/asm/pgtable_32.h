@@ -48,7 +48,6 @@ unsigned long __init bootmem_init(unsigned long *pages_avail);
 #define PTRS_PER_PMD    	64
 #define PTRS_PER_PGD    	256
 #define USER_PTRS_PER_PGD	PAGE_OFFSET / PGDIR_SIZE
-#define FIRST_USER_ADDRESS	0UL
 #define PTE_SIZE		(PTRS_PER_PTE*4)
 
 #define PAGE_NONE	SRMMU_PAGE_NONE
@@ -64,25 +63,6 @@ unsigned long __init bootmem_init(unsigned long *pages_avail);
 void paging_init(void);
 
 extern unsigned long ptr_in_current_pgd;
-
-/*         xwr */
-#define __P000  PAGE_NONE
-#define __P001  PAGE_READONLY
-#define __P010  PAGE_COPY
-#define __P011  PAGE_COPY
-#define __P100  PAGE_READONLY
-#define __P101  PAGE_READONLY
-#define __P110  PAGE_COPY
-#define __P111  PAGE_COPY
-
-#define __S000	PAGE_NONE
-#define __S001	PAGE_READONLY
-#define __S010	PAGE_SHARED
-#define __S011	PAGE_SHARED
-#define __S100	PAGE_READONLY
-#define __S101	PAGE_READONLY
-#define __S110	PAGE_SHARED
-#define __S111	PAGE_SHARED
 
 /* First physical page can be anywhere, the following is needed so that
  * va-->pa and vice versa conversions work properly without performance
@@ -128,11 +108,16 @@ static inline int srmmu_device_memory(unsigned long x)
 	return ((x & 0xF0000000) != 0);
 }
 
+static inline unsigned long pmd_pfn(pmd_t pmd)
+{
+	return (pmd_val(pmd) & SRMMU_PTD_PMASK) >> (PAGE_SHIFT-4);
+}
+
 static inline struct page *pmd_page(pmd_t pmd)
 {
 	if (srmmu_device_memory(pmd_val(pmd)))
 		BUG();
-	return pfn_to_page((pmd_val(pmd) & SRMMU_PTD_PMASK) >> (PAGE_SHIFT-4));
+	return pfn_to_page(pmd_pfn(pmd));
 }
 
 static inline unsigned long __pmd_page(pmd_t pmd)
@@ -152,13 +137,13 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 	return (unsigned long)__nocache_va(v << 4);
 }
 
-static inline unsigned long pud_page_vaddr(pud_t pud)
+static inline pmd_t *pud_pgtable(pud_t pud)
 {
 	if (srmmu_device_memory(pud_val(pud))) {
-		return ~0;
+		return (pmd_t *)~0;
 	} else {
 		unsigned long v = pud_val(pud) & SRMMU_PTD_PMASK;
-		return (unsigned long)__nocache_va(v << 4);
+		return (pmd_t *)__nocache_va(v << 4);
 	}
 }
 
@@ -321,6 +306,9 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 		pgprot_val(newprot));
 }
 
+/* only used by the huge vmap code, should never be called */
+#define pud_page(pud)			NULL
+
 struct seq_file;
 void mmu_info(struct seq_file *m);
 
@@ -429,5 +417,7 @@ static inline int io_remap_pfn_range(struct vm_area_struct *vma,
 
 /* We provide our own get_unmapped_area to cope with VA holes for userland */
 #define HAVE_ARCH_UNMAPPED_AREA
+
+#define pmd_pgtable(pmd)	((pgtable_t)__pmd_page(pmd))
 
 #endif /* !(_SPARC_PGTABLE_H) */

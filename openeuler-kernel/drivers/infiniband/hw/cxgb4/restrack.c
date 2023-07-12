@@ -209,7 +209,7 @@ int c4iw_fill_res_cm_id_entry(struct sk_buff *msg,
 	epcp = (struct c4iw_ep_common *)iw_cm_id->provider_data;
 	if (!epcp)
 		return 0;
-	uep = kcalloc(1, sizeof(*uep), GFP_KERNEL);
+	uep = kzalloc(sizeof(*uep), GFP_KERNEL);
 	if (!uep)
 		return 0;
 
@@ -238,7 +238,7 @@ int c4iw_fill_res_cm_id_entry(struct sk_buff *msg,
 	if (rdma_nl_put_driver_u64_hex(msg, "history", epcp->history))
 		goto err_cancel_table;
 
-	if (epcp->state == LISTEN) {
+	if (listen_ep) {
 		if (rdma_nl_put_driver_u32(msg, "stid", listen_ep->stid))
 			goto err_cancel_table;
 		if (rdma_nl_put_driver_u32(msg, "backlog", listen_ep->backlog))

@@ -1,6 +1,5 @@
+/* SPDX-License-Identifier: MIT */
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2019 Intel Corporation
  */
 
@@ -36,6 +35,21 @@ enum {
 	INTEL_RPS_ACTIVE,
 	INTEL_RPS_INTERRUPTS,
 	INTEL_RPS_TIMER,
+};
+
+/**
+ * struct intel_rps_freq_caps - rps freq capabilities
+ * @rp0_freq: non-overclocked max frequency
+ * @rp1_freq: "less than" RP0 power/freqency
+ * @min_freq: aka RPn, minimum frequency
+ *
+ * Freq caps exposed by HW, values are in "hw units" and intel_gpu_freq()
+ * should be used to convert to MHz
+ */
+struct intel_rps_freq_caps {
+	u8 rp0_freq;
+	u8 rp1_freq;
+	u8 min_freq;
 };
 
 struct intel_rps {
@@ -93,7 +107,7 @@ struct intel_rps {
 	} power;
 
 	atomic_t num_waiters;
-	atomic_t boosts;
+	unsigned int boosts;
 
 	/* manual wa residency calculations */
 	struct intel_rps_ei ei;

@@ -27,7 +27,7 @@ SYM_FUNC_START(sme_encrypt_execute)
 	 *     - stack page (PAGE_SIZE)
 	 *     - encryption routine page (PAGE_SIZE)
 	 *     - intermediate copy buffer (PMD_PAGE_SIZE)
-	 *    R8 - physcial address of the pagetables to use for encryption
+	 *    R8 - physical address of the pagetables to use for encryption
 	 */
 
 	push	%rbp
@@ -65,7 +65,10 @@ SYM_FUNC_START(sme_encrypt_execute)
 	movq	%rbp, %rsp		/* Restore original stack pointer */
 	pop	%rbp
 
+	/* Offset to __x86_return_thunk would be wrong here */
+	ANNOTATE_UNRET_SAFE
 	ret
+	int3
 SYM_FUNC_END(sme_encrypt_execute)
 
 SYM_FUNC_START(__enc_copy)
@@ -151,6 +154,9 @@ SYM_FUNC_START(__enc_copy)
 	pop	%r12
 	pop	%r15
 
+	/* Offset to __x86_return_thunk would be wrong here */
+	ANNOTATE_UNRET_SAFE
 	ret
+	int3
 .L__enc_copy_end:
 SYM_FUNC_END(__enc_copy)

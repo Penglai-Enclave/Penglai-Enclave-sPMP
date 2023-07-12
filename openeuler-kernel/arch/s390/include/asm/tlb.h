@@ -27,9 +27,6 @@ static inline void tlb_flush(struct mmu_gather *tlb);
 static inline bool __tlb_remove_page_size(struct mmu_gather *tlb,
 					  struct page *page, int page_size);
 
-#define tlb_start_vma(tlb, vma)			do { } while (0)
-#define tlb_end_vma(tlb, vma)			do { } while (0)
-
 #define tlb_flush tlb_flush
 #define pte_free_tlb pte_free_tlb
 #define pmd_free_tlb pmd_free_tlb
@@ -66,7 +63,7 @@ static inline void pte_free_tlb(struct mmu_gather *tlb, pgtable_t pte,
 	__tlb_adjust_range(tlb, address, PAGE_SIZE);
 	tlb->mm->context.flush_mm = 1;
 	tlb->freed_tables = 1;
-	tlb->cleared_ptes = 1;
+	tlb->cleared_pmds = 1;
 	/*
 	 * page_table_free_rcu takes care of the allocation bit masks
 	 * of the 2K table fragments in the 4K page table page,
@@ -110,7 +107,6 @@ static inline void p4d_free_tlb(struct mmu_gather *tlb, p4d_t *p4d,
 	__tlb_adjust_range(tlb, address, PAGE_SIZE);
 	tlb->mm->context.flush_mm = 1;
 	tlb->freed_tables = 1;
-	tlb->cleared_p4ds = 1;
 	tlb_remove_table(tlb, p4d);
 }
 
@@ -128,7 +124,7 @@ static inline void pud_free_tlb(struct mmu_gather *tlb, pud_t *pud,
 		return;
 	tlb->mm->context.flush_mm = 1;
 	tlb->freed_tables = 1;
-	tlb->cleared_puds = 1;
+	tlb->cleared_p4ds = 1;
 	tlb_remove_table(tlb, pud);
 }
 

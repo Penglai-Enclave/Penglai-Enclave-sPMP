@@ -91,7 +91,7 @@ void uapi_compute_bundle_size(struct uverbs_api_ioctl_method *method_elm,
 }
 
 /**
- * uverbs_alloc() - Quickly allocate memory for use with a bundle
+ * _uverbs_alloc() - Quickly allocate memory for use with a bundle
  * @bundle: The bundle
  * @size: Number of bytes to allocate
  * @flags: Allocator flags
@@ -335,6 +335,14 @@ static int uverbs_process_attr(struct bundle_priv *pbundle,
 				return -EFAULT;
 		}
 
+		break;
+
+	case UVERBS_ATTR_TYPE_RAW_FD:
+		if (uattr->attr_data.reserved || uattr->len != 0 ||
+		    uattr->data_s64 < INT_MIN || uattr->data_s64 > INT_MAX)
+			return -EINVAL;
+		/* _uverbs_get_const_signed() is the accessor */
+		e->ptr_attr.data = uattr->data_s64;
 		break;
 
 	case UVERBS_ATTR_TYPE_IDRS_ARRAY:
@@ -752,9 +760,10 @@ int uverbs_output_written(const struct uverbs_attr_bundle *bundle, size_t idx)
 	return uverbs_set_output(bundle, attr);
 }
 
-int _uverbs_get_const(s64 *to, const struct uverbs_attr_bundle *attrs_bundle,
-		      size_t idx, s64 lower_bound, u64 upper_bound,
-		      s64  *def_val)
+int _uverbs_get_const_signed(s64 *to,
+			     const struct uverbs_attr_bundle *attrs_bundle,
+			     size_t idx, s64 lower_bound, u64 upper_bound,
+			     s64  *def_val)
 {
 	const struct uverbs_attr *attr;
 
@@ -773,7 +782,30 @@ int _uverbs_get_const(s64 *to, const struct uverbs_attr_bundle *attrs_bundle,
 
 	return 0;
 }
-EXPORT_SYMBOL(_uverbs_get_const);
+EXPORT_SYMBOL(_uverbs_get_const_signed);
+
+int _uverbs_get_const_unsigned(u64 *to,
+			       const struct uverbs_attr_bundle *attrs_bundle,
+			       size_t idx, u64 upper_bound, u64 *def_val)
+{
+	const struct uverbs_attr *attr;
+
+	attr = uverbs_attr_get(attrs_bundle, idx);
+	if (IS_ERR(attr)) {
+		if ((PTR_ERR(attr) != -ENOENT) || !def_val)
+			return PTR_ERR(attr);
+
+		*to = *def_val;
+	} else {
+		*to = attr->ptr_attr.data;
+	}
+
+	if (*to > upper_bound)
+		return -EINVAL;
+
+	return 0;
+}
+EXPORT_SYMBOL(_uverbs_get_const_unsigned);
 
 int uverbs_copy_to_struct_or_zero(const struct uverbs_attr_bundle *bundle,
 				  size_t idx, const void *from, size_t size)

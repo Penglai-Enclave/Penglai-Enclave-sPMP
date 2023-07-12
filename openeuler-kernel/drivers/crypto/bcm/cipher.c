@@ -26,11 +26,12 @@
 #include <crypto/aes.h>
 #include <crypto/internal/des.h>
 #include <crypto/hmac.h>
-#include <crypto/sha.h>
 #include <crypto/md5.h>
 #include <crypto/authenc.h>
 #include <crypto/skcipher.h>
 #include <crypto/hash.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2.h>
 #include <crypto/sha3.h>
 
 #include "util.h"
@@ -470,10 +471,8 @@ static int handle_skcipher_req(struct iproc_reqctx_s *rctx)
 static void handle_skcipher_resp(struct iproc_reqctx_s *rctx)
 {
 	struct spu_hw *spu = &iproc_priv.spu;
-#ifdef DEBUG
 	struct crypto_async_request *areq = rctx->parent;
 	struct skcipher_request *req = skcipher_request_cast(areq);
-#endif
 	struct iproc_ctx_s *ctx = rctx->ctx;
 	u32 payload_len;
 
@@ -995,13 +994,11 @@ static int ahash_req_done(struct iproc_reqctx_s *rctx)
 static void handle_ahash_resp(struct iproc_reqctx_s *rctx)
 {
 	struct iproc_ctx_s *ctx = rctx->ctx;
-#ifdef DEBUG
 	struct crypto_async_request *areq = rctx->parent;
 	struct ahash_request *req = ahash_request_cast(areq);
 	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
 	unsigned int blocksize =
 		crypto_tfm_alg_blocksize(crypto_ahash_tfm(ahash));
-#endif
 	/*
 	 * Save hash to use as input to next op if incremental. Might be copying
 	 * too much, but that's easier than figuring out actual digest size here
@@ -1022,6 +1019,7 @@ static void handle_ahash_resp(struct iproc_reqctx_s *rctx)
  * a SPU response message for an AEAD request. Includes buffers to catch SPU
  * message headers and the response data.
  * @mssg:	mailbox message containing the receive sg
+ * @req:	Crypto API request
  * @rctx:	crypto request context
  * @rx_frag_num: number of scatterlist elements required to hold the
  *		SPU response message
@@ -1930,7 +1928,7 @@ static int ahash_enqueue(struct ahash_request *req)
 	/* SPU2 hardware does not compute hash of zero length data */
 	if ((rctx->is_final == 1) && (rctx->total_todo == 0) &&
 	    (iproc_priv.spu.spu_type == SPU_TYPE_SPU2)) {
-		alg_name = crypto_tfm_alg_name(crypto_ahash_tfm(tfm));
+		alg_name = crypto_ahash_alg_name(tfm);
 		flow_log("Doing %sfinal %s zero-len hash request in software\n",
 			 rctx->is_final ? "" : "non-", alg_name);
 		err = do_shash((unsigned char *)alg_name, req->result,
@@ -2031,7 +2029,7 @@ static int ahash_init(struct ahash_request *req)
 		 * supported by the hardware, we need to handle it in software
 		 * by calling synchronous hash functions.
 		 */
-		alg_name = crypto_tfm_alg_name(crypto_ahash_tfm(tfm));
+		alg_name = crypto_ahash_alg_name(tfm);
 		hash = crypto_alloc_shash(alg_name, 0, 0);
 		if (IS_ERR(hash)) {
 			ret = PTR_ERR(hash);
@@ -2955,9 +2953,9 @@ static int aead_gcm_esp_setkey(struct crypto_aead *cipher,
 
 /**
  * rfc4543_gcm_esp_setkey() - setkey operation for RFC4543 variant of GCM/GMAC.
- * cipher: AEAD structure
- * key:    Key followed by 4 bytes of salt
- * keylen: Length of key plus salt, in bytes
+ * @cipher: AEAD structure
+ * @key:    Key followed by 4 bytes of salt
+ * @keylen: Length of key plus salt, in bytes
  *
  * Extracts salt from key and stores it to be prepended to IV on each request.
  * Digest is always 16 bytes

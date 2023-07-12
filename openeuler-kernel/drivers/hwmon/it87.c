@@ -519,7 +519,7 @@ struct it87_data {
 	unsigned short addr;
 	const char *name;
 	struct mutex update_lock;
-	char valid;		/* !=0 if following fields are valid */
+	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
 	u16 in_scaled;		/* Internal voltage sensors are scaled */
@@ -844,7 +844,7 @@ static struct it87_data *it87_update_device(struct device *dev)
 			data->vid &= 0x3f;
 		}
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -980,7 +980,7 @@ static ssize_t set_temp(struct device *dev, struct device_attribute *attr,
 			regval |= 0x80;
 			it87_write_value(data, IT87_REG_BEEP_ENABLE, regval);
 		}
-		data->valid = 0;
+		data->valid = false;
 		reg = IT87_REG_TEMP_OFFSET[nr];
 		break;
 	}
@@ -1079,7 +1079,7 @@ static ssize_t set_temp_type(struct device *dev, struct device_attribute *attr,
 	it87_write_value(data, IT87_REG_TEMP_ENABLE, data->sensor);
 	if (has_temp_old_peci(data, nr))
 		it87_write_value(data, IT87_REG_TEMP_EXTRA, data->extra);
-	data->valid = 0;	/* Force cache refresh */
+	data->valid = false;	/* Force cache refresh */
 	mutex_unlock(&data->update_lock);
 	return count;
 }
@@ -1834,7 +1834,7 @@ static ssize_t clear_intrusion(struct device *dev,
 		config |= BIT(5);
 		it87_write_value(data, IT87_REG_CONFIG, config);
 		/* Invalidate cache to force re-read */
-		data->valid = 0;
+		data->valid = false;
 	}
 	mutex_unlock(&data->update_lock);
 
@@ -1981,7 +1981,7 @@ static SENSOR_DEVICE_ATTR(in9_label, S_IRUGO, show_label, NULL, 3);
 static umode_t it87_in_is_visible(struct kobject *kobj,
 				  struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
+	struct device *dev = kobj_to_dev(kobj);
 	struct it87_data *data = dev_get_drvdata(dev);
 	int i = index / 5;	/* voltage index */
 	int a = index % 5;	/* attribute index */
@@ -2065,7 +2065,7 @@ static const struct attribute_group it87_group_in = {
 static umode_t it87_temp_is_visible(struct kobject *kobj,
 				    struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
+	struct device *dev = kobj_to_dev(kobj);
 	struct it87_data *data = dev_get_drvdata(dev);
 	int i = index / 7;	/* temperature index */
 	int a = index % 7;	/* attribute index */
@@ -2126,7 +2126,7 @@ static const struct attribute_group it87_group_temp = {
 static umode_t it87_is_visible(struct kobject *kobj,
 			       struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
+	struct device *dev = kobj_to_dev(kobj);
 	struct it87_data *data = dev_get_drvdata(dev);
 
 	if ((index == 2 || index == 3) && !data->has_vid)
@@ -2158,7 +2158,7 @@ static const struct attribute_group it87_group = {
 static umode_t it87_fan_is_visible(struct kobject *kobj,
 				   struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
+	struct device *dev = kobj_to_dev(kobj);
 	struct it87_data *data = dev_get_drvdata(dev);
 	int i = index / 5;	/* fan index */
 	int a = index % 5;	/* attribute index */
@@ -2229,7 +2229,7 @@ static const struct attribute_group it87_group_fan = {
 static umode_t it87_pwm_is_visible(struct kobject *kobj,
 				   struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
+	struct device *dev = kobj_to_dev(kobj);
 	struct it87_data *data = dev_get_drvdata(dev);
 	int i = index / 4;	/* pwm index */
 	int a = index % 4;	/* attribute index */
@@ -2290,7 +2290,7 @@ static const struct attribute_group it87_group_pwm = {
 static umode_t it87_auto_pwm_is_visible(struct kobject *kobj,
 					struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
+	struct device *dev = kobj_to_dev(kobj);
 	struct it87_data *data = dev_get_drvdata(dev);
 	int i = index / 11;	/* pwm index */
 	int a = index % 11;	/* attribute index */
@@ -3179,7 +3179,7 @@ static int it87_probe(struct platform_device *pdev)
 	return PTR_ERR_OR_ZERO(hwmon_dev);
 }
 
-static void __maybe_unused it87_resume_sio(struct platform_device *pdev)
+static void it87_resume_sio(struct platform_device *pdev)
 {
 	struct it87_data *data = dev_get_drvdata(&pdev->dev);
 	int err;
@@ -3211,7 +3211,7 @@ static void __maybe_unused it87_resume_sio(struct platform_device *pdev)
 	superio_exit(data->sioaddr);
 }
 
-static int __maybe_unused it87_resume(struct device *dev)
+static int it87_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct it87_data *data = dev_get_drvdata(dev);
@@ -3229,7 +3229,7 @@ static int __maybe_unused it87_resume(struct device *dev)
 	it87_start_monitoring(data);
 
 	/* force update */
-	data->valid = 0;
+	data->valid = false;
 
 	mutex_unlock(&data->update_lock);
 
@@ -3238,12 +3238,12 @@ static int __maybe_unused it87_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(it87_dev_pm_ops, NULL, it87_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(it87_dev_pm_ops, NULL, it87_resume);
 
 static struct platform_driver it87_driver = {
 	.driver = {
 		.name	= DRVNAME,
-		.pm     = &it87_dev_pm_ops,
+		.pm     = pm_sleep_ptr(&it87_dev_pm_ops),
 	},
 	.probe	= it87_probe,
 };

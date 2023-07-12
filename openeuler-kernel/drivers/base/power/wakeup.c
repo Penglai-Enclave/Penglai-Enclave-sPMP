@@ -34,7 +34,8 @@ suspend_state_t pm_suspend_target_state;
 bool events_check_enabled __read_mostly;
 
 /* First wakeup IRQ seen by the kernel in the last cycle. */
-unsigned int pm_wakeup_irq __read_mostly;
+static unsigned int wakeup_irq[2] __read_mostly;
+static DEFINE_RAW_SPINLOCK(wakeup_irq_lock);
 
 /* If greater than 0 and the system is suspending, terminate the suspend. */
 static atomic_t pm_abort_suspend __read_mostly;
@@ -400,9 +401,9 @@ void device_wakeup_detach_irq(struct device *dev)
 }
 
 /**
- * device_wakeup_arm_wake_irqs(void)
+ * device_wakeup_arm_wake_irqs -
  *
- * Itereates over the list of device wakeirqs to arm them.
+ * Iterates over the list of device wakeirqs to arm them.
  */
 void device_wakeup_arm_wake_irqs(void)
 {
@@ -416,9 +417,9 @@ void device_wakeup_arm_wake_irqs(void)
 }
 
 /**
- * device_wakeup_disarm_wake_irqs(void)
+ * device_wakeup_disarm_wake_irqs -
  *
- * Itereates over the list of device wakeirqs to disarm them.
+ * Iterates over the list of device wakeirqs to disarm them.
  */
 void device_wakeup_disarm_wake_irqs(void)
 {
@@ -500,38 +501,9 @@ void device_set_wakeup_capable(struct device *dev, bool capable)
 EXPORT_SYMBOL_GPL(device_set_wakeup_capable);
 
 /**
- * device_init_wakeup - Device wakeup initialization.
- * @dev: Device to handle.
- * @enable: Whether or not to enable @dev as a wakeup device.
- *
- * By default, most devices should leave wakeup disabled.  The exceptions are
- * devices that everyone expects to be wakeup sources: keyboards, power buttons,
- * possibly network interfaces, etc.  Also, devices that don't generate their
- * own wakeup requests but merely forward requests from one bus to another
- * (like PCI bridges) should have wakeup enabled by default.
- */
-int device_init_wakeup(struct device *dev, bool enable)
-{
-	int ret = 0;
-
-	if (!dev)
-		return -EINVAL;
-
-	if (enable) {
-		device_set_wakeup_capable(dev, true);
-		ret = device_wakeup_enable(dev);
-	} else {
-		device_wakeup_disable(dev);
-		device_set_wakeup_capable(dev, false);
-	}
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(device_init_wakeup);
-
-/**
  * device_set_wakeup_enable - Enable or disable a device to wake up the system.
  * @dev: Device to handle.
+ * @enable: enable/disable flag
  */
 int device_set_wakeup_enable(struct device *dev, bool enable)
 {
@@ -581,11 +553,11 @@ static bool wakeup_source_not_registered(struct wakeup_source *ws)
  */
 
 /**
- * wakup_source_activate - Mark given wakeup source as active.
+ * wakeup_source_activate - Mark given wakeup source as active.
  * @ws: Wakeup source to handle.
  *
  * Update the @ws' statistics and, if @ws has just been activated, notify the PM
- * core of the event by incrementing the counter of of wakeup events being
+ * core of the event by incrementing the counter of the wakeup events being
  * processed.
  */
 static void wakeup_source_activate(struct wakeup_source *ws)
@@ -686,7 +658,7 @@ static inline void update_prevent_sleep_time(struct wakeup_source *ws,
 #endif
 
 /**
- * wakup_source_deactivate - Mark given wakeup source as inactive.
+ * wakeup_source_deactivate - Mark given wakeup source as inactive.
  * @ws: Wakeup source to handle.
  *
  * Update the @ws' statistics and notify the PM core that the wakeup source has
@@ -731,7 +703,7 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 
 	/*
 	 * Increment the counter of registered wakeup events and decrement the
-	 * couter of wakeup events in progress simultaneously.
+	 * counter of wakeup events in progress simultaneously.
 	 */
 	cec = atomic_add_return(MAX_IN_PROGRESS, &combined_event_count);
 	trace_wakeup_source_deactivate(ws->name, cec);
@@ -785,7 +757,7 @@ EXPORT_SYMBOL_GPL(pm_relax);
 
 /**
  * pm_wakeup_timer_fn - Delayed finalization of a wakeup event.
- * @data: Address of the wakeup source object associated with the event source.
+ * @t: timer list
  *
  * Call wakeup_source_deactivate() for the wakeup source whose address is stored
  * in @data if it is currently active and its timer has not been canceled and
@@ -928,6 +900,7 @@ bool pm_wakeup_pending(void)
 
 	return ret || atomic_read(&pm_abort_suspend) > 0;
 }
+EXPORT_SYMBOL_GPL(pm_wakeup_pending);
 
 void pm_system_wakeup(void)
 {
@@ -941,19 +914,47 @@ void pm_system_cancel_wakeup(void)
 	atomic_dec_if_positive(&pm_abort_suspend);
 }
 
-void pm_wakeup_clear(bool reset)
+void pm_wakeup_clear(unsigned int irq_number)
 {
-	pm_wakeup_irq = 0;
-	if (reset)
+	raw_spin_lock_irq(&wakeup_irq_lock);
+
+	if (irq_number && wakeup_irq[0] == irq_number)
+		wakeup_irq[0] = wakeup_irq[1];
+	else
+		wakeup_irq[0] = 0;
+
+	wakeup_irq[1] = 0;
+
+	raw_spin_unlock_irq(&wakeup_irq_lock);
+
+	if (!irq_number)
 		atomic_set(&pm_abort_suspend, 0);
 }
 
 void pm_system_irq_wakeup(unsigned int irq_number)
 {
-	if (pm_wakeup_irq == 0) {
-		pm_wakeup_irq = irq_number;
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&wakeup_irq_lock, flags);
+
+	if (wakeup_irq[0] == 0)
+		wakeup_irq[0] = irq_number;
+	else if (wakeup_irq[1] == 0)
+		wakeup_irq[1] = irq_number;
+	else
+		irq_number = 0;
+
+	pm_pr_dbg("Triggering wakeup from IRQ %d\n", irq_number);
+
+	raw_spin_unlock_irqrestore(&wakeup_irq_lock, flags);
+
+	if (irq_number)
 		pm_system_wakeup();
-	}
+}
+
+unsigned int pm_wakeup_irq(void)
+{
+	return wakeup_irq[0];
 }
 
 /**
@@ -1021,7 +1022,7 @@ bool pm_save_wakeup_count(unsigned int count)
 #ifdef CONFIG_PM_AUTOSLEEP
 /**
  * pm_wakep_autosleep_enabled - Modify autosleep_enabled for all wakeup sources.
- * @enabled: Whether to set or to clear the autosleep_enabled flags.
+ * @set: Whether to set or to clear the autosleep_enabled flags.
  */
 void pm_wakep_autosleep_enabled(bool set)
 {
@@ -1179,7 +1180,7 @@ static const struct file_operations wakeup_sources_stats_fops = {
 
 static int __init wakeup_sources_debugfs_init(void)
 {
-	debugfs_create_file("wakeup_sources", S_IRUGO, NULL, NULL,
+	debugfs_create_file("wakeup_sources", 0444, NULL, NULL,
 			    &wakeup_sources_stats_fops);
 	return 0;
 }

@@ -48,11 +48,6 @@
 #include "drm_internal.h"
 #include "drm_legacy.h"
 
-#if defined(CONFIG_MMU) && defined(CONFIG_TRANSPARENT_HUGEPAGE)
-#include <uapi/asm/mman.h>
-#include <drm/drm_vma_manager.h>
-#endif
-
 /* from BKL pushdown */
 DEFINE_MUTEX(drm_global_mutex);
 
@@ -113,8 +108,7 @@ bool drm_dev_needs_global_mutex(struct drm_device *dev)
  * The memory mapping implementation will vary depending on how the driver
  * manages memory. Legacy drivers will use the deprecated drm_legacy_mmap()
  * function, modern drivers should use one of the provided memory-manager
- * specific implementations. For GEM-based drivers this is drm_gem_mmap(), and
- * for drivers which use the CMA GEM helpers it's drm_gem_cma_mmap().
+ * specific implementations. For GEM-based drivers this is drm_gem_mmap().
  *
  * No other file operations are supported by the DRM userspace API. Overall the
  * following is an example &file_operations structure::
@@ -132,7 +126,7 @@ bool drm_dev_needs_global_mutex(struct drm_device *dev)
  *     };
  *
  * For plain GEM based drivers there is the DEFINE_DRM_GEM_FOPS() macro, and for
- * CMA based drivers there is the DEFINE_DRM_GEM_CMA_FOPS() macro to make this
+ * DMA based drivers there is the DEFINE_DRM_GEM_DMA_FOPS() macro to make this
  * simpler.
  *
  * The driver's &file_operations must be stored in &drm_driver.fops.
@@ -177,6 +171,7 @@ struct drm_file *drm_file_alloc(struct drm_minor *minor)
 	init_waitqueue_head(&file->event_wait);
 	file->event_space = 4096; /* set aside 4k for event buffer */
 
+	spin_lock_init(&file->master_lookup_lock);
 	mutex_init(&file->event_read_lock);
 
 	if (drm_core_check_feature(dev, DRIVER_GEM))
@@ -240,9 +235,6 @@ static void drm_events_release(struct drm_file *file_priv)
  * before calling this.
  *
  * If NULL is passed, this is a no-op.
- *
- * RETURNS:
- * 0 on success, or error code on failure.
  */
 void drm_file_free(struct drm_file *file)
 {
@@ -258,9 +250,11 @@ void drm_file_free(struct drm_file *file)
 		  (long)old_encode_dev(file->minor->kdev->devt),
 		  atomic_read(&dev->open_count));
 
+#ifdef CONFIG_DRM_LEGACY
 	if (drm_core_check_feature(dev, DRIVER_LEGACY) &&
 	    dev->driver->preclose)
 		dev->driver->preclose(dev, file);
+#endif
 
 	if (drm_core_check_feature(dev, DRIVER_LEGACY))
 		drm_legacy_lock_release(dev, file->filp);
@@ -369,6 +363,7 @@ static int drm_open_helper(struct file *filp, struct drm_minor *minor)
 	list_add(&priv->lhead, &dev->filelist);
 	mutex_unlock(&dev->filelist_mutex);
 
+#ifdef CONFIG_DRM_LEGACY
 #ifdef __alpha__
 	/*
 	 * Default the hose
@@ -389,6 +384,7 @@ static int drm_open_helper(struct file *filp, struct drm_minor *minor)
 		}
 	}
 #endif
+#endif
 
 	return 0;
 }
@@ -404,7 +400,7 @@ static int drm_open_helper(struct file *filp, struct drm_minor *minor)
  *
  * RETURNS:
  *
- * 0 on success or negative errno value on falure.
+ * 0 on success or negative errno value on failure.
  */
 int drm_open(struct inode *inode, struct file *filp)
 {
@@ -547,12 +543,11 @@ EXPORT_SYMBOL(drm_release_noglobal);
  * @offset: offset to read
  *
  * This function must be used by drivers as their &file_operations.read
- * method iff they use DRM events for asynchronous signalling to userspace.
+ * method if they use DRM events for asynchronous signalling to userspace.
  * Since events are used by the KMS API for vblank and page flip completion this
  * means all modern display drivers must use it.
  *
- * @offset is ignored, DRM events are read like a pipe. Therefore drivers also
- * must set the &file_operation.llseek to no_llseek(). Polling support is
+ * @offset is ignored, DRM events are read like a pipe. Polling support is
  * provided by drm_poll().
  *
  * This function will only ever read a full event. Therefore userspace must
@@ -640,7 +635,7 @@ EXPORT_SYMBOL(drm_read);
  * @wait: poll waiter table
  *
  * This function must be used by drivers as their &file_operations.read method
- * iff they use DRM events for asynchronous signalling to userspace.  Since
+ * if they use DRM events for asynchronous signalling to userspace.  Since
  * events are used by the KMS API for vblank and page flip completion this means
  * all modern display drivers must use it.
  *
@@ -774,6 +769,60 @@ void drm_event_cancel_free(struct drm_device *dev,
 }
 EXPORT_SYMBOL(drm_event_cancel_free);
 
+static void drm_send_event_helper(struct drm_device *dev,
+			   struct drm_pending_event *e, ktime_t timestamp)
+{
+	assert_spin_locked(&dev->event_lock);
+
+	if (e->completion) {
+		complete_all(e->completion);
+		e->completion_release(e->completion);
+		e->completion = NULL;
+	}
+
+	if (e->fence) {
+		if (timestamp)
+			dma_fence_signal_timestamp(e->fence, timestamp);
+		else
+			dma_fence_signal(e->fence);
+		dma_fence_put(e->fence);
+	}
+
+	if (!e->file_priv) {
+		kfree(e);
+		return;
+	}
+
+	list_del(&e->pending_link);
+	list_add_tail(&e->link,
+		      &e->file_priv->event_list);
+	wake_up_interruptible_poll(&e->file_priv->event_wait,
+		EPOLLIN | EPOLLRDNORM);
+}
+
+/**
+ * drm_send_event_timestamp_locked - send DRM event to file descriptor
+ * @dev: DRM device
+ * @e: DRM event to deliver
+ * @timestamp: timestamp to set for the fence event in kernel's CLOCK_MONOTONIC
+ * time domain
+ *
+ * This function sends the event @e, initialized with drm_event_reserve_init(),
+ * to its associated userspace DRM file. Callers must already hold
+ * &drm_device.event_lock.
+ *
+ * Note that the core will take care of unlinking and disarming events when the
+ * corresponding DRM file is closed. Drivers need not worry about whether the
+ * DRM file for this event still exists and can call this function upon
+ * completion of the asynchronous work unconditionally.
+ */
+void drm_send_event_timestamp_locked(struct drm_device *dev,
+				     struct drm_pending_event *e, ktime_t timestamp)
+{
+	drm_send_event_helper(dev, e, timestamp);
+}
+EXPORT_SYMBOL(drm_send_event_timestamp_locked);
+
 /**
  * drm_send_event_locked - send DRM event to file descriptor
  * @dev: DRM device
@@ -790,29 +839,7 @@ EXPORT_SYMBOL(drm_event_cancel_free);
  */
 void drm_send_event_locked(struct drm_device *dev, struct drm_pending_event *e)
 {
-	assert_spin_locked(&dev->event_lock);
-
-	if (e->completion) {
-		complete_all(e->completion);
-		e->completion_release(e->completion);
-		e->completion = NULL;
-	}
-
-	if (e->fence) {
-		dma_fence_signal(e->fence);
-		dma_fence_put(e->fence);
-	}
-
-	if (!e->file_priv) {
-		kfree(e);
-		return;
-	}
-
-	list_del(&e->pending_link);
-	list_add_tail(&e->link,
-		      &e->file_priv->event_list);
-	wake_up_interruptible_poll(&e->file_priv->event_wait,
-		EPOLLIN | EPOLLRDNORM);
+	drm_send_event_helper(dev, e, 0);
 }
 EXPORT_SYMBOL(drm_send_event_locked);
 
@@ -836,7 +863,7 @@ void drm_send_event(struct drm_device *dev, struct drm_pending_event *e)
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&dev->event_lock, irqflags);
-	drm_send_event_locked(dev, e);
+	drm_send_event_helper(dev, e, 0);
 	spin_unlock_irqrestore(&dev->event_lock, irqflags);
 }
 EXPORT_SYMBOL(drm_send_event);
@@ -880,139 +907,3 @@ struct file *mock_drm_getfile(struct drm_minor *minor, unsigned int flags)
 	return file;
 }
 EXPORT_SYMBOL_FOR_TESTS_ONLY(mock_drm_getfile);
-
-#ifdef CONFIG_MMU
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-/*
- * drm_addr_inflate() attempts to construct an aligned area by inflating
- * the area size and skipping the unaligned start of the area.
- * adapted from shmem_get_unmapped_area()
- */
-static unsigned long drm_addr_inflate(unsigned long addr,
-				      unsigned long len,
-				      unsigned long pgoff,
-				      unsigned long flags,
-				      unsigned long huge_size)
-{
-	unsigned long offset, inflated_len;
-	unsigned long inflated_addr;
-	unsigned long inflated_offset;
-
-	offset = (pgoff << PAGE_SHIFT) & (huge_size - 1);
-	if (offset && offset + len < 2 * huge_size)
-		return addr;
-	if ((addr & (huge_size - 1)) == offset)
-		return addr;
-
-	inflated_len = len + huge_size - PAGE_SIZE;
-	if (inflated_len > TASK_SIZE)
-		return addr;
-	if (inflated_len < len)
-		return addr;
-
-	inflated_addr = current->mm->get_unmapped_area(NULL, 0, inflated_len,
-						       0, flags);
-	if (IS_ERR_VALUE(inflated_addr))
-		return addr;
-	if (inflated_addr & ~PAGE_MASK)
-		return addr;
-
-	inflated_offset = inflated_addr & (huge_size - 1);
-	inflated_addr += offset - inflated_offset;
-	if (inflated_offset > offset)
-		inflated_addr += huge_size;
-
-	if (inflated_addr > TASK_SIZE - len)
-		return addr;
-
-	return inflated_addr;
-}
-
-/**
- * drm_get_unmapped_area() - Get an unused user-space virtual memory area
- * suitable for huge page table entries.
- * @file: The struct file representing the address space being mmap()'d.
- * @uaddr: Start address suggested by user-space.
- * @len: Length of the area.
- * @pgoff: The page offset into the address space.
- * @flags: mmap flags
- * @mgr: The address space manager used by the drm driver. This argument can
- * probably be removed at some point when all drivers use the same
- * address space manager.
- *
- * This function attempts to find an unused user-space virtual memory area
- * that can accommodate the size we want to map, and that is properly
- * aligned to facilitate huge page table entries matching actual
- * huge pages or huge page aligned memory in buffer objects. Buffer objects
- * are assumed to start at huge page boundary pfns (io memory) or be
- * populated by huge pages aligned to the start of the buffer object
- * (system- or coherent memory). Adapted from shmem_get_unmapped_area.
- *
- * Return: aligned user-space address.
- */
-unsigned long drm_get_unmapped_area(struct file *file,
-				    unsigned long uaddr, unsigned long len,
-				    unsigned long pgoff, unsigned long flags,
-				    struct drm_vma_offset_manager *mgr)
-{
-	unsigned long addr;
-	unsigned long inflated_addr;
-	struct drm_vma_offset_node *node;
-
-	if (len > TASK_SIZE)
-		return -ENOMEM;
-
-	/*
-	 * @pgoff is the file page-offset the huge page boundaries of
-	 * which typically aligns to physical address huge page boundaries.
-	 * That's not true for DRM, however, where physical address huge
-	 * page boundaries instead are aligned with the offset from
-	 * buffer object start. So adjust @pgoff to be the offset from
-	 * buffer object start.
-	 */
-	drm_vma_offset_lock_lookup(mgr);
-	node = drm_vma_offset_lookup_locked(mgr, pgoff, 1);
-	if (node)
-		pgoff -= node->vm_node.start;
-	drm_vma_offset_unlock_lookup(mgr);
-
-	addr = current->mm->get_unmapped_area(file, uaddr, len, pgoff, flags);
-	if (IS_ERR_VALUE(addr))
-		return addr;
-	if (addr & ~PAGE_MASK)
-		return addr;
-	if (addr > TASK_SIZE - len)
-		return addr;
-
-	if (len < HPAGE_PMD_SIZE)
-		return addr;
-	if (flags & MAP_FIXED)
-		return addr;
-	/*
-	 * Our priority is to support MAP_SHARED mapped hugely;
-	 * and support MAP_PRIVATE mapped hugely too, until it is COWed.
-	 * But if caller specified an address hint, respect that as before.
-	 */
-	if (uaddr)
-		return addr;
-
-	inflated_addr = drm_addr_inflate(addr, len, pgoff, flags,
-					 HPAGE_PMD_SIZE);
-
-	if (IS_ENABLED(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD) &&
-	    len >= HPAGE_PUD_SIZE)
-		inflated_addr = drm_addr_inflate(inflated_addr, len, pgoff,
-						 flags, HPAGE_PUD_SIZE);
-	return inflated_addr;
-}
-#else /* CONFIG_TRANSPARENT_HUGEPAGE */
-unsigned long drm_get_unmapped_area(struct file *file,
-				    unsigned long uaddr, unsigned long len,
-				    unsigned long pgoff, unsigned long flags,
-				    struct drm_vma_offset_manager *mgr)
-{
-	return current->mm->get_unmapped_area(file, uaddr, len, pgoff, flags);
-}
-#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
-EXPORT_SYMBOL_GPL(drm_get_unmapped_area);
-#endif /* CONFIG_MMU */

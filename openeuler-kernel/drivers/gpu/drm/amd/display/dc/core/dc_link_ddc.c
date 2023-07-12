@@ -23,8 +23,6 @@
  *
  */
 
-#include <linux/slab.h>
-
 #include "dm_services.h"
 #include "dm_helpers.h"
 #include "gpio_service_interface.h"
@@ -36,9 +34,21 @@
 #include "core_types.h"
 #include "dc_link_ddc.h"
 #include "dce/dce_aux.h"
+#include "dmub/inc/dmub_cmd.h"
+#include "link_dpcd.h"
+#include "include/dal_asic_id.h"
+
+#define DC_LOGGER_INIT(logger)
+
+static const uint8_t DP_VGA_DONGLE_BRANCH_DEV_NAME[] = "DpVga";
+/* DP to Dual link DVI converter */
+static const uint8_t DP_DVI_CONVERTER_ID_4[] = "m2DVIa";
+static const uint8_t DP_DVI_CONVERTER_ID_5[] = "3393N2";
 
 #define AUX_POWER_UP_WA_DELAY 500
 #define I2C_OVER_AUX_DEFER_WA_DELAY 70
+#define DPVGA_DONGLE_AUX_DEFER_WA_DELAY 40
+#define I2C_OVER_AUX_DEFER_WA_DELAY_1MS 1
 
 /* CV smart dongle slave address for retrieving supported HDTV modes*/
 #define CV_SMART_DONGLE_ADDRESS 0x20
@@ -85,16 +95,13 @@ union hdmi_scdc_update_read_data {
 };
 
 union hdmi_scdc_status_flags_data {
-	uint8_t byte[2];
+	uint8_t byte;
 	struct {
 		uint8_t CLOCK_DETECTED:1;
 		uint8_t CH0_LOCKED:1;
 		uint8_t CH1_LOCKED:1;
 		uint8_t CH2_LOCKED:1;
 		uint8_t RESERVED:4;
-		uint8_t RESERVED2:8;
-		uint8_t RESERVED3:8;
-
 	} fields;
 };
 
@@ -186,9 +193,14 @@ static void ddc_service_construct(
 	ddc_service->link = init_data->link;
 	ddc_service->ctx = init_data->ctx;
 
-	if (BP_RESULT_OK != dcb->funcs->get_i2c_info(dcb, init_data->id, &i2c_info)) {
+	if (init_data->is_dpia_link ||
+	    dcb->funcs->get_i2c_info(dcb, init_data->id, &i2c_info) != BP_RESULT_OK) {
 		ddc_service->ddc_pin = NULL;
 	} else {
+		DC_LOGGER_INIT(ddc_service->ctx->logger);
+		DC_LOG_DC("BIOS object table - i2c_line: %d", i2c_info.i2c_line);
+		DC_LOG_DC("BIOS object table - i2c_engine_id: %d", i2c_info.i2c_engine_id);
+
 		hw_info.ddc_channel = i2c_info.i2c_line;
 		if (ddc_service->link != NULL)
 			hw_info.hw_supported = i2c_info.i2c_hw_assist;
@@ -281,12 +293,30 @@ static uint32_t defer_delay_converter_wa(
 {
 	struct dc_link *link = ddc->link;
 
-	if (link->dpcd_caps.branch_dev_id == DP_BRANCH_DEVICE_ID_0080E1 &&
+	if (link->dpcd_caps.dongle_type == DISPLAY_DONGLE_DP_VGA_CONVERTER &&
+		link->dpcd_caps.branch_dev_id == DP_BRANCH_DEVICE_ID_0080E1 &&
+		(link->dpcd_caps.branch_fw_revision[0] < 0x01 ||
+				(link->dpcd_caps.branch_fw_revision[0] == 0x01 &&
+				link->dpcd_caps.branch_fw_revision[1] < 0x40)) &&
 		!memcmp(link->dpcd_caps.branch_dev_name,
-			DP_DVI_CONVERTER_ID_4,
+		    DP_VGA_DONGLE_BRANCH_DEV_NAME,
 			sizeof(link->dpcd_caps.branch_dev_name)))
+
+		return defer_delay > DPVGA_DONGLE_AUX_DEFER_WA_DELAY ?
+			defer_delay : DPVGA_DONGLE_AUX_DEFER_WA_DELAY;
+
+	if (link->dpcd_caps.branch_dev_id == DP_BRANCH_DEVICE_ID_0080E1 &&
+	    !memcmp(link->dpcd_caps.branch_dev_name,
+		    DP_DVI_CONVERTER_ID_4,
+		    sizeof(link->dpcd_caps.branch_dev_name)))
 		return defer_delay > I2C_OVER_AUX_DEFER_WA_DELAY ?
 			defer_delay : I2C_OVER_AUX_DEFER_WA_DELAY;
+	if (link->dpcd_caps.branch_dev_id == DP_BRANCH_DEVICE_ID_006037 &&
+	    !memcmp(link->dpcd_caps.branch_dev_name,
+		    DP_DVI_CONVERTER_ID_5,
+		    sizeof(link->dpcd_caps.branch_dev_name)))
+		return defer_delay > I2C_OVER_AUX_DEFER_WA_DELAY_1MS ?
+			I2C_OVER_AUX_DEFER_WA_DELAY_1MS : defer_delay;
 
 	return defer_delay;
 }
@@ -460,6 +490,7 @@ void dal_ddc_service_i2c_query_dp_dual_mode_adaptor(
 			sink_cap->max_hdmi_pixel_clock =
 				max_tmds_clk * 1000;
 		}
+		sink_cap->is_dongle_type_one = false;
 
 	} else {
 		if (is_valid_hdmi_signature == true) {
@@ -477,6 +508,7 @@ void dal_ddc_service_i2c_query_dp_dual_mode_adaptor(
 					"Type 1 DP-HDMI passive dongle (no signature) %dMhz: ",
 					sink_cap->max_hdmi_pixel_clock / 1000);
 		}
+		sink_cap->is_dongle_type_one = true;
 	}
 
 	return;
@@ -508,15 +540,9 @@ bool dal_ddc_service_query_ddc_data(
 
 	uint32_t payloads_num = write_payloads + read_payloads;
 
-
-	if (write_size > EDID_SEGMENT_SIZE || read_size > EDID_SEGMENT_SIZE)
-		return false;
-
 	if (!payloads_num)
 		return false;
 
-	/*TODO: len of payload data for i2c and aux is uint8!!!!,
-	 *  but we want to read 256 over i2c!!!!*/
 	if (dal_ddc_service_is_in_aux_transaction_mode(ddc)) {
 		struct aux_payload payload;
 
@@ -524,13 +550,14 @@ bool dal_ddc_service_query_ddc_data(
 		payload.address = address;
 		payload.reply = NULL;
 		payload.defer_delay = get_defer_delay(ddc);
+		payload.write_status_update = false;
 
 		if (write_size != 0) {
 			payload.write = true;
 			/* should not set mot (middle of transaction) to 0
 			 * if there are pending read payloads
 			 */
-			payload.mot = read_size == 0 ? false : true;
+			payload.mot = !(read_size == 0);
 			payload.length = write_size;
 			payload.data = write_buf;
 
@@ -595,24 +622,24 @@ bool dal_ddc_submit_aux_command(struct ddc_service *ddc,
 	do {
 		struct aux_payload current_payload;
 		bool is_end_of_payload = (retrieved + DEFAULT_AUX_MAX_DATA_SIZE) >=
-			payload->length;
+				payload->length;
+		uint32_t payload_length = is_end_of_payload ?
+				payload->length - retrieved : DEFAULT_AUX_MAX_DATA_SIZE;
 
 		current_payload.address = payload->address;
 		current_payload.data = &payload->data[retrieved];
 		current_payload.defer_delay = payload->defer_delay;
 		current_payload.i2c_over_aux = payload->i2c_over_aux;
-		current_payload.length = is_end_of_payload ?
-			payload->length - retrieved : DEFAULT_AUX_MAX_DATA_SIZE;
-		/* set mot (middle of transaction) to false
-		 * if it is the last payload
-		 */
+		current_payload.length = payload_length;
+		/* set mot (middle of transaction) to false if it is the last payload */
 		current_payload.mot = is_end_of_payload ? payload->mot:true;
+		current_payload.write_status_update = false;
 		current_payload.reply = payload->reply;
 		current_payload.write = payload->write;
 
 		ret = dc_link_aux_transfer_with_retries(ddc, &current_payload);
 
-		retrieved += current_payload.length;
+		retrieved += payload_length;
 	} while (retrieved < payload->length && ret == true);
 
 	return ret;
@@ -627,9 +654,14 @@ bool dal_ddc_submit_aux_command(struct ddc_service *ddc,
  */
 int dc_link_aux_transfer_raw(struct ddc_service *ddc,
 		struct aux_payload *payload,
-		enum aux_channel_operation_result *operation_result)
+		enum aux_return_code_type *operation_result)
 {
-	return dce_aux_transfer_raw(ddc, payload, operation_result);
+	if (ddc->ctx->dc->debug.enable_dmub_aux_for_legacy_ddc ||
+	    !ddc->ddc_pin) {
+		return dce_aux_transfer_dmub_raw(ddc, payload, operation_result);
+	} else {
+		return dce_aux_transfer_raw(ddc, payload, operation_result);
+	}
 }
 
 /* dc_link_aux_transfer_with_retries() - Attempt to submit an
@@ -653,10 +685,30 @@ bool dc_link_aux_try_to_configure_timeout(struct ddc_service *ddc,
 	bool result = false;
 	struct ddc *ddc_pin = ddc->ddc_pin;
 
+	if ((ddc->link->chip_caps & EXT_DISPLAY_PATH_CAPS__DP_FIXED_VS_EN) &&
+			!ddc->link->dc->debug.disable_fixed_vs_aux_timeout_wa &&
+			ASICREV_IS_YELLOW_CARP(ddc->ctx->asic_id.hw_internal_rev)) {
+		/* Fixed VS workaround for AUX timeout */
+		const uint32_t fixed_vs_address = 0xF004F;
+		const uint8_t fixed_vs_data[4] = {0x1, 0x22, 0x63, 0xc};
+
+		core_link_write_dpcd(ddc->link,
+				fixed_vs_address,
+				fixed_vs_data,
+				sizeof(fixed_vs_data));
+
+		timeout = 3072;
+	}
+
+	/* Do not try to access nonexistent DDC pin. */
+	if (ddc->link->ep_type != DISPLAY_ENDPOINT_PHY)
+		return true;
+
 	if (ddc->ctx->dc->res_pool->engines[ddc_pin->pin_data->en]->funcs->configure_timeout) {
 		ddc->ctx->dc->res_pool->engines[ddc_pin->pin_data->en]->funcs->configure_timeout(ddc, timeout);
 		result = true;
 	}
+
 	return result;
 }
 
@@ -724,7 +776,7 @@ void dal_ddc_service_read_scdc_data(struct ddc_service *ddc_service)
 	dal_ddc_service_query_ddc_data(ddc_service, slave_address, &offset,
 			sizeof(offset), &tmds_config, sizeof(tmds_config));
 	if (tmds_config & 0x1) {
-		union hdmi_scdc_status_flags_data status_data = { {0} };
+		union hdmi_scdc_status_flags_data status_data = {0};
 		uint8_t scramble_status = 0;
 
 		offset = HDMI_SCDC_SCRAMBLER_STATUS;
@@ -733,7 +785,7 @@ void dal_ddc_service_read_scdc_data(struct ddc_service *ddc_service)
 				sizeof(scramble_status));
 		offset = HDMI_SCDC_STATUS_FLAGS;
 		dal_ddc_service_query_ddc_data(ddc_service, slave_address,
-				&offset, sizeof(offset), status_data.byte,
+				&offset, sizeof(offset), &status_data.byte,
 				sizeof(status_data.byte));
 	}
 }

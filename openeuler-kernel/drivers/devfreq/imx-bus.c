@@ -45,18 +45,6 @@ static int imx_bus_get_cur_freq(struct device *dev, unsigned long *freq)
 	return 0;
 }
 
-static int imx_bus_get_dev_status(struct device *dev,
-		struct devfreq_dev_status *stat)
-{
-	struct imx_bus *priv = dev_get_drvdata(dev);
-
-	stat->busy_time = 0;
-	stat->total_time = 0;
-	stat->current_frequency = clk_get_rate(priv->clk);
-
-	return 0;
-}
-
 static void imx_bus_exit(struct device *dev)
 {
 	struct imx_bus *priv = dev_get_drvdata(dev);
@@ -71,7 +59,7 @@ static int imx_bus_init_icc(struct device *dev)
 	struct imx_bus *priv = dev_get_drvdata(dev);
 	const char *icc_driver_name;
 
-	if (!of_get_property(dev->of_node, "#interconnect-cells", 0))
+	if (!of_get_property(dev->of_node, "#interconnect-cells", NULL))
 		return 0;
 	if (!IS_ENABLED(CONFIG_INTERCONNECT_IMX)) {
 		dev_warn(dev, "imx interconnect drivers disabled\n");
@@ -129,9 +117,7 @@ static int imx_bus_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	priv->profile.polling_ms = 1000;
 	priv->profile.target = imx_bus_target;
-	priv->profile.get_dev_status = imx_bus_get_dev_status;
 	priv->profile.exit = imx_bus_exit;
 	priv->profile.get_cur_freq = imx_bus_get_cur_freq;
 	priv->profile.initial_freq = clk_get_rate(priv->clk);
@@ -159,6 +145,7 @@ static const struct of_device_id imx_bus_of_match[] = {
 	{ .compatible = "fsl,imx8mq-noc", .data = "imx8mq-interconnect", },
 	{ .compatible = "fsl,imx8mm-noc", .data = "imx8mm-interconnect", },
 	{ .compatible = "fsl,imx8mn-noc", .data = "imx8mn-interconnect", },
+	{ .compatible = "fsl,imx8mp-noc", .data = "imx8mp-interconnect", },
 	{ .compatible = "fsl,imx8m-noc", },
 	{ .compatible = "fsl,imx8m-nic", },
 	{ /* sentinel */ },
@@ -169,7 +156,7 @@ static struct platform_driver imx_bus_platdrv = {
 	.probe		= imx_bus_probe,
 	.driver = {
 		.name	= "imx-bus-devfreq",
-		.of_match_table = of_match_ptr(imx_bus_of_match),
+		.of_match_table = imx_bus_of_match,
 	},
 };
 module_platform_driver(imx_bus_platdrv);

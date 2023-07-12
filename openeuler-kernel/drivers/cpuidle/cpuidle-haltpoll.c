@@ -32,7 +32,7 @@ static int default_enter_idle(struct cpuidle_device *dev,
 		local_irq_enable();
 		return index;
 	}
-	arch_cpu_idle();
+	default_idle();
 	return index;
 }
 
@@ -96,7 +96,7 @@ static void haltpoll_uninit(void)
 
 static bool haltpoll_want(void)
 {
-	return kvm_para_has_hint(KVM_HINTS_REALTIME);
+	return kvm_para_has_hint(KVM_HINTS_REALTIME) || force;
 }
 
 static int __init haltpoll_init(void)
@@ -104,16 +104,14 @@ static int __init haltpoll_init(void)
 	int ret;
 	struct cpuidle_driver *drv = &haltpoll_driver;
 
-#ifdef CONFIG_X86
 	/* Do not load haltpoll if idle= is passed */
 	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
 		return -ENODEV;
-#endif
+
+	if (!kvm_para_available() || !haltpoll_want())
+		return -ENODEV;
 
 	cpuidle_poll_state_init(drv);
-
-	if (!force && (!kvm_para_available() || !haltpoll_want()))
-		return -ENODEV;
 
 	ret = cpuidle_register_driver(drv);
 	if (ret < 0)

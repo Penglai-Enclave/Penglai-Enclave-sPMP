@@ -44,7 +44,7 @@
 #define NUM_ELEMENTS(a) (sizeof(a) / sizeof((a)[0]))
 
 
-static bool mpc3_is_dwb_idle(
+bool mpc3_is_dwb_idle(
 	struct mpc *mpc,
 	int dwb_id)
 {
@@ -59,7 +59,7 @@ static bool mpc3_is_dwb_idle(
 		return false;
 }
 
-static void mpc3_set_dwb_mux(
+void mpc3_set_dwb_mux(
 	struct mpc *mpc,
 	int dwb_id,
 	int mpcc_id)
@@ -70,7 +70,7 @@ static void mpc3_set_dwb_mux(
 		MPC_DWB0_MUX, mpcc_id);
 }
 
-static void mpc3_disable_dwb_mux(
+void mpc3_disable_dwb_mux(
 	struct mpc *mpc,
 	int dwb_id)
 {
@@ -80,7 +80,7 @@ static void mpc3_disable_dwb_mux(
 		MPC_DWB0_MUX, 0xf);
 }
 
-static void mpc3_set_out_rate_control(
+void mpc3_set_out_rate_control(
 	struct mpc *mpc,
 	int opp_id,
 	bool enable,
@@ -99,7 +99,7 @@ static void mpc3_set_out_rate_control(
 			MPC_OUT_FLOW_CONTROL_COUNT, flow_control->flow_ctrl_cnt1);
 }
 
-static enum dc_lut_mode mpc3_get_ogam_current(struct mpc *mpc, int mpcc_id)
+enum dc_lut_mode mpc3_get_ogam_current(struct mpc *mpc, int mpcc_id)
 {
 	/*Contrary to DCN2 and DCN1 wherein a single status register field holds this info;
 	 *in DCN3/3AG, we need to read two separate fields to retrieve the same info
@@ -109,42 +109,52 @@ static enum dc_lut_mode mpc3_get_ogam_current(struct mpc *mpc, int mpcc_id)
 	uint32_t state_ram_lut_in_use;
 	struct dcn30_mpc *mpc30 = TO_DCN30_MPC(mpc);
 
-	REG_GET_2(MPCC_OGAM_CONTROL[mpcc_id],
-			MPCC_OGAM_MODE_CURRENT, &state_mode,
-			MPCC_OGAM_SELECT_CURRENT, &state_ram_lut_in_use);
+	REG_GET_2(MPCC_OGAM_CONTROL[mpcc_id], MPCC_OGAM_MODE_CURRENT, &state_mode,
+		  MPCC_OGAM_SELECT_CURRENT, &state_ram_lut_in_use);
 
-		switch (state_mode) {
+	switch (state_mode) {
+	case 0:
+		mode = LUT_BYPASS;
+		break;
+	case 2:
+		switch (state_ram_lut_in_use) {
 		case 0:
-			mode = LUT_BYPASS;
+			mode = LUT_RAM_A;
 			break;
-		case 2:
-			switch (state_ram_lut_in_use) {
-			case 0:
-				mode = LUT_RAM_A;
-				break;
-			case 1:
-				mode = LUT_RAM_B;
-				break;
-			default:
-				mode = LUT_BYPASS;
-				break;
-			}
+		case 1:
+			mode = LUT_RAM_B;
 			break;
 		default:
 			mode = LUT_BYPASS;
 			break;
 		}
-		return mode;
+		break;
+	default:
+		mode = LUT_BYPASS;
+		break;
+	}
+
+	return mode;
 }
 
-static void mpc3_power_on_ogam_lut(
+void mpc3_power_on_ogam_lut(
 		struct mpc *mpc, int mpcc_id,
 		bool power_on)
 {
 	struct dcn30_mpc *mpc30 = TO_DCN30_MPC(mpc);
 
-	REG_SET(MPCC_MEM_PWR_CTRL[mpcc_id], 0,
-			MPCC_OGAM_MEM_PWR_FORCE, power_on == true ? 0:1);
+	/*
+	 * Powering on: force memory active so the LUT can be updated.
+	 * Powering off: allow entering memory low power mode
+	 *
+	 * Memory low power mode is controlled during MPC OGAM LUT init.
+	 */
+	REG_UPDATE(MPCC_MEM_PWR_CTRL[mpcc_id],
+		   MPCC_OGAM_MEM_PWR_DIS, power_on != 0);
+
+	/* Wait for memory to be powered on - we won't be able to write to it otherwise. */
+	if (power_on)
+		REG_WAIT(MPCC_MEM_PWR_CTRL[mpcc_id], MPCC_OGAM_MEM_PWR_STATE, 0, 10, 10);
 }
 
 static void mpc3_configure_ogam_lut(
@@ -347,7 +357,7 @@ void mpc3_set_output_gamma(
 		next_mode = LUT_RAM_A;
 
 	mpc3_power_on_ogam_lut(mpc, mpcc_id, true);
-	mpc3_configure_ogam_lut(mpc, mpcc_id, next_mode == LUT_RAM_A ? true:false);
+	mpc3_configure_ogam_lut(mpc, mpcc_id, next_mode == LUT_RAM_A);
 
 	if (next_mode == LUT_RAM_A)
 		mpc3_program_luta(mpc, mpcc_id, params);
@@ -360,6 +370,9 @@ void mpc3_set_output_gamma(
 	/*we need to program 2 fields here as apposed to 1*/
 	REG_UPDATE(MPCC_OGAM_CONTROL[mpcc_id],
 			MPCC_OGAM_SELECT, next_mode == LUT_RAM_A ? 0:1);
+
+	if (mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc)
+		mpc3_power_on_ogam_lut(mpc, mpcc_id, false);
 }
 
 void mpc3_set_denorm(
@@ -426,24 +439,24 @@ static enum dc_lut_mode mpc3_get_shaper_current(struct mpc *mpc, uint32_t rmu_id
 	uint32_t state_mode;
 	struct dcn30_mpc *mpc30 = TO_DCN30_MPC(mpc);
 
-	REG_GET(SHAPER_CONTROL[rmu_idx],
-			MPC_RMU_SHAPER_LUT_MODE_CURRENT, &state_mode);
+	REG_GET(SHAPER_CONTROL[rmu_idx], MPC_RMU_SHAPER_LUT_MODE_CURRENT, &state_mode);
 
-		switch (state_mode) {
-		case 0:
-			mode = LUT_BYPASS;
-			break;
-		case 1:
-			mode = LUT_RAM_A;
-			break;
-		case 2:
-			mode = LUT_RAM_B;
-			break;
-		default:
-			mode = LUT_BYPASS;
-			break;
-		}
-		return mode;
+	switch (state_mode) {
+	case 0:
+		mode = LUT_BYPASS;
+		break;
+	case 1:
+		mode = LUT_RAM_A;
+		break;
+	case 2:
+		mode = LUT_RAM_B;
+		break;
+	default:
+		mode = LUT_BYPASS;
+		break;
+	}
+
+	return mode;
 }
 
 static void mpc3_configure_shaper_lut(
@@ -801,16 +814,28 @@ static void mpc3_power_on_shaper_3dlut(
 	uint32_t power_status_shaper = 2;
 	uint32_t power_status_3dlut  = 2;
 	struct dcn30_mpc *mpc30 = TO_DCN30_MPC(mpc);
+	int max_retries = 10;
 
 	if (rmu_idx == 0) {
 		REG_SET(MPC_RMU_MEM_PWR_CTRL, 0,
 			MPC_RMU0_MEM_PWR_DIS, power_on == true ? 1:0);
+		/* wait for memory to fully power up */
+		if (power_on && mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc) {
+			REG_WAIT(MPC_RMU_MEM_PWR_CTRL, MPC_RMU0_SHAPER_MEM_PWR_STATE, 0, 1, max_retries);
+			REG_WAIT(MPC_RMU_MEM_PWR_CTRL, MPC_RMU0_3DLUT_MEM_PWR_STATE, 0, 1, max_retries);
+		}
+
 		/*read status is not mandatory, it is just for debugging*/
 		REG_GET(MPC_RMU_MEM_PWR_CTRL, MPC_RMU0_SHAPER_MEM_PWR_STATE, &power_status_shaper);
 		REG_GET(MPC_RMU_MEM_PWR_CTRL, MPC_RMU0_3DLUT_MEM_PWR_STATE, &power_status_3dlut);
 	} else if (rmu_idx == 1) {
 		REG_SET(MPC_RMU_MEM_PWR_CTRL, 0,
 			MPC_RMU1_MEM_PWR_DIS, power_on == true ? 1:0);
+		if (power_on && mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc) {
+			REG_WAIT(MPC_RMU_MEM_PWR_CTRL, MPC_RMU1_SHAPER_MEM_PWR_STATE, 0, 1, max_retries);
+			REG_WAIT(MPC_RMU_MEM_PWR_CTRL, MPC_RMU1_3DLUT_MEM_PWR_STATE, 0, 1, max_retries);
+		}
+
 		REG_GET(MPC_RMU_MEM_PWR_CTRL, MPC_RMU1_SHAPER_MEM_PWR_STATE, &power_status_shaper);
 		REG_GET(MPC_RMU_MEM_PWR_CTRL, MPC_RMU1_3DLUT_MEM_PWR_STATE, &power_status_3dlut);
 	}
@@ -838,6 +863,10 @@ bool mpc3_program_shaper(
 		REG_SET(SHAPER_CONTROL[rmu_idx], 0, MPC_RMU_SHAPER_LUT_MODE, 0);
 		return false;
 	}
+
+	if (mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc)
+		mpc3_power_on_shaper_3dlut(mpc, rmu_idx, true);
+
 	current_mode = mpc3_get_shaper_current(mpc, rmu_idx);
 
 	if (current_mode == LUT_BYPASS || current_mode == LUT_RAM_A)
@@ -845,7 +874,7 @@ bool mpc3_program_shaper(
 	else
 		next_mode = LUT_RAM_A;
 
-	mpc3_configure_shaper_lut(mpc, next_mode == LUT_RAM_A ? true:false, rmu_idx);
+	mpc3_configure_shaper_lut(mpc, next_mode == LUT_RAM_A, rmu_idx);
 
 	if (next_mode == LUT_RAM_A)
 		mpc3_program_shaper_luta_settings(mpc, params, rmu_idx);
@@ -1006,7 +1035,7 @@ static void mpc3_set3dlut_ram10(
 }
 
 
-static void mpc3_init_mpcc(struct mpcc *mpcc, int mpcc_inst)
+void mpc3_init_mpcc(struct mpcc *mpcc, int mpcc_inst)
 {
 	mpcc->mpcc_id = mpcc_inst;
 	mpcc->dpp_id = 0xf;
@@ -1196,6 +1225,9 @@ bool mpc3_program_3dlut(
 	mpc3_set_3dlut_mode(mpc, mode, is_12bits_color_channel,
 					is_17x17x17, rmu_idx);
 
+	if (mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc)
+		mpc3_power_on_shaper_3dlut(mpc, rmu_idx, false);
+
 	return true;
 }
 
@@ -1330,7 +1362,7 @@ uint32_t mpcc3_acquire_rmu(struct mpc *mpc, int mpcc_id, int rmu_idx)
 	return -1;
 }
 
-int mpcc3_release_rmu(struct mpc *mpc, int mpcc_id)
+static int mpcc3_release_rmu(struct mpc *mpc, int mpcc_id)
 {
 	struct dcn30_mpc *mpc30 = TO_DCN30_MPC(mpc);
 	int rmu_idx;
@@ -1347,6 +1379,24 @@ int mpcc3_release_rmu(struct mpc *mpc, int mpcc_id)
 	}
 	return released_rmu;
 
+}
+
+static void mpc3_set_mpc_mem_lp_mode(struct mpc *mpc)
+{
+	struct dcn30_mpc *mpc30 = TO_DCN30_MPC(mpc);
+	int mpcc_id;
+
+	if (mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc) {
+		if (mpc30->mpc_mask->MPC_RMU0_MEM_LOW_PWR_MODE && mpc30->mpc_mask->MPC_RMU1_MEM_LOW_PWR_MODE) {
+			REG_UPDATE(MPC_RMU_MEM_PWR_CTRL, MPC_RMU0_MEM_LOW_PWR_MODE, 3);
+			REG_UPDATE(MPC_RMU_MEM_PWR_CTRL, MPC_RMU1_MEM_LOW_PWR_MODE, 3);
+		}
+
+		if (mpc30->mpc_mask->MPCC_OGAM_MEM_LOW_PWR_MODE) {
+			for (mpcc_id = 0; mpcc_id < mpc30->num_mpcc; mpcc_id++)
+				REG_UPDATE(MPCC_MEM_PWR_CTRL[mpcc_id], MPCC_OGAM_MEM_LOW_PWR_MODE, 3);
+		}
+	}
 }
 
 const struct mpc_funcs dcn30_mpc_funcs = {
@@ -1377,8 +1427,10 @@ const struct mpc_funcs dcn30_mpc_funcs = {
 	.acquire_rmu = mpcc3_acquire_rmu,
 	.program_3dlut = mpc3_program_3dlut,
 	.release_rmu = mpcc3_release_rmu,
-	.power_on_mpc_mem_pwr = mpc20_power_on_ogam_lut,
-
+	.power_on_mpc_mem_pwr = mpc3_power_on_ogam_lut,
+	.get_mpc_out_mux = mpc1_get_mpc_out_mux,
+	.set_bg_color = mpc1_set_bg_color,
+	.set_mpc_mem_lp_mode = mpc3_set_mpc_mem_lp_mode,
 };
 
 void dcn30_mpc_construct(struct dcn30_mpc *mpc30,

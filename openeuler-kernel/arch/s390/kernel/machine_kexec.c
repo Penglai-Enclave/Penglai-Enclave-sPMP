@@ -3,7 +3,6 @@
  * Copyright IBM Corp. 2005, 2011
  *
  * Author(s): Rolf Adelsberger,
- *	      Heiko Carstens <heiko.carstens@de.ibm.com>
  *	      Michael Holzheu <holzheu@linux.vnet.ibm.com>
  */
 
@@ -22,13 +21,16 @@
 #include <asm/elf.h>
 #include <asm/asm-offsets.h>
 #include <asm/cacheflush.h>
+#include <asm/abs_lowcore.h>
 #include <asm/os_info.h>
 #include <asm/set_memory.h>
 #include <asm/stacktrace.h>
 #include <asm/switch_to.h>
 #include <asm/nmi.h>
+#include <asm/sclp.h>
 
-typedef void (*relocate_kernel_t)(kimage_entry_t *, unsigned long);
+typedef void (*relocate_kernel_t)(kimage_entry_t *, unsigned long,
+				  unsigned long);
 
 extern const unsigned char relocate_kernel[];
 extern const unsigned long long relocate_kernel_len;
@@ -55,7 +57,7 @@ static void __do_machine_kdump(void *image)
 	 * This need to be done *after* s390_reset_system set the
 	 * prefix register of this CPU to zero
 	 */
-	memcpy((void *) __LC_FPREGS_SAVE_AREA,
+	memcpy(absolute_pointer(__LC_FPREGS_SAVE_AREA),
 	       (void *)(prefix + __LC_FPREGS_SAVE_AREA), 512);
 
 	__load_psw_mask(PSW_MASK_BASE | PSW_DEFAULT_KEY | PSW_MASK_EA | PSW_MASK_BA);
@@ -86,7 +88,7 @@ static noinline void __machine_kdump(void *image)
 			continue;
 	}
 	/* Store status of the boot CPU */
-	mcesa = (struct mcesa *)(S390_lowcore.mcesad & MCESA_ORIGIN_MASK);
+	mcesa = __va(S390_lowcore.mcesad & MCESA_ORIGIN_MASK);
 	if (MACHINE_HAS_VX)
 		save_vx_regs((__vector128 *) mcesa->vector_save_area);
 	if (MACHINE_HAS_GS) {
@@ -132,7 +134,8 @@ static bool kdump_csum_valid(struct kimage *image)
 	int rc;
 
 	preempt_disable();
-	rc = CALL_ON_STACK(do_start_kdump, S390_lowcore.nodat_stack, 1, image);
+	rc = call_on_stack(1, S390_lowcore.nodat_stack, unsigned long, do_start_kdump,
+			   unsigned long, (unsigned long)image);
 	preempt_enable();
 	return rc == 0;
 #else
@@ -220,13 +223,18 @@ void machine_kexec_cleanup(struct kimage *image)
 
 void arch_crash_save_vmcoreinfo(void)
 {
+	struct lowcore *abs_lc;
+	unsigned long flags;
+
 	VMCOREINFO_SYMBOL(lowcore_ptr);
 	VMCOREINFO_SYMBOL(high_memory);
 	VMCOREINFO_LENGTH(lowcore_ptr, NR_CPUS);
-	vmcoreinfo_append_str("SDMA=%lx\n", __sdma);
-	vmcoreinfo_append_str("EDMA=%lx\n", __edma);
+	vmcoreinfo_append_str("SAMODE31=%lx\n", __samode31);
+	vmcoreinfo_append_str("EAMODE31=%lx\n", __eamode31);
 	vmcoreinfo_append_str("KERNELOFFSET=%lx\n", kaslr_offset());
-	mem_assign_absolute(S390_lowcore.vmcore_info, paddr_vmcoreinfo_note());
+	abs_lc = get_abs_lowcore(&flags);
+	abs_lc->vmcore_info = paddr_vmcoreinfo_note();
+	put_abs_lowcore(abs_lc, flags);
 }
 
 void machine_shutdown(void)
@@ -243,6 +251,7 @@ void machine_crash_shutdown(struct pt_regs *regs)
  */
 static void __do_machine_kexec(void *data)
 {
+	unsigned long diag308_subcode;
 	relocate_kernel_t data_mover;
 	struct kimage *image = data;
 
@@ -251,7 +260,10 @@ static void __do_machine_kexec(void *data)
 
 	__arch_local_irq_stnsm(0xfb); /* disable DAT - avoid no-execute */
 	/* Call the moving routine */
-	(*data_mover)(&image->head, image->start);
+	diag308_subcode = DIAG308_CLEAR_RESET;
+	if (sclp.has_iplcc)
+		diag308_subcode |= DIAG308_FLAG_EI;
+	(*data_mover)(&image->head, image->start, diag308_subcode);
 
 	/* Die if kexec returns */
 	disabled_wait();
@@ -262,7 +274,6 @@ static void __do_machine_kexec(void *data)
  */
 static void __machine_kexec(void *data)
 {
-	__arch_local_irq_stosm(0x04); /* enable DAT */
 	pfault_fini();
 	tracing_off();
 	debug_locks_off();

@@ -8,12 +8,14 @@
  * Based on sh_keysc.c, copyright 2008 Magnus Damm
  */
 
-#include <linux/module.h>
-#include <linux/interrupt.h>
-#include <linux/platform_device.h>
 #include <linux/clk.h>
-#include <linux/io.h>
+#include <linux/input.h>
 #include <linux/input/matrix_keypad.h>
+#include <linux/io.h>
+#include <linux/interrupt.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 
 #define ST_KEYSCAN_MAXKEYS 16
 
@@ -221,7 +223,7 @@ static int keyscan_suspend(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		enable_irq_wake(keypad->irq);
-	else if (input->users)
+	else if (input_device_enabled(input))
 		keyscan_stop(keypad);
 
 	mutex_unlock(&input->mutex);
@@ -239,7 +241,7 @@ static int keyscan_resume(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(keypad->irq);
-	else if (input->users)
+	else if (input_device_enabled(input))
 		retval = keyscan_start(keypad);
 
 	mutex_unlock(&input->mutex);

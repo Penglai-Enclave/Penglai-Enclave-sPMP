@@ -7,6 +7,7 @@
  */
 
 #include <linux/debugfs.h>
+#include <linux/pm_runtime.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
 
@@ -52,6 +53,11 @@ static int show_channel(struct host1x_channel *ch, void *data, bool show_fifo)
 {
 	struct host1x *m = dev_get_drvdata(ch->dev->parent);
 	struct output *o = data;
+	int err;
+
+	err = pm_runtime_resume_and_get(m->dev);
+	if (err < 0)
+		return err;
 
 	mutex_lock(&ch->cdma.lock);
 	mutex_lock(&debug_lock);
@@ -64,24 +70,42 @@ static int show_channel(struct host1x_channel *ch, void *data, bool show_fifo)
 	mutex_unlock(&debug_lock);
 	mutex_unlock(&ch->cdma.lock);
 
+	pm_runtime_put(m->dev);
+
 	return 0;
 }
 
-static void show_syncpts(struct host1x *m, struct output *o)
+static void show_syncpts(struct host1x *m, struct output *o, bool show_all)
 {
+	struct list_head *pos;
 	unsigned int i;
+	int err;
 
 	host1x_debug_output(o, "---- syncpts ----\n");
+
+	err = pm_runtime_resume_and_get(m->dev);
+	if (err < 0)
+		return;
 
 	for (i = 0; i < host1x_syncpt_nb_pts(m); i++) {
 		u32 max = host1x_syncpt_read_max(m->syncpt + i);
 		u32 min = host1x_syncpt_load(m->syncpt + i);
+		unsigned int waiters = 0;
 
-		if (!min && !max)
+		spin_lock(&m->syncpt[i].intr.lock);
+		list_for_each(pos, &m->syncpt[i].intr.wait_head)
+			waiters++;
+		spin_unlock(&m->syncpt[i].intr.lock);
+
+		if (!kref_read(&m->syncpt[i].ref))
 			continue;
 
-		host1x_debug_output(o, "id %u (%s) min %d max %d\n",
-				    i, m->syncpt[i].name, min, max);
+		if (!show_all && !min && !max && !waiters)
+			continue;
+
+		host1x_debug_output(o,
+				    "id %u (%s) min %d max %d (%d waiters)\n",
+				    i, m->syncpt[i].name, min, max, waiters);
 	}
 
 	for (i = 0; i < host1x_syncpt_nb_bases(m); i++) {
@@ -93,6 +117,8 @@ static void show_syncpts(struct host1x *m, struct output *o)
 					    base_val);
 	}
 
+	pm_runtime_put(m->dev);
+
 	host1x_debug_output(o, "\n");
 }
 
@@ -101,7 +127,7 @@ static void show_all(struct host1x *m, struct output *o, bool show_fifo)
 	unsigned int i;
 
 	host1x_hw_show_mlocks(m, o);
-	show_syncpts(m, o);
+	show_syncpts(m, o, true);
 	host1x_debug_output(o, "---- channels ----\n");
 
 	for (i = 0; i < m->info->nb_channels; ++i) {
@@ -218,5 +244,5 @@ void host1x_debug_dump_syncpts(struct host1x *host1x)
 		.fn = write_to_printk
 	};
 
-	show_syncpts(host1x, &o);
+	show_syncpts(host1x, &o, false);
 }

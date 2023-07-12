@@ -6,7 +6,7 @@
  * Copyright (C) 1998-99  Kirk Reiser.
  * Copyright (C) 2003 David Borowski.
  *
- * specificly written as a driver for the speakup screenreview
+ * specifically written as a driver for the speakup screenreview
  * s not a general device driver.
  */
 #include "spk_priv.h"
@@ -117,8 +117,8 @@ static struct spk_synth synth_spkout = {
 
 static void synth_flush(struct spk_synth *synth)
 {
-	synth->io_ops->flush_buffer();
-	synth->io_ops->send_xchar(SYNTH_CLEAR);
+	synth->io_ops->flush_buffer(synth);
+	synth->io_ops->send_xchar(synth, SYNTH_CLEAR);
 }
 
 module_param_named(ser, synth_spkout.ser, int, 0444);

@@ -145,7 +145,7 @@ EXPORT_SYMBOL_GPL(devm_gpiod_get_index);
  * In case of error an ERR_PTR() is returned.
  */
 struct gpio_desc *devm_gpiod_get_from_of_node(struct device *dev,
-					      struct device_node *node,
+					      const struct device_node *node,
 					      const char *propname, int index,
 					      enum gpiod_flags dflags,
 					      const char *label)
@@ -246,10 +246,8 @@ struct gpio_desc *__must_check devm_gpiod_get_index_optional(struct device *dev,
 	struct gpio_desc *desc;
 
 	desc = devm_gpiod_get_index(dev, con_id, index, flags);
-	if (IS_ERR(desc)) {
-		if (PTR_ERR(desc) == -ENOENT)
-			return NULL;
-	}
+	if (gpiod_not_found(desc))
+		return NULL;
 
 	return desc;
 }
@@ -308,7 +306,7 @@ devm_gpiod_get_array_optional(struct device *dev, const char *con_id,
 	struct gpio_descs *descs;
 
 	descs = devm_gpiod_get_array(dev, con_id, flags);
-	if (PTR_ERR(descs) == -ENOENT)
+	if (gpiod_not_found(descs))
 		return NULL;
 
 	return descs;
@@ -377,21 +375,11 @@ void devm_gpiod_put_array(struct device *dev, struct gpio_descs *descs)
 }
 EXPORT_SYMBOL_GPL(devm_gpiod_put_array);
 
-
-
-
 static void devm_gpio_release(struct device *dev, void *res)
 {
 	unsigned *gpio = res;
 
 	gpio_free(*gpio);
-}
-
-static int devm_gpio_match(struct device *dev, void *res, void *data)
-{
-	unsigned *this = res, *gpio = data;
-
-	return *this == *gpio;
 }
 
 /**
@@ -404,11 +392,7 @@ static int devm_gpio_match(struct device *dev, void *res, void *data)
  *      same arguments and performs the same function as
  *      gpio_request().  GPIOs requested with this function will be
  *      automatically freed on driver detach.
- *
- *      If an GPIO allocated with this function needs to be freed
- *      separately, devm_gpio_free() must be used.
  */
-
 int devm_gpio_request(struct device *dev, unsigned gpio, const char *label)
 {
 	unsigned *dr;
@@ -461,27 +445,9 @@ int devm_gpio_request_one(struct device *dev, unsigned gpio,
 }
 EXPORT_SYMBOL_GPL(devm_gpio_request_one);
 
-/**
- *      devm_gpio_free - free a GPIO
- *      @dev: device to free GPIO for
- *      @gpio: GPIO to free
- *
- *      Except for the extra @dev argument, this function takes the
- *      same arguments and performs the same function as gpio_free().
- *      This function instead of gpio_free() should be used to manually
- *      free GPIOs allocated with devm_gpio_request().
- */
-void devm_gpio_free(struct device *dev, unsigned int gpio)
+static void devm_gpio_chip_release(void *data)
 {
-
-	WARN_ON(devres_release(dev, devm_gpio_release, devm_gpio_match,
-		&gpio));
-}
-EXPORT_SYMBOL_GPL(devm_gpio_free);
-
-static void devm_gpio_chip_release(struct device *dev, void *res)
-{
-	struct gpio_chip *gc = *(struct gpio_chip **)res;
+	struct gpio_chip *gc = data;
 
 	gpiochip_remove(gc);
 }
@@ -507,23 +473,12 @@ int devm_gpiochip_add_data_with_key(struct device *dev, struct gpio_chip *gc, vo
 				    struct lock_class_key *lock_key,
 				    struct lock_class_key *request_key)
 {
-	struct gpio_chip **ptr;
 	int ret;
 
-	ptr = devres_alloc(devm_gpio_chip_release, sizeof(*ptr),
-			     GFP_KERNEL);
-	if (!ptr)
-		return -ENOMEM;
-
 	ret = gpiochip_add_data_with_key(gc, data, lock_key, request_key);
-	if (ret < 0) {
-		devres_free(ptr);
+	if (ret < 0)
 		return ret;
-	}
 
-	*ptr = gc;
-	devres_add(dev, ptr);
-
-	return 0;
+	return devm_add_action_or_reset(dev, devm_gpio_chip_release, gc);
 }
 EXPORT_SYMBOL_GPL(devm_gpiochip_add_data_with_key);

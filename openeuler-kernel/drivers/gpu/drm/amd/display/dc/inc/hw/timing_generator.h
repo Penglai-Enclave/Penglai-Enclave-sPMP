@@ -98,19 +98,22 @@ enum crc_selection {
 	INTERSECT_WINDOW_NOT_A_NOT_B,
 };
 
-#ifdef CONFIG_DRM_AMD_DC_DCN3_0
 enum otg_out_mux_dest {
 	OUT_MUX_DIO = 0,
+	OUT_MUX_HPO_DP = 2,
 };
-#endif
 
 enum h_timing_div_mode {
 	H_TIMING_NO_DIV,
 	H_TIMING_DIV_BY2,
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 	H_TIMING_RESERVED,
 	H_TIMING_DIV_BY4,
-#endif
+};
+
+enum timing_synchronization_type {
+	NOT_SYNCHRONIZABLE,
+	TIMING_SYNCHRONIZABLE,
+	VBLANK_SYNCHRONIZABLE
 };
 
 struct crc_params {
@@ -134,7 +137,13 @@ struct crc_params {
 	bool enable;
 };
 
+/**
+ * struct timing_generator - Entry point to Output Timing Generator feature.
+ */
 struct timing_generator {
+	/**
+	 * @funcs: Timing generator control functions
+	 */
 	const struct timing_generator_funcs *funcs;
 	struct dc_bios *bp;
 	struct dc_context *ctx;
@@ -145,7 +154,9 @@ struct dc_crtc_timing;
 
 struct drr_params;
 
-
+/**
+ * struct timing_generator_funcs - Control timing generator on a given device.
+ */
 struct timing_generator_funcs {
 	bool (*validate_timing)(struct timing_generator *tg,
 							const struct dc_crtc_timing *timing);
@@ -171,6 +182,10 @@ struct timing_generator_funcs {
 
 	bool (*enable_crtc)(struct timing_generator *tg);
 	bool (*disable_crtc)(struct timing_generator *tg);
+#ifdef CONFIG_DRM_AMD_DC_DCN
+	void (*phantom_crtc_post_enable)(struct timing_generator *tg);
+#endif
+	bool (*immediate_disable_crtc)(struct timing_generator *tg);
 	bool (*is_counter_moving)(struct timing_generator *tg);
 	void (*get_position)(struct timing_generator *tg,
 				struct crtc_position *position);
@@ -220,6 +235,8 @@ struct timing_generator_funcs {
 	void (*enable_advanced_request)(struct timing_generator *tg,
 					bool enable, const struct dc_crtc_timing *timing);
 	void (*set_drr)(struct timing_generator *tg, const struct drr_params *params);
+	void (*set_vtotal_min_max)(struct timing_generator *optc, int vtotal_min, int vtotal_max);
+	void (*get_last_used_drr_vtotal)(struct timing_generator *optc, uint32_t *refresh_rate);
 	void (*set_static_screen_control)(struct timing_generator *tg,
 						uint32_t event_triggers,
 						uint32_t num_frames);
@@ -263,8 +280,8 @@ struct timing_generator_funcs {
 			       const struct crc_params *params);
 
 	/**
-	 * Get CRCs for the given timing generator. Return false if CRCs are
-	 * not enabled (via configure_crc).
+	 * @get_crc: Get CRCs for the given timing generator. Return false if
+	 * CRCs are not enabled (via configure_crc).
 	 */
 	bool (*get_crc)(struct timing_generator *tg,
 			uint32_t *r_cr, uint32_t *g_y, uint32_t *b_cb);
@@ -275,28 +292,40 @@ struct timing_generator_funcs {
 			struct dc_crtc_timing *hw_crtc_timing);
 
 	void (*set_vtg_params)(struct timing_generator *optc,
-			const struct dc_crtc_timing *dc_crtc_timing);
+			const struct dc_crtc_timing *dc_crtc_timing, bool program_fp2);
 
 	void (*set_dsc_config)(struct timing_generator *optc,
 			       enum optc_dsc_mode dsc_mode,
 			       uint32_t dsc_bytes_per_pixel,
 			       uint32_t dsc_slice_width);
+	void (*get_dsc_status)(struct timing_generator *optc,
+					uint32_t *dsc_mode);
 	void (*set_odm_bypass)(struct timing_generator *optc, const struct dc_crtc_timing *dc_crtc_timing);
 	void (*set_odm_combine)(struct timing_generator *optc, int *opp_id, int opp_cnt,
 			struct dc_crtc_timing *timing);
+	void (*set_h_timing_div_manual_mode)(struct timing_generator *optc, bool manual_mode);
 	void (*set_gsl)(struct timing_generator *optc, const struct gsl_params *params);
 	void (*set_gsl_source_select)(struct timing_generator *optc,
 			int group_idx,
 			uint32_t gsl_ready_signal);
-#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 	void (*set_out_mux)(struct timing_generator *tg, enum otg_out_mux_dest dest);
-	void (*set_vrr_m_const)(struct timing_generator *optc,
-			double vtotal_avg);
 	void (*set_drr_trigger_window)(struct timing_generator *optc,
 			uint32_t window_start, uint32_t window_end);
 	void (*set_vtotal_change_limit)(struct timing_generator *optc,
 			uint32_t limit);
-#endif
+	void (*align_vblanks)(struct timing_generator *master_optc,
+			struct timing_generator *slave_optc,
+			uint32_t master_pixel_clock_100Hz,
+			uint32_t slave_pixel_clock_100Hz,
+			uint8_t master_clock_divider,
+			uint8_t slave_clock_divider);
+	bool (*validate_vmin_vmax)(struct timing_generator *optc,
+			int vmin, int vmax);
+	bool (*validate_vtotal_change_limit)(struct timing_generator *optc,
+			uint32_t vtotal_change_limit);
+
+	void (*init_odm)(struct timing_generator *tg);
+	void (*wait_drr_doublebuffer_pending_clear)(struct timing_generator *tg);
 };
 
 #endif

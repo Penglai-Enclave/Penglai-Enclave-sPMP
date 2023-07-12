@@ -8,9 +8,9 @@
 	.globl system_certificate_list
 system_certificate_list:
 __cert_list_start:
-#ifdef CONFIG_MODULE_SIG
+__module_cert_start:
 	.incbin "certs/signing_key.x509"
-#endif
+__module_cert_end:
 	.incbin "certs/x509_certificate_list"
 __cert_list_end:
 
@@ -37,19 +37,10 @@ system_certificate_list_size:
 #endif
 
 	.align 8
-	.globl pgp_public_keys
-pgp_public_keys:
-__pgp_key_list_start:
-#ifdef HAVE_PUBRING_GPG
-	.incbin "certs/pubring.gpg"
-#endif
-__pgp_key_list_end:
-
-	.align 8
-	.globl pgp_public_keys_size
-pgp_public_keys_size:
+	.globl module_cert_size
+module_cert_size:
 #ifdef CONFIG_64BIT
-	.quad __pgp_key_list_end - __pgp_key_list_start
+	.quad __module_cert_end - __module_cert_start
 #else
-	.long __pgp_key_list_end - __pgp_key_list_start
+	.long __module_cert_end - __module_cert_start
 #endif

@@ -5,9 +5,9 @@
  * Copyright 2016 Noralf Trønnes
  */
 
+#include <linux/backlight.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
-#include <linux/dma-buf.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/regulator/consumer.h>
@@ -16,9 +16,11 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_file.h>
 #include <drm/drm_format_helper.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_gem.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_mipi_dbi.h>
 #include <drm/drm_modes.h>
@@ -201,38 +203,39 @@ int mipi_dbi_buf_copy(void *dst, struct drm_framebuffer *fb,
 		      struct drm_rect *clip, bool swap)
 {
 	struct drm_gem_object *gem = drm_gem_fb_get_obj(fb, 0);
-	struct drm_gem_cma_object *cma_obj = to_drm_gem_cma_obj(gem);
-	struct dma_buf_attachment *import_attach = gem->import_attach;
-	struct drm_format_name_buf format_name;
-	void *src = cma_obj->vaddr;
-	int ret = 0;
+	struct iosys_map map[DRM_FORMAT_MAX_PLANES];
+	struct iosys_map data[DRM_FORMAT_MAX_PLANES];
+	struct iosys_map dst_map = IOSYS_MAP_INIT_VADDR(dst);
+	int ret;
 
-	if (import_attach) {
-		ret = dma_buf_begin_cpu_access(import_attach->dmabuf,
-					       DMA_FROM_DEVICE);
-		if (ret)
-			return ret;
-	}
+	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
+	if (ret)
+		return ret;
+
+	ret = drm_gem_fb_vmap(fb, map, data);
+	if (ret)
+		goto out_drm_gem_fb_end_cpu_access;
 
 	switch (fb->format->format) {
 	case DRM_FORMAT_RGB565:
 		if (swap)
-			drm_fb_swab(dst, src, fb, clip, !import_attach);
+			drm_fb_swab(&dst_map, NULL, data, fb, clip, !gem->import_attach);
 		else
-			drm_fb_memcpy(dst, src, fb, clip);
+			drm_fb_memcpy(&dst_map, NULL, data, fb, clip);
 		break;
 	case DRM_FORMAT_XRGB8888:
-		drm_fb_xrgb8888_to_rgb565(dst, src, fb, clip, swap);
+		drm_fb_xrgb8888_to_rgb565(&dst_map, NULL, data, fb, clip, swap);
 		break;
 	default:
-		drm_err_once(fb->dev, "Format is not supported: %s\n",
-			     drm_get_format_name(fb->format->format, &format_name));
-		return -EINVAL;
+		drm_err_once(fb->dev, "Format is not supported: %p4cc\n",
+			     &fb->format->format);
+		ret = -EINVAL;
 	}
 
-	if (import_attach)
-		ret = dma_buf_end_cpu_access(import_attach->dmabuf,
-					     DMA_FROM_DEVICE);
+	drm_gem_fb_vunmap(fb, map);
+out_drm_gem_fb_end_cpu_access:
+	drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
+
 	return ret;
 }
 EXPORT_SYMBOL(mipi_dbi_buf_copy);
@@ -256,8 +259,8 @@ static void mipi_dbi_set_window_address(struct mipi_dbi_dev *dbidev,
 
 static void mipi_dbi_fb_dirty(struct drm_framebuffer *fb, struct drm_rect *rect)
 {
-	struct drm_gem_object *gem = drm_gem_fb_get_obj(fb, 0);
-	struct drm_gem_cma_object *cma_obj = to_drm_gem_cma_obj(gem);
+	struct iosys_map map[DRM_FORMAT_MAX_PLANES];
+	struct iosys_map data[DRM_FORMAT_MAX_PLANES];
 	struct mipi_dbi_dev *dbidev = drm_to_mipi_dbi_dev(fb->dev);
 	unsigned int height = rect->y2 - rect->y1;
 	unsigned int width = rect->x2 - rect->x1;
@@ -273,6 +276,10 @@ static void mipi_dbi_fb_dirty(struct drm_framebuffer *fb, struct drm_rect *rect)
 	if (!drm_dev_enter(fb->dev, &idx))
 		return;
 
+	ret = drm_gem_fb_vmap(fb, map, data);
+	if (ret)
+		goto err_drm_dev_exit;
+
 	full = width == fb->width && height == fb->height;
 
 	DRM_DEBUG_KMS("Flushing [FB:%d] " DRM_RECT_FMT "\n", fb->base.id, DRM_RECT_ARG(rect));
@@ -284,7 +291,7 @@ static void mipi_dbi_fb_dirty(struct drm_framebuffer *fb, struct drm_rect *rect)
 		if (ret)
 			goto err_msg;
 	} else {
-		tr = cma_obj->vaddr;
+		tr = data[0].vaddr; /* TODO: Use mapping abstraction properly */
 	}
 
 	mipi_dbi_set_window_address(dbidev, rect->x1, rect->x2 - 1, rect->y1,
@@ -296,8 +303,29 @@ err_msg:
 	if (ret)
 		drm_err_once(fb->dev, "Failed to update display %d\n", ret);
 
+	drm_gem_fb_vunmap(fb, map);
+
+err_drm_dev_exit:
 	drm_dev_exit(idx);
 }
+
+/**
+ * mipi_dbi_pipe_mode_valid - MIPI DBI mode-valid helper
+ * @pipe: Simple display pipe
+ * @mode: The mode to test
+ *
+ * This function validates a given display mode against the MIPI DBI's hardware
+ * display. Drivers can use this as their &drm_simple_display_pipe_funcs->mode_valid
+ * callback.
+ */
+enum drm_mode_status mipi_dbi_pipe_mode_valid(struct drm_simple_display_pipe *pipe,
+					      const struct drm_display_mode *mode)
+{
+	struct mipi_dbi_dev *dbidev = drm_to_mipi_dbi_dev(pipe->crtc.dev);
+
+	return drm_crtc_helper_mode_valid_fixed(&pipe->crtc, mode, &dbidev->mode);
+}
+EXPORT_SYMBOL(mipi_dbi_pipe_mode_valid);
 
 /**
  * mipi_dbi_pipe_update - Display pipe update helper
@@ -405,26 +433,8 @@ EXPORT_SYMBOL(mipi_dbi_pipe_disable);
 static int mipi_dbi_connector_get_modes(struct drm_connector *connector)
 {
 	struct mipi_dbi_dev *dbidev = drm_to_mipi_dbi_dev(connector->dev);
-	struct drm_display_mode *mode;
 
-	mode = drm_mode_duplicate(connector->dev, &dbidev->mode);
-	if (!mode) {
-		DRM_ERROR("Failed to duplicate mode\n");
-		return 0;
-	}
-
-	if (mode->name[0] == '\0')
-		drm_mode_set_name(mode);
-
-	mode->type |= DRM_MODE_TYPE_PREFERRED;
-	drm_mode_probed_add(connector, mode);
-
-	if (mode->width_mm) {
-		connector->display_info.width_mm = mode->width_mm;
-		connector->display_info.height_mm = mode->height_mm;
-	}
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &dbidev->mode);
 }
 
 static const struct drm_connector_helper_funcs mipi_dbi_connector_hfuncs = {
@@ -929,6 +939,59 @@ static int mipi_dbi_spi1_transfer(struct mipi_dbi *dbi, int dc,
 	return 0;
 }
 
+static int mipi_dbi_typec1_command_read(struct mipi_dbi *dbi, u8 *cmd,
+					u8 *data, size_t len)
+{
+	struct spi_device *spi = dbi->spi;
+	u32 speed_hz = min_t(u32, MIPI_DBI_MAX_SPI_READ_SPEED,
+			     spi->max_speed_hz / 2);
+	struct spi_transfer tr[2] = {
+		{
+			.speed_hz = speed_hz,
+			.bits_per_word = 9,
+			.tx_buf = dbi->tx_buf9,
+			.len = 2,
+		}, {
+			.speed_hz = speed_hz,
+			.bits_per_word = 8,
+			.len = len,
+			.rx_buf = data,
+		},
+	};
+	struct spi_message m;
+	u16 *dst16;
+	int ret;
+
+	if (!len)
+		return -EINVAL;
+
+	if (!spi_is_bpw_supported(spi, 9)) {
+		/*
+		 * FIXME: implement something like mipi_dbi_spi1e_transfer() but
+		 * for reads using emulation.
+		 */
+		dev_err(&spi->dev,
+			"reading on host not supporting 9 bpw not yet implemented\n");
+		return -EOPNOTSUPP;
+	}
+
+	/*
+	 * Turn the 8bit command into a 16bit version of the command in the
+	 * buffer. Only 9 bits of this will be used when executing the actual
+	 * transfer.
+	 */
+	dst16 = dbi->tx_buf9;
+	dst16[0] = *cmd;
+
+	spi_message_init_with_transfers(&m, tr, ARRAY_SIZE(tr));
+	ret = spi_sync(spi, &m);
+
+	if (!ret)
+		MIPI_DBI_DEBUG_COMMAND(*cmd, data, len);
+
+	return ret;
+}
+
 static int mipi_dbi_typec1_command(struct mipi_dbi *dbi, u8 *cmd,
 				   u8 *parameters, size_t num)
 {
@@ -936,7 +999,7 @@ static int mipi_dbi_typec1_command(struct mipi_dbi *dbi, u8 *cmd,
 	int ret;
 
 	if (mipi_dbi_command_is_read(dbi, *cmd))
-		return -EOPNOTSUPP;
+		return mipi_dbi_typec1_command_read(dbi, cmd, parameters, num);
 
 	MIPI_DBI_DEBUG_COMMAND(*cmd, parameters, num);
 
@@ -1071,8 +1134,8 @@ int mipi_dbi_spi_init(struct spi_device *spi, struct mipi_dbi *dbi,
 
 	/*
 	 * Even though it's not the SPI device that does DMA (the master does),
-	 * the dma mask is necessary for the dma_alloc_wc() in
-	 * drm_gem_cma_create(). The dma_addr returned will be a physical
+	 * the dma mask is necessary for the dma_alloc_wc() in the GEM code
+	 * (e.g., drm_gem_dma_create()). The dma_addr returned will be a physical
 	 * address which might be different from the bus address, but this is
 	 * not a problem since the address will not be used.
 	 * The virtual address is used in the transfer and the SPI core
@@ -1136,6 +1199,13 @@ int mipi_dbi_spi_transfer(struct spi_device *spi, u32 speed_hz,
 	struct spi_message m;
 	size_t chunk;
 	int ret;
+
+	/* In __spi_validate, there's a validation that no partial transfers
+	 * are accepted (xfer->len % w_size must be zero).
+	 * Here we align max_chunk to multiple of 2 (16bits),
+	 * to prevent transfers from being rejected.
+	 */
+	max_chunk = ALIGN_DOWN(max_chunk, 2);
 
 	spi_message_init_with_transfers(&m, &tr, 1);
 

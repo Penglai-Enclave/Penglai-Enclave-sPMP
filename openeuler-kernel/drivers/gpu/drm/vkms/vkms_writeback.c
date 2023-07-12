@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0+
 
-#include "vkms_drv.h"
+#include <linux/iosys-map.h>
+
+#include <drm/drm_atomic.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_writeback.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_gem_shmem_helper.h>
+
+#include "vkms_drv.h"
+#include "vkms_formats.h"
 
 static const u32 vkms_wb_formats[] = {
 	DRM_FORMAT_XRGB8888,
+	DRM_FORMAT_XRGB16161616,
+	DRM_FORMAT_ARGB16161616,
+	DRM_FORMAT_RGB565
 };
 
 static const struct drm_connector_funcs vkms_wb_connector_funcs = {
@@ -25,6 +35,7 @@ static int vkms_wb_encoder_atomic_check(struct drm_encoder *encoder,
 {
 	struct drm_framebuffer *fb;
 	const struct drm_display_mode *mode = &crtc_state->mode;
+	int ret;
 
 	if (!conn_state->writeback_job || !conn_state->writeback_job->fb)
 		return 0;
@@ -36,14 +47,9 @@ static int vkms_wb_encoder_atomic_check(struct drm_encoder *encoder,
 		return -EINVAL;
 	}
 
-	if (fb->format->format != vkms_wb_formats[0]) {
-		struct drm_format_name_buf format_name;
-
-		DRM_DEBUG_KMS("Invalid pixel format %s\n",
-			      drm_get_format_name(fb->format->format,
-						  &format_name));
-		return -EINVAL;
-	}
+	ret = drm_atomic_helper_check_wb_encoder_state(encoder, conn_state);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }
@@ -63,61 +69,88 @@ static int vkms_wb_connector_get_modes(struct drm_connector *connector)
 static int vkms_wb_prepare_job(struct drm_writeback_connector *wb_connector,
 			       struct drm_writeback_job *job)
 {
-	struct vkms_gem_object *vkms_obj;
-	struct drm_gem_object *gem_obj;
+	struct vkms_writeback_job *vkmsjob;
 	int ret;
 
 	if (!job->fb)
 		return 0;
 
-	gem_obj = drm_gem_fb_get_obj(job->fb, 0);
-	ret = vkms_gem_vmap(gem_obj);
+	vkmsjob = kzalloc(sizeof(*vkmsjob), GFP_KERNEL);
+	if (!vkmsjob)
+		return -ENOMEM;
+
+	ret = drm_gem_fb_vmap(job->fb, vkmsjob->wb_frame_info.map, vkmsjob->data);
 	if (ret) {
 		DRM_ERROR("vmap failed: %d\n", ret);
-		return ret;
+		goto err_kfree;
 	}
 
-	vkms_obj = drm_gem_to_vkms_gem(gem_obj);
-	job->priv = vkms_obj->vaddr;
+	vkmsjob->wb_frame_info.fb = job->fb;
+	drm_framebuffer_get(vkmsjob->wb_frame_info.fb);
+
+	job->priv = vkmsjob;
 
 	return 0;
+
+err_kfree:
+	kfree(vkmsjob);
+	return ret;
 }
 
 static void vkms_wb_cleanup_job(struct drm_writeback_connector *connector,
 				struct drm_writeback_job *job)
 {
-	struct drm_gem_object *gem_obj;
+	struct vkms_writeback_job *vkmsjob = job->priv;
 	struct vkms_device *vkmsdev;
 
 	if (!job->fb)
 		return;
 
-	gem_obj = drm_gem_fb_get_obj(job->fb, 0);
-	vkms_gem_vunmap(gem_obj);
+	drm_gem_fb_vunmap(job->fb, vkmsjob->wb_frame_info.map);
 
-	vkmsdev = drm_device_to_vkms_device(gem_obj->dev);
+	drm_framebuffer_put(vkmsjob->wb_frame_info.fb);
+
+	vkmsdev = drm_device_to_vkms_device(job->fb->dev);
 	vkms_set_composer(&vkmsdev->output, false);
+	kfree(vkmsjob);
 }
 
 static void vkms_wb_atomic_commit(struct drm_connector *conn,
-				  struct drm_connector_state *state)
+				  struct drm_atomic_state *state)
 {
+	struct drm_connector_state *connector_state = drm_atomic_get_new_connector_state(state,
+											 conn);
 	struct vkms_device *vkmsdev = drm_device_to_vkms_device(conn->dev);
 	struct vkms_output *output = &vkmsdev->output;
 	struct drm_writeback_connector *wb_conn = &output->wb_connector;
 	struct drm_connector_state *conn_state = wb_conn->base.state;
 	struct vkms_crtc_state *crtc_state = output->composer_state;
+	struct drm_framebuffer *fb = connector_state->writeback_job->fb;
+	u16 crtc_height = crtc_state->base.crtc->mode.vdisplay;
+	u16 crtc_width = crtc_state->base.crtc->mode.hdisplay;
+	struct vkms_writeback_job *active_wb;
+	struct vkms_frame_info *wb_frame_info;
+	u32 wb_format = fb->format->format;
 
 	if (!conn_state)
 		return;
 
 	vkms_set_composer(&vkmsdev->output, true);
 
+	active_wb = conn_state->writeback_job->priv;
+	wb_frame_info = &active_wb->wb_frame_info;
+
 	spin_lock_irq(&output->composer_lock);
-	crtc_state->active_writeback = conn_state->writeback_job->priv;
+	crtc_state->active_writeback = active_wb;
+	wb_frame_info->offset = fb->offsets[0];
+	wb_frame_info->pitch = fb->pitches[0];
+	wb_frame_info->cpp = fb->format->cpp[0];
 	crtc_state->wb_pending = true;
 	spin_unlock_irq(&output->composer_lock);
-	drm_writeback_queue_job(wb_conn, state);
+	drm_writeback_queue_job(wb_conn, connector_state);
+	active_wb->wb_write = get_line_to_frame_function(wb_format);
+	drm_rect_init(&wb_frame_info->src, 0, 0, crtc_width, crtc_height);
+	drm_rect_init(&wb_frame_info->dst, 0, 0, crtc_width, crtc_height);
 }
 
 static const struct drm_connector_helper_funcs vkms_wb_conn_helper_funcs = {
@@ -131,12 +164,12 @@ int vkms_enable_writeback_connector(struct vkms_device *vkmsdev)
 {
 	struct drm_writeback_connector *wb = &vkmsdev->output.wb_connector;
 
-	vkmsdev->output.wb_connector.encoder.possible_crtcs = 1;
 	drm_connector_helper_add(&wb->base, &vkms_wb_conn_helper_funcs);
 
 	return drm_writeback_connector_init(&vkmsdev->drm, wb,
 					    &vkms_wb_connector_funcs,
 					    &vkms_wb_encoder_helper_funcs,
 					    vkms_wb_formats,
-					    ARRAY_SIZE(vkms_wb_formats));
+					    ARRAY_SIZE(vkms_wb_formats),
+					    1);
 }

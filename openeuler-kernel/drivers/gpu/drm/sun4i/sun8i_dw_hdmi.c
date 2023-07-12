@@ -93,34 +93,10 @@ crtcs_exit:
 	return crtcs;
 }
 
-static int sun8i_dw_hdmi_find_connector_pdev(struct device *dev,
-					     struct platform_device **pdev_out)
-{
-	struct platform_device *pdev;
-	struct device_node *remote;
-
-	remote = of_graph_get_remote_node(dev->of_node, 1, -1);
-	if (!remote)
-		return -ENODEV;
-
-	if (!of_device_is_compatible(remote, "hdmi-connector")) {
-		of_node_put(remote);
-		return -ENODEV;
-	}
-
-	pdev = of_find_device_by_node(remote);
-	of_node_put(remote);
-	if (!pdev)
-		return -ENODEV;
-
-	*pdev_out = pdev;
-	return 0;
-}
-
 static int sun8i_dw_hdmi_bind(struct device *dev, struct device *master,
 			      void *data)
 {
-	struct platform_device *pdev = to_platform_device(dev), *connector_pdev;
+	struct platform_device *pdev = to_platform_device(dev);
 	struct dw_hdmi_plat_data *plat_data;
 	struct drm_device *drm = data;
 	struct device_node *phy_node;
@@ -153,47 +129,30 @@ static int sun8i_dw_hdmi_bind(struct device *dev, struct device *master,
 		return -EPROBE_DEFER;
 
 	hdmi->rst_ctrl = devm_reset_control_get(dev, "ctrl");
-	if (IS_ERR(hdmi->rst_ctrl)) {
-		dev_err(dev, "Could not get ctrl reset control\n");
-		return PTR_ERR(hdmi->rst_ctrl);
-	}
+	if (IS_ERR(hdmi->rst_ctrl))
+		return dev_err_probe(dev, PTR_ERR(hdmi->rst_ctrl),
+				     "Could not get ctrl reset control\n");
 
 	hdmi->clk_tmds = devm_clk_get(dev, "tmds");
-	if (IS_ERR(hdmi->clk_tmds)) {
-		dev_err(dev, "Couldn't get the tmds clock\n");
-		return PTR_ERR(hdmi->clk_tmds);
-	}
+	if (IS_ERR(hdmi->clk_tmds))
+		return dev_err_probe(dev, PTR_ERR(hdmi->clk_tmds),
+				     "Couldn't get the tmds clock\n");
 
 	hdmi->regulator = devm_regulator_get(dev, "hvcc");
-	if (IS_ERR(hdmi->regulator)) {
-		dev_err(dev, "Couldn't get regulator\n");
-		return PTR_ERR(hdmi->regulator);
-	}
-
-	ret = sun8i_dw_hdmi_find_connector_pdev(dev, &connector_pdev);
-	if (!ret) {
-		hdmi->ddc_en = gpiod_get_optional(&connector_pdev->dev,
-						  "ddc-en", GPIOD_OUT_HIGH);
-		platform_device_put(connector_pdev);
-
-		if (IS_ERR(hdmi->ddc_en)) {
-			dev_err(dev, "Couldn't get ddc-en gpio\n");
-			return PTR_ERR(hdmi->ddc_en);
-		}
-	}
+	if (IS_ERR(hdmi->regulator))
+		return dev_err_probe(dev, PTR_ERR(hdmi->regulator),
+				     "Couldn't get regulator\n");
 
 	ret = regulator_enable(hdmi->regulator);
 	if (ret) {
 		dev_err(dev, "Failed to enable regulator\n");
-		goto err_unref_ddc_en;
+		return ret;
 	}
-
-	gpiod_set_value(hdmi->ddc_en, 1);
 
 	ret = reset_control_deassert(hdmi->rst_ctrl);
 	if (ret) {
 		dev_err(dev, "Could not deassert ctrl reset control\n");
-		goto err_disable_ddc_en;
+		goto err_disable_regulator;
 	}
 
 	ret = clk_prepare_enable(hdmi->clk_tmds);
@@ -209,17 +168,19 @@ static int sun8i_dw_hdmi_bind(struct device *dev, struct device *master,
 		goto err_disable_clk_tmds;
 	}
 
-	ret = sun8i_hdmi_phy_probe(hdmi, phy_node);
+	ret = sun8i_hdmi_phy_get(hdmi, phy_node);
 	of_node_put(phy_node);
 	if (ret) {
 		dev_err(dev, "Couldn't get the HDMI PHY\n");
 		goto err_disable_clk_tmds;
 	}
 
+	ret = sun8i_hdmi_phy_init(hdmi->phy);
+	if (ret)
+		goto err_disable_clk_tmds;
+
 	drm_encoder_helper_add(encoder, &sun8i_dw_hdmi_encoder_helper_funcs);
 	drm_simple_encoder_init(drm, encoder, DRM_MODE_ENCODER_TMDS);
-
-	sun8i_hdmi_phy_init(hdmi->phy);
 
 	plat_data->mode_valid = hdmi->quirks->mode_valid;
 	plat_data->use_drm_infoframe = hdmi->quirks->use_drm_infoframe;
@@ -242,17 +203,12 @@ static int sun8i_dw_hdmi_bind(struct device *dev, struct device *master,
 
 cleanup_encoder:
 	drm_encoder_cleanup(encoder);
-	sun8i_hdmi_phy_remove(hdmi);
 err_disable_clk_tmds:
 	clk_disable_unprepare(hdmi->clk_tmds);
 err_assert_ctrl_reset:
 	reset_control_assert(hdmi->rst_ctrl);
-err_disable_ddc_en:
-	gpiod_set_value(hdmi->ddc_en, 0);
+err_disable_regulator:
 	regulator_disable(hdmi->regulator);
-err_unref_ddc_en:
-	if (hdmi->ddc_en)
-		gpiod_put(hdmi->ddc_en);
 
 	return ret;
 }
@@ -263,14 +219,10 @@ static void sun8i_dw_hdmi_unbind(struct device *dev, struct device *master,
 	struct sun8i_dw_hdmi *hdmi = dev_get_drvdata(dev);
 
 	dw_hdmi_unbind(hdmi->hdmi);
-	sun8i_hdmi_phy_remove(hdmi);
+	sun8i_hdmi_phy_deinit(hdmi->phy);
 	clk_disable_unprepare(hdmi->clk_tmds);
 	reset_control_assert(hdmi->rst_ctrl);
-	gpiod_set_value(hdmi->ddc_en, 0);
 	regulator_disable(hdmi->regulator);
-
-	if (hdmi->ddc_en)
-		gpiod_put(hdmi->ddc_en);
 }
 
 static const struct component_ops sun8i_dw_hdmi_ops = {
@@ -320,7 +272,32 @@ static struct platform_driver sun8i_dw_hdmi_pltfm_driver = {
 		.of_match_table = sun8i_dw_hdmi_dt_ids,
 	},
 };
-module_platform_driver(sun8i_dw_hdmi_pltfm_driver);
+
+static int __init sun8i_dw_hdmi_init(void)
+{
+	int ret;
+
+	ret = platform_driver_register(&sun8i_dw_hdmi_pltfm_driver);
+	if (ret)
+		return ret;
+
+	ret = platform_driver_register(&sun8i_hdmi_phy_driver);
+	if (ret) {
+		platform_driver_unregister(&sun8i_dw_hdmi_pltfm_driver);
+		return ret;
+	}
+
+	return ret;
+}
+
+static void __exit sun8i_dw_hdmi_exit(void)
+{
+	platform_driver_unregister(&sun8i_dw_hdmi_pltfm_driver);
+	platform_driver_unregister(&sun8i_hdmi_phy_driver);
+}
+
+module_init(sun8i_dw_hdmi_init);
+module_exit(sun8i_dw_hdmi_exit);
 
 MODULE_AUTHOR("Jernej Skrabec <jernej.skrabec@siol.net>");
 MODULE_DESCRIPTION("Allwinner DW HDMI bridge");

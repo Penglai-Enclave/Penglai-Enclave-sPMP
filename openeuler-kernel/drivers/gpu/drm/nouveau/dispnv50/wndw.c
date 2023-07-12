@@ -30,7 +30,10 @@
 #include <nvhw/class/cl507e.h>
 #include <nvhw/class/clc37e.h>
 
+#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_blend.h>
+#include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_fourcc.h>
 
 #include "nouveau_bo.h"
@@ -402,10 +405,7 @@ nv50_wndw_atomic_check_lut(struct nv50_wndw *wndw,
 	/* Recalculate LUT state. */
 	memset(&asyw->xlut, 0x00, sizeof(asyw->xlut));
 	if ((asyw->ilut = wndw->func->ilut ? ilut : NULL)) {
-		if (!wndw->func->ilut(wndw, asyw, drm_color_lut_size(ilut))) {
-			DRM_DEBUG_KMS("Invalid ilut\n");
-			return -EINVAL;
-		}
+		wndw->func->ilut(wndw, asyw, drm_color_lut_size(ilut));
 		asyw->xlut.handle = wndw->wndw.vram.handle;
 		asyw->xlut.i.buffer = !asyw->xlut.i.buffer;
 		asyw->set.xlut = true;
@@ -434,12 +434,15 @@ nv50_wndw_atomic_check_lut(struct nv50_wndw *wndw,
 }
 
 static int
-nv50_wndw_atomic_check(struct drm_plane *plane, struct drm_plane_state *state)
+nv50_wndw_atomic_check(struct drm_plane *plane,
+		       struct drm_atomic_state *state)
 {
+	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state,
+										 plane);
 	struct nouveau_drm *drm = nouveau_drm(plane->dev);
 	struct nv50_wndw *wndw = nv50_wndw(plane);
 	struct nv50_wndw_atom *armw = nv50_wndw_atom(wndw->plane.state);
-	struct nv50_wndw_atom *asyw = nv50_wndw_atom(state);
+	struct nv50_wndw_atom *asyw = nv50_wndw_atom(new_plane_state);
 	struct nv50_head_atom *harm = NULL, *asyh = NULL;
 	bool modeset = false;
 	int ret;
@@ -557,7 +560,10 @@ nv50_wndw_prepare_fb(struct drm_plane *plane, struct drm_plane_state *state)
 			asyw->image.handle[0] = ctxdma->object.handle;
 	}
 
-	asyw->state.fence = dma_resv_get_excl_rcu(nvbo->bo.base.resv);
+	ret = drm_gem_plane_helper_prepare_fb(plane, state);
+	if (ret)
+		return ret;
+
 	asyw->image.offset[0] = nvbo->offset;
 
 	if (wndw->func->prepare) {
@@ -626,8 +632,6 @@ nv50_wndw_reset(struct drm_plane *plane)
 		plane->funcs->atomic_destroy_state(plane, plane->state);
 
 	__drm_atomic_helper_plane_reset(plane, &asyw->state);
-	plane->state->zpos = nv50_wndw_zpos_default(plane);
-	plane->state->normalized_zpos = nv50_wndw_zpos_default(plane);
 }
 
 static void
@@ -640,7 +644,6 @@ nv50_wndw_destroy(struct drm_plane *plane)
 		nv50_wndw_ctxdma_del(ctxdma);
 	}
 
-	nvif_notify_dtor(&wndw->notify);
 	nv50_dmac_destroy(&wndw->wimm);
 	nv50_dmac_destroy(&wndw->wndw);
 
@@ -683,24 +686,6 @@ nv50_wndw = {
 	.atomic_destroy_state = nv50_wndw_atomic_destroy_state,
 	.format_mod_supported = nv50_plane_format_mod_supported,
 };
-
-static int
-nv50_wndw_notify(struct nvif_notify *notify)
-{
-	return NVIF_NOTIFY_KEEP;
-}
-
-void
-nv50_wndw_fini(struct nv50_wndw *wndw)
-{
-	nvif_notify_put(&wndw->notify);
-}
-
-void
-nv50_wndw_init(struct nv50_wndw *wndw)
-{
-	nvif_notify_get(&wndw->notify);
-}
 
 static const u64 nv50_cursor_format_modifiers[] = {
 	DRM_FORMAT_MOD_LINEAR,
@@ -755,8 +740,6 @@ nv50_wndw_new_(const struct nv50_wndw_func *func, struct drm_device *dev,
 			return ret;
 	}
 
-	wndw->notify.func = nv50_wndw_notify;
-
 	if (wndw->func->blend_set) {
 		ret = drm_plane_create_zpos_property(&wndw->plane,
 				nv50_wndw_zpos_default(&wndw->plane), 0, 254);
@@ -793,6 +776,7 @@ nv50_wndw_new(struct nouveau_drm *drm, enum drm_plane_type type, int index,
 		int (*new)(struct nouveau_drm *, enum drm_plane_type,
 			   int, s32, struct nv50_wndw **);
 	} wndws[] = {
+		{ GA102_DISP_WINDOW_CHANNEL_DMA, 0, wndwc67e_new },
 		{ TU102_DISP_WINDOW_CHANNEL_DMA, 0, wndwc57e_new },
 		{ GV100_DISP_WINDOW_CHANNEL_DMA, 0, wndwc37e_new },
 		{}

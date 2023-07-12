@@ -23,7 +23,7 @@
 #include <linux/seq_file.h>
 #include <linux/tick.h>
 #include <linux/threads.h>
-#include <linux/tracehook.h>
+#include <linux/resume_user_mode.h>
 #include <asm/current.h>
 #include <asm/mmu_context.h>
 #include <linux/uaccess.h>
@@ -31,6 +31,7 @@
 #include <kern_util.h>
 #include <os.h>
 #include <skas.h>
+#include <registers.h>
 #include <linux/time-internal.h>
 
 /*
@@ -99,10 +100,11 @@ void interrupt_end(void)
 
 	if (need_resched())
 		schedule();
-	if (test_thread_flag(TIF_SIGPENDING))
+	if (test_thread_flag(TIF_SIGPENDING) ||
+	    test_thread_flag(TIF_NOTIFY_SIGNAL))
 		do_signal(regs);
 	if (test_thread_flag(TIF_NOTIFY_RESUME))
-		tracehook_notify_resume(regs);
+		resume_user_mode_work(regs);
 }
 
 int get_current_pid(void)
@@ -152,16 +154,17 @@ void fork_handler(void)
 	userspace(&current->thread.regs.regs, current_thread_info()->aux_fp_regs);
 }
 
-int copy_thread(unsigned long clone_flags, unsigned long sp,
-		unsigned long arg, struct task_struct * p, unsigned long tls)
+int copy_thread(struct task_struct * p, const struct kernel_clone_args *args)
 {
+	unsigned long clone_flags = args->flags;
+	unsigned long sp = args->stack;
+	unsigned long tls = args->tls;
 	void (*handler)(void);
-	int kthread = current->flags & PF_KTHREAD;
 	int ret = 0;
 
 	p->thread = (struct thread_struct) INIT_THREAD;
 
-	if (!kthread) {
+	if (!args->fn) {
 	  	memcpy(&p->thread.regs.regs, current_pt_regs(),
 		       sizeof(p->thread.regs.regs));
 		PT_REGS_SET_SYSCALL_RETURN(&p->thread.regs, 0);
@@ -173,14 +176,14 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 		arch_copy_thread(&current->thread.arch, &p->thread.arch);
 	} else {
 		get_safe_registers(p->thread.regs.regs.gp, p->thread.regs.regs.fp);
-		p->thread.request.u.thread.proc = (int (*)(void *))sp;
-		p->thread.request.u.thread.arg = (void *)arg;
+		p->thread.request.u.thread.proc = args->fn;
+		p->thread.request.u.thread.arg = args->fn_arg;
 		handler = new_thread_handler;
 	}
 
 	new_thread(task_stack_page(p), &p->thread.switch_buf, handler);
 
-	if (!kthread) {
+	if (!args->fn) {
 		clear_flushed_tls(p);
 
 		/*
@@ -202,15 +205,12 @@ void initial_thread_cb(void (*proc)(void *), void *arg)
 	kmalloc_ok = save_kmalloc_ok;
 }
 
-static void um_idle_sleep(void)
+void um_idle_sleep(void)
 {
-	unsigned long long duration = UM_NSEC_PER_SEC;
-
-	if (time_travel_mode != TT_MODE_OFF) {
-		time_travel_sleep(duration);
-	} else {
-		os_idle_sleep(duration);
-	}
+	if (time_travel_mode != TT_MODE_OFF)
+		time_travel_sleep();
+	else
+		os_idle_sleep();
 }
 
 void arch_cpu_idle(void)
@@ -263,11 +263,6 @@ int copy_from_user_proc(void *to, void __user *from, int size)
 int clear_user_proc(void __user *buf, int size)
 {
 	return clear_user(buf, size);
-}
-
-int cpu(void)
-{
-	return current_thread_info()->cpu;
 }
 
 static atomic_t using_sysemu = ATOMIC_INIT(0);
@@ -341,7 +336,7 @@ int singlestepping(void * t)
 {
 	struct task_struct *task = t ? t : current;
 
-	if (!(task->ptrace & PT_DTRACE))
+	if (!test_thread_flag(TIF_SINGLESTEP))
 		return 0;
 
 	if (task->thread.singlestep_syscall)
@@ -361,18 +356,15 @@ int singlestepping(void * t)
 unsigned long arch_align_stack(unsigned long sp)
 {
 	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
-		sp -= get_random_int() % 8192;
+		sp -= prandom_u32_max(8192);
 	return sp & ~0xf;
 }
 #endif
 
-unsigned long get_wchan(struct task_struct *p)
+unsigned long __get_wchan(struct task_struct *p)
 {
 	unsigned long stack_page, sp, ip;
 	bool seen_sched = 0;
-
-	if ((p == NULL) || (p == current) || (p->state == TASK_RUNNING))
-		return 0;
 
 	stack_page = (unsigned long) task_stack_page(p);
 	/* Bail if the process has no kernel stack for some reason */

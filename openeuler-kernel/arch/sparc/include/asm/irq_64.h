@@ -87,13 +87,12 @@ static inline unsigned long get_softint(void)
 	return retval;
 }
 
-bool arch_trigger_cpumask_backtrace(const struct cpumask *mask,
+void arch_trigger_cpumask_backtrace(const struct cpumask *mask,
 				    bool exclude_self);
 #define arch_trigger_cpumask_backtrace arch_trigger_cpumask_backtrace
 
 extern void *hardirq_stack[NR_CPUS];
 extern void *softirq_stack[NR_CPUS];
-#define __ARCH_HAS_DO_SOFTIRQ
 
 #define NO_IRQ		0xffffffff
 

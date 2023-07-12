@@ -6,7 +6,7 @@
  * Copyright (C) 1998-99  Kirk Reiser.
  * Copyright (C) 2003 David Borowski.
  *
- * this code is specificly written as a driver for the speakup screenreview
+ * this code is specifically written as a driver for the speakup screenreview
  * package and is not a general device driver.
  */
 #include <linux/jiffies.h>
@@ -163,8 +163,8 @@ static void do_catch_up(struct spk_synth *synth)
 		full_time_val = full_time->u.n.value;
 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
 		if (!synth->io_ops->synth_out(synth, ch)) {
-			synth->io_ops->tiocmset(0, UART_MCR_RTS);
-			synth->io_ops->tiocmset(UART_MCR_RTS, 0);
+			synth->io_ops->tiocmset(synth, 0, UART_MCR_RTS);
+			synth->io_ops->tiocmset(synth, UART_MCR_RTS, 0);
 			schedule_timeout(msecs_to_jiffies(full_time_val));
 			continue;
 		}

@@ -1,15 +1,27 @@
 # SPDX-License-Identifier: GPL-2.0
+#
 # Makefile for RISC-V KVM support
 #
 
-common-objs-y = $(addprefix ../../../virt/kvm/, kvm_main.o coalesced_mmio.o)
-common-objs-y += $(addprefix ../../../virt/kvm/, eventfd.o)
+ccflags-y += -I $(srctree)/$(src)
 
-ccflags-y := -Ivirt/kvm -Iarch/riscv/kvm
+include $(srctree)/virt/kvm/Makefile.kvm
 
-kvm-objs := $(common-objs-y)
+obj-$(CONFIG_KVM) += kvm.o
 
-kvm-objs += main.o vm.o vmid.o tlb.o mmu.o
-kvm-objs += vcpu.o vcpu_exit.o vcpu_switch.o vcpu_timer.o vcpu_sbi.o
-
-obj-$(CONFIG_KVM)	+= kvm.o
+kvm-y += main.o
+kvm-y += vm.o
+kvm-y += vmid.o
+kvm-y += tlb.o
+kvm-y += mmu.o
+kvm-y += vcpu.o
+kvm-y += vcpu_exit.o
+kvm-y += vcpu_fp.o
+kvm-y += vcpu_insn.o
+kvm-y += vcpu_switch.o
+kvm-y += vcpu_sbi.o
+kvm-$(CONFIG_RISCV_SBI_V01) += vcpu_sbi_v01.o
+kvm-y += vcpu_sbi_base.o
+kvm-y += vcpu_sbi_replace.o
+kvm-y += vcpu_sbi_hsm.o
+kvm-y += vcpu_timer.o

@@ -7,6 +7,12 @@ OUTPUT_ARCH(ELF_ARCH)
 ENTRY(_start)
 jiffies = jiffies_64;
 
+VERSION {
+  {
+    local: *;
+  };
+}
+
 SECTIONS
 {
   /* This must contain the right address - not quite the default ELF one.*/
@@ -89,6 +95,7 @@ SECTIONS
   }
 
   .got           : { *(.got.plt) *(.got) }
+  .eh_frame       : { KEEP (*(.eh_frame)) }
   .dynamic       : { *(.dynamic) }
   .tdata	  : { *(.tdata .tdata.* .gnu.linkonce.td.*) }
   .tbss		  : { *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon) }

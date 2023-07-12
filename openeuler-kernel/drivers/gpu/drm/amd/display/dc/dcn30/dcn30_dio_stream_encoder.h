@@ -85,7 +85,9 @@
 	SRI(DP_MSE_RATE_UPDATE, DP, id), \
 	SRI(DP_PIXEL_FORMAT, DP, id), \
 	SRI(DP_SEC_CNTL, DP, id), \
+	SRI(DP_SEC_CNTL1, DP, id), \
 	SRI(DP_SEC_CNTL2, DP, id), \
+	SRI(DP_SEC_CNTL5, DP, id), \
 	SRI(DP_SEC_CNTL6, DP, id), \
 	SRI(DP_STEER_FIFO, DP, id), \
 	SRI(DP_VID_M, DP, id), \
@@ -93,6 +95,8 @@
 	SRI(DP_VID_STREAM_CNTL, DP, id), \
 	SRI(DP_VID_TIMING, DP, id), \
 	SRI(DP_SEC_AUD_N, DP, id), \
+	SRI(DP_SEC_AUD_N_READBACK, DP, id), \
+	SRI(DP_SEC_AUD_M_READBACK, DP, id), \
 	SRI(DP_SEC_TIMESTAMP, DP, id), \
 	SRI(DP_DSC_CNTL, DP, id), \
 	SRI(DP_DSC_BYTES_PER_PIXEL, DP, id), \
@@ -104,10 +108,11 @@
 	SRI(DP_SEC_METADATA_TRANSMISSION, DP, id), \
 	SRI(HDMI_METADATA_PACKET_CONTROL, DIG, id), \
 	SRI(DIG_FE_CNTL, DIG, id), \
+	SRI(DIG_FIFO_STATUS, DIG, id), \
 	SRI(DIG_CLOCK_PATTERN, DIG, id)
 
 
-#define SE_COMMON_MASK_SH_LIST_DCN30_BASE(mask_sh)\
+#define SE_COMMON_MASK_SH_LIST_DCN30(mask_sh)\
 	SE_SF(DP0_DP_PIXEL_FORMAT, DP_PIXEL_ENCODING, mask_sh),\
 	SE_SF(DP0_DP_PIXEL_FORMAT, DP_COMPONENT_DEPTH, mask_sh),\
 	SE_SF(DIG0_HDMI_CONTROL, HDMI_PACKET_GEN_VERSION, mask_sh),\
@@ -119,6 +124,7 @@
 	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_GC_CONT, mask_sh),\
 	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_GC_SEND, mask_sh),\
 	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_NULL_SEND, mask_sh),\
+	SE_SF(DIG0_HDMI_VBI_PACKET_CONTROL, HDMI_ACP_SEND, mask_sh),\
 	SE_SF(DIG0_HDMI_INFOFRAME_CONTROL0, HDMI_AUDIO_INFO_SEND, mask_sh),\
 	SE_SF(DIG0_HDMI_INFOFRAME_CONTROL1, HDMI_AUDIO_INFO_LINE, mask_sh),\
 	SE_SF(DIG0_HDMI_GC, HDMI_GC_AVMUTE, mask_sh),\
@@ -154,6 +160,8 @@
 	SE_SF(DIG0_HDMI_ACR_48_0, HDMI_ACR_CTS_48, mask_sh),\
 	SE_SF(DIG0_HDMI_ACR_48_1, HDMI_ACR_N_48, mask_sh),\
 	SE_SF(DP0_DP_SEC_AUD_N, DP_SEC_AUD_N, mask_sh),\
+	SE_SF(DP0_DP_SEC_AUD_N_READBACK, DP_SEC_AUD_N_READBACK, mask_sh),\
+	SE_SF(DP0_DP_SEC_AUD_M_READBACK, DP_SEC_AUD_M_READBACK, mask_sh),\
 	SE_SF(DP0_DP_SEC_TIMESTAMP, DP_SEC_TIMESTAMP_MODE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_ASP_ENABLE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_ATP_ENABLE, mask_sh),\
@@ -165,11 +173,24 @@
 	SE_SF(DIG0_DIG_FE_CNTL, TMDS_COLOR_FORMAT, mask_sh),\
 	SE_SF(DIG0_DIG_FE_CNTL, DIG_STEREOSYNC_SELECT, mask_sh),\
 	SE_SF(DIG0_DIG_FE_CNTL, DIG_STEREOSYNC_GATE_EN, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_LEVEL_ERROR, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_USE_OVERWRITE_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_OVERWRITE_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_ERROR_ACK, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_CAL_AVERAGE_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_MAXIMUM_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_MINIMUM_LEVEL, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_READ_CLOCK_SRC, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_CALIBRATED, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_FORCE_RECAL_AVERAGE, mask_sh),\
+	SE_SF(DIG0_DIG_FIFO_STATUS, DIG_FIFO_FORCE_RECOMP_MINMAX, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_GSP4_ENABLE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_GSP5_ENABLE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_GSP6_ENABLE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL, DP_SEC_GSP7_ENABLE, mask_sh),\
+	SE_SF(DP0_DP_SEC_CNTL1, DP_SEC_GSP5_LINE_REFERENCE, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL2, DP_SEC_GSP7_SEND, mask_sh),\
+	SE_SF(DP0_DP_SEC_CNTL5, DP_SEC_GSP5_LINE_NUM, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL6, DP_SEC_GSP7_LINE_NUM, mask_sh),\
 	SE_SF(DP0_DP_SEC_CNTL2, DP_SEC_GSP11_PPS, mask_sh),\
 	SE_SF(DP0_DP_GSP11_CNTL, DP_SEC_GSP11_ENABLE, mask_sh),\
@@ -253,9 +274,6 @@
 	SE_SF(DP0_DP_SEC_FRAMING4, DP_SST_SDP_SPLITTING, mask_sh),\
 	SE_SF(DIG0_DIG_CLOCK_PATTERN, DIG_CLOCK_PATTERN, mask_sh)
 
-#define SE_COMMON_MASK_SH_LIST_DCN30(mask_sh)\
-	SE_COMMON_MASK_SH_LIST_DCN30_BASE(mask_sh)
-
 void dcn30_dio_stream_encoder_construct(
 	struct dcn10_stream_encoder *enc1,
 	struct dc_context *ctx,
@@ -266,5 +284,40 @@ void dcn30_dio_stream_encoder_construct(
 	const struct dcn10_stream_enc_registers *regs,
 	const struct dcn10_stream_encoder_shift *se_shift,
 	const struct dcn10_stream_encoder_mask *se_mask);
+
+void enc3_stream_encoder_update_hdmi_info_packets(
+	struct stream_encoder *enc,
+	const struct encoder_info_frame *info_frame);
+
+void enc3_stream_encoder_stop_hdmi_info_packets(
+	struct stream_encoder *enc);
+
+void enc3_stream_encoder_update_dp_info_packets(
+	struct stream_encoder *enc,
+	const struct encoder_info_frame *info_frame);
+
+void enc3_audio_mute_control(
+	struct stream_encoder *enc,
+	bool mute);
+
+void enc3_se_dp_audio_setup(
+	struct stream_encoder *enc,
+	unsigned int az_inst,
+	struct audio_info *info);
+
+void enc3_se_dp_audio_enable(
+	struct stream_encoder *enc);
+
+void enc3_se_hdmi_audio_setup(
+	struct stream_encoder *enc,
+	unsigned int az_inst,
+	struct audio_info *info,
+	struct audio_crtc_info *audio_crtc_info);
+
+void enc3_dp_set_dsc_pps_info_packet(
+	struct stream_encoder *enc,
+	bool enable,
+	uint8_t *dsc_packed_pps,
+    bool immediate_update);
 
 #endif /* __DC_DIO_STREAM_ENCODER_DCN30_H__ */

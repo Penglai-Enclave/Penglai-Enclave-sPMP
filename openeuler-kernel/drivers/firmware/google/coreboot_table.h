@@ -66,13 +66,14 @@ struct coreboot_device {
 		struct coreboot_table_entry entry;
 		struct lb_cbmem_ref cbmem_ref;
 		struct lb_framebuffer framebuffer;
+		DECLARE_FLEX_ARRAY(u8, raw);
 	};
 };
 
 /* A driver for handling devices described in coreboot tables. */
 struct coreboot_driver {
 	int (*probe)(struct coreboot_device *);
-	int (*remove)(struct coreboot_device *);
+	void (*remove)(struct coreboot_device *);
 	struct device_driver drv;
 	u32 tag;
 };

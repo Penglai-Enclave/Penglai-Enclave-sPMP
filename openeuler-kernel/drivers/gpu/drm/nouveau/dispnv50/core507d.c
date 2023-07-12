@@ -22,7 +22,7 @@
 #include "core.h"
 #include "head.h"
 
-#include <nvif/cl507d.h>
+#include <nvif/if0014.h>
 #include <nvif/push507c.h>
 #include <nvif/timer.h>
 
@@ -36,7 +36,7 @@ core507d_update(struct nv50_core *core, u32 *interlock, bool ntfy)
 	struct nvif_push *push = core->chan.push;
 	int ret;
 
-	if ((ret = PUSH_WAIT(push, 5)))
+	if ((ret = PUSH_WAIT(push, (ntfy ? 2 : 0) + 3)))
 		return ret;
 
 	if (ntfy) {
@@ -157,7 +157,7 @@ int
 core507d_new_(const struct nv50_core_func *func, struct nouveau_drm *drm,
 	      s32 oclass, struct nv50_core **pcore)
 {
-	struct nv50_disp_core_channel_dma_v0 args = {};
+	struct nvif_disp_chan_v0 args = {};
 	struct nv50_disp *disp = nv50_disp(drm->dev);
 	struct nv50_core *core;
 	int ret;

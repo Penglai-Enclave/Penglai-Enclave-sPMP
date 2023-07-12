@@ -43,7 +43,9 @@ static int ibm_get_config_addr_info;
 static int ibm_get_config_addr_info2;
 static int ibm_configure_pe;
 
-void pseries_pcibios_bus_add_device(struct pci_dev *pdev)
+static void pseries_eeh_init_edev(struct pci_dn *pdn);
+
+static void pseries_pcibios_bus_add_device(struct pci_dev *pdev)
 {
 	struct pci_dn *pdn = pci_get_pdn(pdev);
 
@@ -69,7 +71,7 @@ void pseries_pcibios_bus_add_device(struct pci_dev *pdev)
 	if (pdev->is_virtfn) {
 		/*
 		 * FIXME: This really should be handled by choosing the right
-		 *        parent PE in in pseries_eeh_init_edev().
+		 *        parent PE in pseries_eeh_init_edev().
 		 */
 		struct eeh_pe *physfn_pe = pci_dev_to_eeh_dev(pdev->physfn)->pe;
 		struct eeh_dev *edev = pdn_to_eeh_dev(pdn);
@@ -359,7 +361,7 @@ static struct eeh_pe *pseries_eeh_pe_get_parent(struct eeh_dev *edev)
  * This function takes care of the initialisation and inserts the eeh_dev
  * into the correct eeh_pe. If no eeh_pe exists we'll allocate one.
  */
-void pseries_eeh_init_edev(struct pci_dn *pdn)
+static void pseries_eeh_init_edev(struct pci_dn *pdn)
 {
 	struct eeh_pe pe, *parent;
 	struct eeh_dev *edev;
@@ -510,7 +512,7 @@ static int pseries_eeh_set_option(struct eeh_pe *pe, int option)
 	int ret = 0;
 
 	/*
-	 * When we're enabling or disabling EEH functioality on
+	 * When we're enabling or disabling EEH functionality on
 	 * the particular PE, the PE config address is possibly
 	 * unavailable. Therefore, we have to figure it out from
 	 * the FDT node.
@@ -694,8 +696,7 @@ static int pseries_eeh_write_config(struct eeh_dev *edev, int where, int size, u
 }
 
 #ifdef CONFIG_PCI_IOV
-int pseries_send_allow_unfreeze(struct pci_dn *pdn,
-				u16 *vf_pe_array, int cur_vfs)
+static int pseries_send_allow_unfreeze(struct pci_dn *pdn, u16 *vf_pe_array, int cur_vfs)
 {
 	int rc;
 	int ibm_allow_unfreeze = rtas_token("ibm,open-sriov-allow-unfreeze");
@@ -846,18 +847,8 @@ static int __init eeh_pseries_init(void)
 		return -EINVAL;
 	}
 
-	/* Initialize error log lock and size */
-	spin_lock_init(&slot_errbuf_lock);
-	eeh_error_buf_size = rtas_token("rtas-error-log-max");
-	if (eeh_error_buf_size == RTAS_UNKNOWN_SERVICE) {
-		pr_info("%s: unknown EEH error log size\n",
-			__func__);
-		eeh_error_buf_size = 1024;
-	} else if (eeh_error_buf_size > RTAS_ERROR_LOG_MAX) {
-		pr_info("%s: EEH error log size %d exceeds the maximal %d\n",
-			__func__, eeh_error_buf_size, RTAS_ERROR_LOG_MAX);
-		eeh_error_buf_size = RTAS_ERROR_LOG_MAX;
-	}
+	/* Initialize error log size */
+	eeh_error_buf_size = rtas_get_error_log_max();
 
 	/* Set EEH probe mode */
 	eeh_add_flag(EEH_PROBE_MODE_DEVTREE | EEH_ENABLE_IO_FOR_LOG);
@@ -868,6 +859,10 @@ static int __init eeh_pseries_init(void)
 	if (is_kdump_kernel() || reset_devices) {
 		pr_info("Issue PHB reset ...\n");
 		list_for_each_entry(phb, &hose_list, list_node) {
+			// Skip if the slot is empty
+			if (list_empty(&PCI_DN(phb->dn)->child_list))
+				continue;
+
 			pdn = list_first_entry(&PCI_DN(phb->dn)->child_list, struct pci_dn, list);
 			config_addr = pseries_eeh_get_pe_config_addr(pdn);
 

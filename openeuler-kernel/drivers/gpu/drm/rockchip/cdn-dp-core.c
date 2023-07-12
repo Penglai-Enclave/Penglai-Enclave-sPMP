@@ -15,8 +15,8 @@
 
 #include <sound/hdmi-codec.h>
 
+#include <drm/display/drm_dp_helper.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_dp_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
@@ -26,11 +26,17 @@
 #include "cdn-dp-reg.h"
 #include "rockchip_drm_vop.h"
 
-#define connector_to_dp(c) \
-		container_of(c, struct cdn_dp_device, connector)
+static inline struct cdn_dp_device *connector_to_dp(struct drm_connector *connector)
+{
+	return container_of(connector, struct cdn_dp_device, connector);
+}
 
-#define encoder_to_dp(c) \
-		container_of(c, struct cdn_dp_device, encoder)
+static inline struct cdn_dp_device *encoder_to_dp(struct drm_encoder *encoder)
+{
+	struct rockchip_encoder *rkencoder = to_rockchip_encoder(encoder);
+
+	return container_of(rkencoder, struct cdn_dp_device, encoder);
+}
 
 #define GRF_SOC_CON9		0x6224
 #define DP_SEL_VOP_LIT		BIT(12)
@@ -42,12 +48,13 @@
 #define CDN_FW_TIMEOUT_MS	(64 * 1000)
 #define CDN_DPCD_TIMEOUT_MS	5000
 #define CDN_DP_FIRMWARE		"rockchip/dptx.bin"
+MODULE_FIRMWARE(CDN_DP_FIRMWARE);
 
 struct cdn_dp_data {
 	u8 max_phy;
 };
 
-struct cdn_dp_data rk3399_cdn_dp = {
+static struct cdn_dp_data rk3399_cdn_dp = {
 	.max_phy = 2,
 };
 
@@ -73,6 +80,7 @@ static int cdn_dp_grf_write(struct cdn_dp_device *dp,
 	ret = regmap_write(dp->grf, reg, val);
 	if (ret) {
 		DRM_DEV_ERROR(dp->dev, "Could not write to GRF: %d\n", ret);
+		clk_disable_unprepare(dp->grf_clk);
 		return ret;
 	}
 
@@ -275,8 +283,9 @@ static int cdn_dp_connector_get_modes(struct drm_connector *connector)
 	return ret;
 }
 
-static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
-				       struct drm_display_mode *mode)
+static enum drm_mode_status
+cdn_dp_connector_mode_valid(struct drm_connector *connector,
+			    struct drm_display_mode *mode)
 {
 	struct cdn_dp_device *dp = connector_to_dp(connector);
 	struct drm_display_info *display_info = &dp->connector.display_info;
@@ -562,7 +571,7 @@ static void cdn_dp_encoder_mode_set(struct drm_encoder *encoder,
 	video->v_sync_polarity = !!(mode->flags & DRM_MODE_FLAG_NVSYNC);
 	video->h_sync_polarity = !!(mode->flags & DRM_MODE_FLAG_NHSYNC);
 
-	memcpy(&dp->mode, adjusted, sizeof(*mode));
+	drm_mode_copy(&dp->mode, adjusted);
 }
 
 static bool cdn_dp_check_link_status(struct cdn_dp_device *dp)
@@ -582,6 +591,13 @@ static bool cdn_dp_check_link_status(struct cdn_dp_device *dp)
 
 	/* if link training is requested we should perform it always */
 	return drm_dp_channel_eq_ok(link_status, min(port->lanes, sink_lanes));
+}
+
+static void cdn_dp_audio_handle_plugged_change(struct cdn_dp_device *dp,
+					       bool plugged)
+{
+	if (dp->codec_dev)
+		dp->plugged_cb(dp->codec_dev, plugged);
 }
 
 static void cdn_dp_encoder_enable(struct drm_encoder *encoder)
@@ -639,6 +655,9 @@ static void cdn_dp_encoder_enable(struct drm_encoder *encoder)
 		DRM_DEV_ERROR(dp->dev, "Failed to valid video %d\n", ret);
 		goto out;
 	}
+
+	cdn_dp_audio_handle_plugged_change(dp, true);
+
 out:
 	mutex_unlock(&dp->lock);
 }
@@ -649,6 +668,8 @@ static void cdn_dp_encoder_disable(struct drm_encoder *encoder)
 	int ret;
 
 	mutex_lock(&dp->lock);
+	cdn_dp_audio_handle_plugged_change(dp, false);
+
 	if (dp->active) {
 		ret = cdn_dp_disable(dp);
 		if (ret) {
@@ -695,7 +716,6 @@ static int cdn_dp_parse_dt(struct cdn_dp_device *dp)
 	struct device *dev = dp->dev;
 	struct device_node *np = dev->of_node;
 	struct platform_device *pdev = to_platform_device(dev);
-	struct resource *res;
 
 	dp->grf = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
 	if (IS_ERR(dp->grf)) {
@@ -703,8 +723,7 @@ static int cdn_dp_parse_dt(struct cdn_dp_device *dp)
 		return PTR_ERR(dp->grf);
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	dp->regs = devm_ioremap_resource(dev, res);
+	dp->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(dp->regs)) {
 		DRM_DEV_ERROR(dev, "ioremap reg failed\n");
 		return PTR_ERR(dp->regs);
@@ -846,11 +865,27 @@ static int cdn_dp_audio_get_eld(struct device *dev, void *data,
 	return 0;
 }
 
+static int cdn_dp_audio_hook_plugged_cb(struct device *dev, void *data,
+					hdmi_codec_plugged_cb fn,
+					struct device *codec_dev)
+{
+	struct cdn_dp_device *dp = dev_get_drvdata(dev);
+
+	mutex_lock(&dp->lock);
+	dp->plugged_cb = fn;
+	dp->codec_dev = codec_dev;
+	cdn_dp_audio_handle_plugged_change(dp, dp->connected);
+	mutex_unlock(&dp->lock);
+
+	return 0;
+}
+
 static const struct hdmi_codec_ops audio_codec_ops = {
 	.hw_params = cdn_dp_audio_hw_params,
 	.audio_shutdown = cdn_dp_audio_shutdown,
 	.mute_stream = cdn_dp_audio_mute_stream,
 	.get_eld = cdn_dp_audio_get_eld,
+	.hook_plugged_cb = cdn_dp_audio_hook_plugged_cb,
 	.no_capture_mute = 1,
 };
 
@@ -1022,7 +1057,7 @@ static int cdn_dp_bind(struct device *dev, struct device *master, void *data)
 
 	INIT_WORK(&dp->event_work, cdn_dp_pd_event_work);
 
-	encoder = &dp->encoder;
+	encoder = &dp->encoder.encoder;
 
 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm_dev,
 							     dev->of_node);
@@ -1087,7 +1122,7 @@ err_free_encoder:
 static void cdn_dp_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct cdn_dp_device *dp = dev_get_drvdata(dev);
-	struct drm_encoder *encoder = &dp->encoder;
+	struct drm_encoder *encoder = &dp->encoder.encoder;
 	struct drm_connector *connector = &dp->connector;
 
 	cancel_work_sync(&dp->event_work);
@@ -1121,8 +1156,7 @@ static int cdn_dp_suspend(struct device *dev)
 	return ret;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int cdn_dp_resume(struct device *dev)
+static __maybe_unused int cdn_dp_resume(struct device *dev)
 {
 	struct cdn_dp_device *dp = dev_get_drvdata(dev);
 
@@ -1134,7 +1168,6 @@ static int cdn_dp_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static int cdn_dp_probe(struct platform_device *pdev)
 {

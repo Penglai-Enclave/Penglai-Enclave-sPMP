@@ -9,7 +9,6 @@
 #include <linux/export.h>
 #include <linux/err.h>
 #include <linux/fips.h>
-#include <linux/mpi.h>
 #include <crypto/internal/rsa.h>
 #include "rsapubkey.asn1.h"
 #include "rsaprivkey.asn1.h"
@@ -149,32 +148,6 @@ int rsa_get_qinv(void *context, size_t hdrlen, unsigned char tag,
 	return 0;
 }
 
-typedef int (*rsa_get_func)(void *, size_t, unsigned char,
-			    const void *, size_t);
-
-static int rsa_parse_key_raw(struct rsa_key *rsa_key,
-			     const void *key, unsigned int key_len,
-			     rsa_get_func *func, int n_func)
-{
-	unsigned int nbytes, len = key_len;
-	const void *key_ptr = key;
-	int ret, i;
-
-	for (i = 0; i < n_func; i++) {
-		ret = mpi_key_length(key_ptr, len, NULL, &nbytes);
-		if (ret < 0)
-			return ret;
-
-		ret = func[i](rsa_key, 0, 0, key_ptr + 2, nbytes);
-		if (ret < 0)
-			return ret;
-
-		key_ptr += nbytes + 2;
-	}
-
-	return (key_ptr == key + key_len) ? 0 : -EINVAL;
-}
-
 /**
  * rsa_parse_pub_key() - decodes the BER encoded buffer and stores in the
  *                       provided struct rsa_key, pointers to the raw key as is,
@@ -194,27 +167,6 @@ int rsa_parse_pub_key(struct rsa_key *rsa_key, const void *key,
 EXPORT_SYMBOL_GPL(rsa_parse_pub_key);
 
 /**
- * rsa_parse_pub_key_raw() - parse the RAW key and store in the provided struct
- *                           rsa_key, pointers to the raw key as is, so that
- *                           the caller can copy it or MPI parse it, etc.
- *
- * @rsa_key:	struct rsa_key key representation
- * @key:	key in RAW format
- * @key_len:	length of key
- *
- * Return:	0 on success or error code in case of error
- */
-int rsa_parse_pub_key_raw(struct rsa_key *rsa_key, const void *key,
-			  unsigned int key_len)
-{
-	rsa_get_func pub_func[] = {rsa_get_n, rsa_get_e};
-
-	return rsa_parse_key_raw(rsa_key, key, key_len,
-				 pub_func, ARRAY_SIZE(pub_func));
-}
-EXPORT_SYMBOL_GPL(rsa_parse_pub_key_raw);
-
-/**
  * rsa_parse_priv_key() - decodes the BER encoded buffer and stores in the
  *                        provided struct rsa_key, pointers to the raw key
  *                        as is, so that the caller can copy it or MPI parse it,
@@ -232,24 +184,3 @@ int rsa_parse_priv_key(struct rsa_key *rsa_key, const void *key,
 	return asn1_ber_decoder(&rsaprivkey_decoder, rsa_key, key, key_len);
 }
 EXPORT_SYMBOL_GPL(rsa_parse_priv_key);
-
-/**
- * rsa_parse_priv_key_raw() - parse the RAW key and store in the provided struct
- *                            rsa_key, pointers to the raw key as is, so that
- *                            the caller can copy it or MPI parse it, etc.
- *
- * @rsa_key:	struct rsa_key key representation
- * @key:	key in RAW format
- * @key_len:	length of key
- *
- * Return:	0 on success or error code in case of error
- */
-int rsa_parse_priv_key_raw(struct rsa_key *rsa_key, const void *key,
-			   unsigned int key_len)
-{
-	rsa_get_func priv_func[] = {rsa_get_n, rsa_get_e, rsa_get_d};
-
-	return rsa_parse_key_raw(rsa_key, key, key_len,
-				 priv_func, ARRAY_SIZE(priv_func));
-}
-EXPORT_SYMBOL_GPL(rsa_parse_priv_key_raw);

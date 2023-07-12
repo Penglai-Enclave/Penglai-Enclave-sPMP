@@ -23,6 +23,14 @@
 #define QCOM_RPM_SCALING_ENABLE_ID			0x2
 #define QCOM_RPM_XO_MODE_ON				0x2
 
+static const struct clk_parent_data gcc_pxo[] = {
+	{ .fw_name = "pxo", .name = "pxo_board" },
+};
+
+static const struct clk_parent_data gcc_cxo[] = {
+	{ .fw_name = "cxo", .name = "cxo_board" },
+};
+
 #define DEFINE_CLK_RPM(_platform, _name, _active, r_id)			      \
 	static struct clk_rpm _platform##_##_active;			      \
 	static struct clk_rpm _platform##_##_name = {			      \
@@ -32,8 +40,8 @@
 		.hw.init = &(struct clk_init_data){			      \
 			.ops = &clk_rpm_ops,				      \
 			.name = #_name,					      \
-			.parent_names = (const char *[]){ "pxo_board" },      \
-			.num_parents = 1,				      \
+			.parent_data = gcc_pxo,				      \
+			.num_parents = ARRAY_SIZE(gcc_pxo),		      \
 		},							      \
 	};								      \
 	static struct clk_rpm _platform##_##_active = {			      \
@@ -44,8 +52,8 @@
 		.hw.init = &(struct clk_init_data){			      \
 			.ops = &clk_rpm_ops,				      \
 			.name = #_active,				      \
-			.parent_names = (const char *[]){ "pxo_board" },      \
-			.num_parents = 1,				      \
+			.parent_data = gcc_pxo,				      \
+			.num_parents = ARRAY_SIZE(gcc_pxo),		      \
 		},							      \
 	}
 
@@ -56,8 +64,8 @@
 		.hw.init = &(struct clk_init_data){			      \
 			.ops = &clk_rpm_xo_ops,			      \
 			.name = #_name,					      \
-			.parent_names = (const char *[]){ "cxo_board" },      \
-			.num_parents = 1,				      \
+			.parent_data = gcc_cxo,				      \
+			.num_parents = ARRAY_SIZE(gcc_cxo),		      \
 		},							      \
 	}
 
@@ -68,64 +76,8 @@
 		.hw.init = &(struct clk_init_data){			      \
 			.ops = &clk_rpm_fixed_ops,			      \
 			.name = #_name,					      \
-			.parent_names = (const char *[]){ "pxo" },	      \
-			.num_parents = 1,				      \
-		},							      \
-	}
-
-#define DEFINE_CLK_RPM_PXO_BRANCH(_platform, _name, _active, r_id, r)	      \
-	static struct clk_rpm _platform##_##_active;			      \
-	static struct clk_rpm _platform##_##_name = {			      \
-		.rpm_clk_id = (r_id),					      \
-		.active_only = true,					      \
-		.peer = &_platform##_##_active,				      \
-		.rate = (r),						      \
-		.branch = true,						      \
-		.hw.init = &(struct clk_init_data){			      \
-			.ops = &clk_rpm_branch_ops,			      \
-			.name = #_name,					      \
-			.parent_names = (const char *[]){ "pxo_board" },      \
-			.num_parents = 1,				      \
-		},							      \
-	};								      \
-	static struct clk_rpm _platform##_##_active = {			      \
-		.rpm_clk_id = (r_id),					      \
-		.peer = &_platform##_##_name,				      \
-		.rate = (r),						      \
-		.branch = true,						      \
-		.hw.init = &(struct clk_init_data){			      \
-			.ops = &clk_rpm_branch_ops,			      \
-			.name = #_active,				      \
-			.parent_names = (const char *[]){ "pxo_board" },      \
-			.num_parents = 1,				      \
-		},							      \
-	}
-
-#define DEFINE_CLK_RPM_CXO_BRANCH(_platform, _name, _active, r_id, r)	      \
-	static struct clk_rpm _platform##_##_active;			      \
-	static struct clk_rpm _platform##_##_name = {			      \
-		.rpm_clk_id = (r_id),					      \
-		.peer = &_platform##_##_active,				      \
-		.rate = (r),						      \
-		.branch = true,						      \
-		.hw.init = &(struct clk_init_data){			      \
-			.ops = &clk_rpm_branch_ops,			      \
-			.name = #_name,					      \
-			.parent_names = (const char *[]){ "cxo_board" },      \
-			.num_parents = 1,				      \
-		},							      \
-	};								      \
-	static struct clk_rpm _platform##_##_active = {			      \
-		.rpm_clk_id = (r_id),					      \
-		.active_only = true,					      \
-		.peer = &_platform##_##_name,				      \
-		.rate = (r),						      \
-		.branch = true,						      \
-		.hw.init = &(struct clk_init_data){			      \
-			.ops = &clk_rpm_branch_ops,			      \
-			.name = #_active,				      \
-			.parent_names = (const char *[]){ "cxo_board" },      \
-			.num_parents = 1,				      \
+			.parent_data = gcc_pxo,				      \
+			.num_parents = ARRAY_SIZE(gcc_pxo),		      \
 		},							      \
 	}
 
@@ -446,13 +398,6 @@ static const struct clk_ops clk_rpm_ops = {
 	.prepare	= clk_rpm_prepare,
 	.unprepare	= clk_rpm_unprepare,
 	.set_rate	= clk_rpm_set_rate,
-	.round_rate	= clk_rpm_round_rate,
-	.recalc_rate	= clk_rpm_recalc_rate,
-};
-
-static const struct clk_ops clk_rpm_branch_ops = {
-	.prepare	= clk_rpm_prepare,
-	.unprepare	= clk_rpm_unprepare,
 	.round_rate	= clk_rpm_round_rate,
 	.recalc_rate	= clk_rpm_recalc_rate,
 };

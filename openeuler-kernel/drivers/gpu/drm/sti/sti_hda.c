@@ -7,6 +7,7 @@
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/io.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/seq_file.h>
@@ -272,7 +273,7 @@ static void hda_write(struct sti_hda *hda, u32 val, int offset)
 }
 
 /**
- * Search for a video mode in the supported modes table
+ * hda_get_mode_idx - Search for a video mode in the supported modes table
  *
  * @mode: mode being searched
  * @idx: index of the found mode
@@ -292,7 +293,7 @@ static bool hda_get_mode_idx(struct drm_display_mode mode, int *idx)
 }
 
 /**
- * Enable the HD DACS
+ * hda_enable_hd_dacs - Enable the HD DACS
  *
  * @hda: pointer to HD analog structure
  * @enable: true if HD DACS need to be enabled, else false
@@ -380,7 +381,7 @@ static void hda_debugfs_init(struct sti_hda *hda, struct drm_minor *minor)
 }
 
 /**
- * Configure AWG, writing instructions
+ * sti_hda_configure_awg - Configure AWG, writing instructions
  *
  * @hda: pointer to HD analog structure
  * @awg_instr: pointer to AWG instructions table
@@ -523,7 +524,7 @@ static void sti_hda_set_mode(struct drm_bridge *bridge,
 
 	DRM_DEBUG_DRIVER("\n");
 
-	memcpy(&hda->mode, mode, sizeof(struct drm_display_mode));
+	drm_mode_copy(&hda->mode, mode);
 
 	if (!hda_get_mode_idx(hda->mode, &mode_idx)) {
 		DRM_ERROR("Undefined mode\n");
@@ -600,8 +601,9 @@ static int sti_hda_connector_get_modes(struct drm_connector *connector)
 
 #define CLK_TOLERANCE_HZ 50
 
-static int sti_hda_connector_mode_valid(struct drm_connector *connector,
-					struct drm_display_mode *mode)
+static enum drm_mode_status
+sti_hda_connector_mode_valid(struct drm_connector *connector,
+			     struct drm_display_mode *mode)
 {
 	int target = mode->clock * 1000;
 	int target_min = target - CLK_TOLERANCE_HZ;

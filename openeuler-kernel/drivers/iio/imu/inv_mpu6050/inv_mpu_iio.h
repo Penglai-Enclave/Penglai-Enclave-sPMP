@@ -70,11 +70,13 @@ enum inv_devices {
 	INV_MPU6050,
 	INV_MPU6500,
 	INV_MPU6515,
+	INV_MPU6880,
 	INV_MPU6000,
 	INV_MPU9150,
 	INV_MPU9250,
 	INV_MPU9255,
 	INV_ICM20608,
+	INV_ICM20608D,
 	INV_ICM20609,
 	INV_ICM20689,
 	INV_ICM20602,
@@ -148,6 +150,10 @@ struct inv_mpu6050_hw {
 		int offset;
 		int scale;
 	} temp;
+	struct {
+		unsigned int accel;
+		unsigned int gyro;
+	} startup_time;
 };
 
 /*
@@ -198,7 +204,7 @@ struct inv_mpu6050_state {
 	s32 magn_raw_to_gauss[3];
 	struct iio_mount_matrix magn_orient;
 	unsigned int suspended_sensors;
-	u8 data[INV_MPU6050_OUTPUT_DATA_SIZE] ____cacheline_aligned;
+	u8 data[INV_MPU6050_OUTPUT_DATA_SIZE] __aligned(IIO_DMA_MINALIGN);
 };
 
 /*register and associated bit definition*/
@@ -319,10 +325,20 @@ struct inv_mpu6050_state {
 /* delay time in milliseconds */
 #define INV_MPU6050_POWER_UP_TIME            100
 #define INV_MPU6050_TEMP_UP_TIME             100
-#define INV_MPU6050_ACCEL_UP_TIME            20
-#define INV_MPU6050_GYRO_UP_TIME             35
+#define INV_MPU6050_ACCEL_STARTUP_TIME       20
+#define INV_MPU6050_GYRO_STARTUP_TIME        60
 #define INV_MPU6050_GYRO_DOWN_TIME           150
 #define INV_MPU6050_SUSPEND_DELAY_MS         2000
+
+#define INV_MPU6500_GYRO_STARTUP_TIME        70
+#define INV_MPU6500_ACCEL_STARTUP_TIME       30
+
+#define INV_ICM20602_GYRO_STARTUP_TIME       100
+#define INV_ICM20602_ACCEL_STARTUP_TIME      20
+
+#define INV_ICM20690_GYRO_STARTUP_TIME       80
+#define INV_ICM20690_ACCEL_STARTUP_TIME      10
+
 
 /* delay time in microseconds */
 #define INV_MPU6050_REG_UP_TIME_MIN          5000
@@ -373,11 +389,13 @@ struct inv_mpu6050_state {
 #define INV_MPU6000_WHOAMI_VALUE		0x68
 #define INV_MPU6050_WHOAMI_VALUE		0x68
 #define INV_MPU6500_WHOAMI_VALUE		0x70
+#define INV_MPU6880_WHOAMI_VALUE		0x78
 #define INV_MPU9150_WHOAMI_VALUE		0x68
 #define INV_MPU9250_WHOAMI_VALUE		0x71
 #define INV_MPU9255_WHOAMI_VALUE		0x73
 #define INV_MPU6515_WHOAMI_VALUE		0x74
 #define INV_ICM20608_WHOAMI_VALUE		0xAF
+#define INV_ICM20608D_WHOAMI_VALUE		0xAE
 #define INV_ICM20609_WHOAMI_VALUE		0xA6
 #define INV_ICM20689_WHOAMI_VALUE		0x98
 #define INV_ICM20602_WHOAMI_VALUE		0x12

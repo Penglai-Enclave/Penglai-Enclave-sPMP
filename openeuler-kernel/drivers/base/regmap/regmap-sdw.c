@@ -2,7 +2,9 @@
 // Copyright(c) 2015-17 Intel Corporation.
 
 #include <linux/device.h>
+#include <linux/errno.h>
 #include <linux/module.h>
+#include <linux/regmap.h>
 #include <linux/soundwire/sdw.h>
 #include "internal.h"
 
@@ -28,7 +30,7 @@ static int regmap_sdw_read(void *context, unsigned int reg, unsigned int *val)
 	return 0;
 }
 
-static struct regmap_bus regmap_sdw = {
+static const struct regmap_bus regmap_sdw = {
 	.reg_read = regmap_sdw_read,
 	.reg_write = regmap_sdw_write,
 	.reg_format_endian_default = REGMAP_ENDIAN_LITTLE,

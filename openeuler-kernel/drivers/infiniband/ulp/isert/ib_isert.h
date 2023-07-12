@@ -65,9 +65,6 @@
  */
 #define ISER_RX_SIZE		(ISCSI_DEF_MAX_RECV_SEG_LEN + 1024)
 
-/* Default I/O size is 1MB */
-#define ISCSI_ISER_DEF_SG_TABLESIZE 256
-
 /* Minimum I/O size is 512KB */
 #define ISCSI_ISER_MIN_SG_TABLESIZE 128
 
@@ -149,7 +146,7 @@ struct isert_cmd {
 	u64			pdu_buf_dma;
 	u32			pdu_buf_len;
 	struct isert_conn	*conn;
-	struct iscsi_cmd	*iscsi_cmd;
+	struct iscsit_cmd	*iscsit_cmd;
 	struct iser_tx_desc	tx_desc;
 	struct iser_rx_desc	*rx_desc;
 	struct rdma_rw_ctx	rw;
@@ -176,7 +173,7 @@ struct isert_conn {
 	u64			login_rsp_dma;
 	struct iser_rx_desc	*rx_descs;
 	struct ib_recv_wr	rx_wr[ISERT_QP_MAX_RECV_DTOS];
-	struct iscsi_conn	*conn;
+	struct iscsit_conn	*conn;
 	struct list_head	node;
 	struct completion	login_comp;
 	struct completion	login_req_comp;

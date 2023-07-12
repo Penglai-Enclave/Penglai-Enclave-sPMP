@@ -148,7 +148,7 @@ struct i2c_algo_pch_data {
 
 /**
  * struct adapter_info - This structure holds the adapter information for the
-			 PCH i2c controller
+ *			 PCH i2c controller
  * @pch_data:		stores a list of i2c_algo_pch_data
  * @pch_i2c_suspended:	specifies whether the system is suspended or not
  *			perhaps with more lines and words.
@@ -358,6 +358,7 @@ static void pch_i2c_repstart(struct i2c_algo_pch_data *adap)
 /**
  * pch_i2c_writebytes() - write data to I2C bus in normal mode
  * @i2c_adap:	Pointer to the struct i2c_adapter.
+ * @msgs:	Pointer to the i2c message structure.
  * @last:	specifies whether last message or not.
  *		In the case of compound mode it will be 1 for last message,
  *		otherwise 0.
@@ -772,7 +773,7 @@ static int pch_i2c_probe(struct pci_dev *pdev,
 
 		pch_adap->owner = THIS_MODULE;
 		pch_adap->class = I2C_CLASS_HWMON;
-		strlcpy(pch_adap->name, KBUILD_MODNAME, sizeof(pch_adap->name));
+		strscpy(pch_adap->name, KBUILD_MODNAME, sizeof(pch_adap->name));
 		pch_adap->algo = &pch_algorithm;
 		pch_adap->algo_data = &adap_info->pch_data[i];
 

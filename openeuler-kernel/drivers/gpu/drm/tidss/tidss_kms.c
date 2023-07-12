@@ -4,11 +4,12 @@
  * Author: Tomi Valkeinen <tomi.valkeinen@ti.com>
  */
 
+#include <linux/dma-fence.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_of.h>
@@ -26,6 +27,7 @@ static void tidss_atomic_commit_tail(struct drm_atomic_state *old_state)
 {
 	struct drm_device *ddev = old_state->dev;
 	struct tidss_device *tidss = to_tidss(ddev);
+	bool fence_cookie = dma_fence_begin_signalling();
 
 	dev_dbg(ddev->dev, "%s\n", __func__);
 
@@ -36,6 +38,7 @@ static void tidss_atomic_commit_tail(struct drm_atomic_state *old_state)
 	drm_atomic_helper_commit_modeset_enables(ddev, old_state);
 
 	drm_atomic_helper_commit_hw_done(old_state);
+	dma_fence_end_signalling(fence_cookie);
 	drm_atomic_helper_wait_for_flip_done(ddev, old_state);
 
 	drm_atomic_helper_cleanup_planes(ddev, old_state);
@@ -67,7 +70,7 @@ static int tidss_atomic_check(struct drm_device *ddev,
 	 * changes. This is needed for updating the plane positions in
 	 * tidss_crtc_position_planes() which is called from
 	 * crtc_atomic_enable() and crtc_atomic_flush(). We have an
-	 * extra flag to to mark x,y-position changes and together
+	 * extra flag to mark x,y-position changes and together
 	 * with zpos_changed the condition recognizes all the above
 	 * cases.
 	 */
@@ -223,10 +226,8 @@ static int tidss_dispc_modeset_init(struct tidss_device *tidss)
 		}
 
 		ret = drm_bridge_attach(enc, pipes[i].bridge, NULL, 0);
-		if (ret) {
-			dev_err(tidss->dev, "bridge attach failed: %d\n", ret);
+		if (ret)
 			return ret;
-		}
 	}
 
 	/* create overlay planes of the leftover planes */

@@ -12,6 +12,7 @@
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/jiffies.h>
+#include <linux/math.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -347,13 +348,15 @@ static ssize_t in_value_show(struct device *dev,
 {
 	struct fts_data *data = dev_get_drvdata(dev);
 	int index = to_sensor_dev_attr(devattr)->index;
-	int err;
+	int value, err;
 
 	err = fts_update_device(data);
 	if (err < 0)
 		return err;
 
-	return sprintf(buf, "%u\n", data->volt[index]);
+	value = DIV_ROUND_CLOSEST(data->volt[index] * 3300, 255);
+
+	return sprintf(buf, "%d\n", value);
 }
 
 static ssize_t temp_value_show(struct device *dev,
@@ -361,13 +364,15 @@ static ssize_t temp_value_show(struct device *dev,
 {
 	struct fts_data *data = dev_get_drvdata(dev);
 	int index = to_sensor_dev_attr(devattr)->index;
-	int err;
+	int value, err;
 
 	err = fts_update_device(data);
 	if (err < 0)
 		return err;
 
-	return sprintf(buf, "%u\n", data->temp_input[index]);
+	value = (data->temp_input[index] - 64) * 1000;
+
+	return sprintf(buf, "%d\n", value);
 }
 
 static ssize_t temp_fault_show(struct device *dev,
@@ -436,13 +441,15 @@ static ssize_t fan_value_show(struct device *dev,
 {
 	struct fts_data *data = dev_get_drvdata(dev);
 	int index = to_sensor_dev_attr(devattr)->index;
-	int err;
+	int value, err;
 
 	err = fts_update_device(data);
 	if (err < 0)
 		return err;
 
-	return sprintf(buf, "%u\n", data->fan_input[index]);
+	value = data->fan_input[index] * 60;
+
+	return sprintf(buf, "%d\n", value);
 }
 
 static ssize_t fan_source_show(struct device *dev,
@@ -509,7 +516,7 @@ error:
 /* SysFS structs							     */
 /*****************************************************************************/
 
-/* Temprature sensors */
+/* Temperature sensors */
 static SENSOR_DEVICE_ATTR_RO(temp1_input, temp_value, 0);
 static SENSOR_DEVICE_ATTR_RO(temp2_input, temp_value, 1);
 static SENSOR_DEVICE_ATTR_RO(temp3_input, temp_value, 2);
@@ -713,7 +720,7 @@ static int fts_detect(struct i2c_client *client,
 {
 	int val;
 
-	/* detection works with revsion greater or equal to 0x2b */
+	/* detection works with revision greater or equal to 0x2b */
 	val = i2c_smbus_read_byte_data(client, FTS_DEVICE_REVISION_REG);
 	if (val < 0x2b)
 		return -ENODEV;
@@ -739,17 +746,16 @@ static int fts_detect(struct i2c_client *client,
 	if (val != 0x11)
 		return -ENODEV;
 
-	strlcpy(info->type, fts_id[0].name, I2C_NAME_SIZE);
+	strscpy(info->type, fts_id[0].name, I2C_NAME_SIZE);
 	info->flags = 0;
 	return 0;
 }
 
-static int fts_remove(struct i2c_client *client)
+static void fts_remove(struct i2c_client *client)
 {
 	struct fts_data *data = dev_get_drvdata(&client->dev);
 
 	watchdog_unregister_device(&data->wdd);
-	return 0;
 }
 
 static int fts_probe(struct i2c_client *client)

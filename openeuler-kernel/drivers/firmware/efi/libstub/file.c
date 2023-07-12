@@ -66,9 +66,27 @@ static efi_status_t efi_open_file(efi_file_protocol_t *volume,
 static efi_status_t efi_open_volume(efi_loaded_image_t *image,
 				    efi_file_protocol_t **fh)
 {
+	struct efi_vendor_dev_path *dp = image->file_path;
+	efi_guid_t li_proto = LOADED_IMAGE_PROTOCOL_GUID;
 	efi_guid_t fs_proto = EFI_FILE_SYSTEM_GUID;
 	efi_simple_file_system_protocol_t *io;
 	efi_status_t status;
+
+	// If we are using EFI zboot, we should look for the file system
+	// protocol on the parent image's handle instead
+	if (IS_ENABLED(CONFIG_EFI_ZBOOT) &&
+	    image->parent_handle != NULL &&
+	    dp != NULL &&
+	    dp->header.type == EFI_DEV_MEDIA &&
+	    dp->header.sub_type == EFI_DEV_MEDIA_VENDOR &&
+	    !efi_guidcmp(dp->vendorguid, LINUX_EFI_ZBOOT_MEDIA_GUID)) {
+		status = efi_bs_call(handle_protocol, image->parent_handle,
+				     &li_proto, (void *)&image);
+		if (status != EFI_SUCCESS) {
+			efi_err("Failed to locate parent image handle\n");
+			return status;
+		}
+	}
 
 	status = efi_bs_call(handle_protocol, image->device_handle, &fs_proto,
 			     (void **)&io);
@@ -103,7 +121,7 @@ static int find_file_option(const efi_char16_t *cmdline, int cmdline_len,
 		return 0;
 
 	/* Skip any leading slashes */
-	while (cmdline[i] == L'/' || cmdline[i] == L'\\')
+	while (i < cmdline_len && (cmdline[i] == L'/' || cmdline[i] == L'\\'))
 		i++;
 
 	while (--result_len > 0 && i < cmdline_len) {
@@ -136,7 +154,7 @@ efi_status_t handle_cmdline_files(efi_loaded_image_t *image,
 				  unsigned long *load_size)
 {
 	const efi_char16_t *cmdline = image->load_options;
-	int cmdline_len = image->load_options_size;
+	u32 cmdline_len = image->load_options_size;
 	unsigned long efi_chunk_size = ULONG_MAX;
 	efi_file_protocol_t *volume = NULL;
 	efi_file_protocol_t *file;
@@ -238,6 +256,9 @@ efi_status_t handle_cmdline_files(efi_loaded_image_t *image,
 
 	if (volume)
 		volume->close(volume);
+
+	if (*load_size == 0)
+		return EFI_NOT_READY;
 	return EFI_SUCCESS;
 
 err_close_file:

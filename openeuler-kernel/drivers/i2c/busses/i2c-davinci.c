@@ -539,10 +539,9 @@ i2c_davinci_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 	dev_dbg(dev->dev, "%s: msgs: %d\n", __func__, num);
 
-	ret = pm_runtime_get_sync(dev->dev);
+	ret = pm_runtime_resume_and_get(dev->dev);
 	if (ret < 0) {
 		dev_err(dev->dev, "Failed to runtime_get device: %d\n", ret);
-		pm_runtime_put_noidle(dev->dev);
 		return ret;
 	}
 
@@ -768,10 +767,7 @@ static int davinci_i2c_probe(struct platform_device *pdev)
 	if (irq <= 0) {
 		if (!irq)
 			irq = -ENXIO;
-		if (irq != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"can't get irq resource ret=%d\n", irq);
-		return irq;
+		return dev_err_probe(&pdev->dev, irq, "can't get irq resource\n");
 	}
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(struct davinci_i2c_dev),
@@ -824,11 +820,10 @@ static int davinci_i2c_probe(struct platform_device *pdev)
 
 	pm_runtime_enable(dev->dev);
 
-	r = pm_runtime_get_sync(dev->dev);
+	r = pm_runtime_resume_and_get(dev->dev);
 	if (r < 0) {
 		dev_err(dev->dev, "failed to runtime_get device: %d\n", r);
-		pm_runtime_put_noidle(dev->dev);
-		return r;
+		goto err_pm;
 	}
 
 	i2c_davinci_init(dev);
@@ -850,7 +845,7 @@ static int davinci_i2c_probe(struct platform_device *pdev)
 	i2c_set_adapdata(adap, dev);
 	adap->owner = THIS_MODULE;
 	adap->class = I2C_CLASS_DEPRECATED;
-	strlcpy(adap->name, "DaVinci I2C adapter", sizeof(adap->name));
+	strscpy(adap->name, "DaVinci I2C adapter", sizeof(adap->name));
 	adap->algo = &i2c_davinci_algo;
 	adap->dev.parent = &pdev->dev;
 	adap->timeout = DAVINCI_I2C_TIMEOUT;
@@ -887,6 +882,7 @@ static int davinci_i2c_probe(struct platform_device *pdev)
 err_unuse_clocks:
 	pm_runtime_dont_use_autosuspend(dev->dev);
 	pm_runtime_put_sync(dev->dev);
+err_pm:
 	pm_runtime_disable(dev->dev);
 
 	return r;
@@ -901,11 +897,9 @@ static int davinci_i2c_remove(struct platform_device *pdev)
 
 	i2c_del_adapter(&dev->adapter);
 
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	davinci_i2c_write_reg(dev, DAVINCI_I2C_MDR_REG, 0);
 

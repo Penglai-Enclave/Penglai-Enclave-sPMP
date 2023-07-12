@@ -174,11 +174,6 @@ void smp_call_function_interrupt(void)
 	irq_exit();
 }
 
-int setup_profiling_timer(unsigned int multiplier)
-{
-	return -EINVAL;
-}
-
 void __init smp_prepare_cpus(unsigned int max_cpus)
 {
 	int i, cpuid, extra;
@@ -348,7 +343,6 @@ static void sparc_start_secondary(void *arg)
 	 */
 	arch_cpu_pre_starting(arg);
 
-	preempt_disable();
 	cpu = smp_processor_id();
 
 	notify_cpu_starting(cpu);

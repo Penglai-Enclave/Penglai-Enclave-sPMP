@@ -65,19 +65,10 @@ static noinline depot_stack_handle_t __save_depot_stack(void)
 	return stack_depot_save(entries, n, GFP_NOWAIT | __GFP_NOWARN);
 }
 
-static void __print_depot_stack(depot_stack_handle_t stack,
-				char *buf, int sz, int indent)
-{
-	unsigned long *entries;
-	unsigned int nr_entries;
-
-	nr_entries = stack_depot_fetch(stack, &entries);
-	stack_trace_snprint(buf, sz, entries, nr_entries, indent);
-}
-
 static void init_intel_runtime_pm_wakeref(struct intel_runtime_pm *rpm)
 {
 	spin_lock_init(&rpm->debug.lock);
+	stack_depot_init();
 }
 
 static noinline depot_stack_handle_t
@@ -86,7 +77,7 @@ track_intel_runtime_pm_wakeref(struct intel_runtime_pm *rpm)
 	depot_stack_handle_t stack, *stacks;
 	unsigned long flags;
 
-	if (!rpm->available)
+	if (rpm->no_wakeref_tracking)
 		return -1;
 
 	stack = __save_depot_stack();
@@ -146,12 +137,12 @@ static void untrack_intel_runtime_pm_wakeref(struct intel_runtime_pm *rpm,
 		if (!buf)
 			return;
 
-		__print_depot_stack(stack, buf, PAGE_SIZE, 2);
+		stack_depot_snprint(stack, buf, PAGE_SIZE, 2);
 		DRM_DEBUG_DRIVER("wakeref %x from\n%s", stack, buf);
 
 		stack = READ_ONCE(rpm->debug.last_release);
 		if (stack) {
-			__print_depot_stack(stack, buf, PAGE_SIZE, 2);
+			stack_depot_snprint(stack, buf, PAGE_SIZE, 2);
 			DRM_DEBUG_DRIVER("wakeref last released at\n%s", buf);
 		}
 
@@ -183,12 +174,12 @@ __print_intel_runtime_pm_wakeref(struct drm_printer *p,
 		return;
 
 	if (dbg->last_acquire) {
-		__print_depot_stack(dbg->last_acquire, buf, PAGE_SIZE, 2);
+		stack_depot_snprint(dbg->last_acquire, buf, PAGE_SIZE, 2);
 		drm_printf(p, "Wakeref last acquired:\n%s", buf);
 	}
 
 	if (dbg->last_release) {
-		__print_depot_stack(dbg->last_release, buf, PAGE_SIZE, 2);
+		stack_depot_snprint(dbg->last_release, buf, PAGE_SIZE, 2);
 		drm_printf(p, "Wakeref last released:\n%s", buf);
 	}
 
@@ -203,7 +194,7 @@ __print_intel_runtime_pm_wakeref(struct drm_printer *p,
 		rep = 1;
 		while (i + 1 < dbg->count && dbg->owners[i + 1] == stack)
 			rep++, i++;
-		__print_depot_stack(stack, buf, PAGE_SIZE, 2);
+		stack_depot_snprint(stack, buf, PAGE_SIZE, 2);
 		drm_printf(p, "Wakeref x%lu taken at:\n%s", rep, buf);
 	}
 
@@ -420,7 +411,7 @@ intel_wakeref_t intel_runtime_pm_get(struct intel_runtime_pm *rpm)
  * already active and ensures that it is powered up. It is illegal to try
  * and access the HW should intel_runtime_pm_get_if_active() report failure.
  *
- * If @ignore_usecount=true, a reference will be acquired even if there is no
+ * If @ignore_usecount is true, a reference will be acquired even if there is no
  * user requiring the device to be powered up (dev->power.usage_count == 0).
  * If the function returns false in this case then it's guaranteed that the
  * device's runtime suspend hook has been called already or that it will be
@@ -601,6 +592,16 @@ void intel_runtime_pm_enable(struct intel_runtime_pm *rpm)
 	}
 
 	/*
+	 *  FIXME: Temp hammer to keep autosupend disable on lmem supported platforms.
+	 *  As per PCIe specs 5.3.1.4.1, all iomem read write request over a PCIe
+	 *  function will be unsupported in case PCIe endpoint function is in D3.
+	 *  Let's keep i915 autosuspend control 'on' till we fix all known issue
+	 *  with lmem access in D3.
+	 */
+	if (!IS_DGFX(i915))
+		pm_runtime_allow(kdev);
+
+	/*
 	 * The core calls the driver load handler with an RPM reference held.
 	 * We drop that here and will reacquire it during unloading in
 	 * intel_power_domains_fini().
@@ -632,6 +633,8 @@ void intel_runtime_pm_driver_release(struct intel_runtime_pm *rpm)
 						     runtime_pm);
 	int count = atomic_read(&rpm->wakeref_count);
 
+	intel_wakeref_auto_fini(&rpm->userfault_wakeref);
+
 	drm_WARN(&i915->drm, count,
 		 "i915 raw-wakerefs=%d wakelocks=%d on cleanup\n",
 		 intel_rpm_raw_wakeref_count(count),
@@ -644,11 +647,14 @@ void intel_runtime_pm_init_early(struct intel_runtime_pm *rpm)
 {
 	struct drm_i915_private *i915 =
 			container_of(rpm, struct drm_i915_private, runtime_pm);
-	struct pci_dev *pdev = i915->drm.pdev;
+	struct pci_dev *pdev = to_pci_dev(i915->drm.dev);
 	struct device *kdev = &pdev->dev;
 
 	rpm->kdev = kdev;
 	rpm->available = HAS_RUNTIME_PM(i915);
 
 	init_intel_runtime_pm_wakeref(rpm);
+	INIT_LIST_HEAD(&rpm->lmem_userfault_list);
+	spin_lock_init(&rpm->lmem_userfault_lock);
+	intel_wakeref_auto_init(&rpm->userfault_wakeref, rpm);
 }

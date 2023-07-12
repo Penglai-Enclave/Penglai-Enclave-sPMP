@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * vdso2c - A vdso image preparation tool
  * Copyright (c) 2014 Andy Lutomirski and others
- * Licensed under the GPL v2
  *
  * vdso2c requires stripped and unstripped input.  It would be trivial
  * to fully strip the input in here, but, for reasons described below,
@@ -101,6 +101,8 @@ struct vdso_sym required_syms[] = {
 	{"__kernel_sigreturn", true},
 	{"__kernel_rt_sigreturn", true},
 	{"int80_landing_pad", true},
+	{"vdso32_rt_sigreturn_landing_pad", true},
+	{"vdso32_sigreturn_landing_pad", true},
 };
 
 __attribute__((format(printf, 1, 2))) __attribute__((noreturn))
@@ -216,7 +218,7 @@ int main(int argc, char **argv)
 
 	/*
 	 * Figure out the struct name.  If we're writing to a .so file,
-	 * generate raw output insted.
+	 * generate raw output instead.
 	 */
 	name = strdup(argv[3]);
 	namelen = strlen(name);

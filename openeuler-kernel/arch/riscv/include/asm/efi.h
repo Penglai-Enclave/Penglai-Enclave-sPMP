@@ -10,6 +10,7 @@
 #include <asm/mmu_context.h>
 #include <asm/ptrace.h>
 #include <asm/tlbflush.h>
+#include <asm/pgalloc.h>
 
 #ifdef CONFIG_EFI
 extern void efi_init(void);
@@ -20,32 +21,23 @@ extern void efi_init(void);
 int efi_create_mapping(struct mm_struct *mm, efi_memory_desc_t *md);
 int efi_set_mapping_permissions(struct mm_struct *mm, efi_memory_desc_t *md);
 
-#define arch_efi_call_virt_setup()      efi_virtmap_load()
+#define arch_efi_call_virt_setup()      ({		\
+		sync_kernel_mappings(efi_mm.pgd);	\
+		efi_virtmap_load();			\
+	})
 #define arch_efi_call_virt_teardown()   efi_virtmap_unload()
-
-#define arch_efi_call_virt(p, f, args...) p->f(args)
 
 #define ARCH_EFI_IRQ_FLAGS_MASK (SR_IE | SR_SPIE)
 
-/* on RISC-V, the FDT may be located anywhere in system RAM */
-static inline unsigned long efi_get_max_fdt_addr(unsigned long image_addr)
-{
-	return ULONG_MAX;
-}
-
-/* Load initrd at enough distance from DRAM start */
+/* Load initrd anywhere in system RAM */
 static inline unsigned long efi_get_max_initrd_addr(unsigned long image_addr)
 {
-	return image_addr + SZ_256M;
+	return ULONG_MAX;
 }
 
 #define alloc_screen_info(x...)		(&screen_info)
 
 static inline void free_screen_info(struct screen_info *si)
-{
-}
-
-static inline void efifb_setup_from_dmi(struct screen_info *si, const char *opt)
 {
 }
 

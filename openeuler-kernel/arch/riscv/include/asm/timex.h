@@ -41,7 +41,7 @@ static inline u32 get_cycles_hi(void)
 static inline unsigned long random_get_entropy(void)
 {
 	if (unlikely(clint_time_val == NULL))
-		return 0;
+		return random_get_entropy_fallback();
 	return get_cycles();
 }
 #define random_get_entropy()	random_get_entropy()
@@ -87,5 +87,7 @@ static inline int read_current_timer(unsigned long *timer_val)
 	*timer_val = get_cycles();
 	return 0;
 }
+
+extern void time_init(void);
 
 #endif /* _ASM_RISCV_TIMEX_H */

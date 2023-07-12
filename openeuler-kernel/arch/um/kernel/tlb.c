@@ -125,9 +125,6 @@ static int add_mmap(unsigned long virt, unsigned long phys, unsigned long len,
 	struct host_vm_op *last;
 	int fd = -1, ret = 0;
 
-	if (virt + len > STUB_START && virt < STUB_END)
-		return -EINVAL;
-
 	if (hvc->userspace)
 		fd = phys_mapping(phys, &offset);
 	else
@@ -165,9 +162,6 @@ static int add_munmap(unsigned long addr, unsigned long len,
 	struct host_vm_op *last;
 	int ret = 0;
 
-	if (addr + len > STUB_START && addr < STUB_END)
-		return -EINVAL;
-
 	if (hvc->index != 0) {
 		last = &hvc->ops[hvc->index - 1];
 		if ((last->type == MUNMAP) &&
@@ -194,9 +188,6 @@ static int add_mprotect(unsigned long addr, unsigned long len,
 {
 	struct host_vm_op *last;
 	int ret = 0;
-
-	if (addr + len > STUB_START && addr < STUB_END)
-		return -EINVAL;
 
 	if (hvc->index != 0) {
 		last = &hvc->ops[hvc->index - 1];
@@ -232,9 +223,6 @@ static inline int update_pte_range(pmd_t *pmd, unsigned long addr,
 
 	pte = pte_offset_kernel(pmd, addr);
 	do {
-		if ((addr >= STUB_START) && (addr < STUB_END))
-			continue;
-
 		r = pte_read(*pte);
 		w = pte_write(*pte);
 		x = pte_exec(*pte);
@@ -478,9 +466,6 @@ void flush_tlb_page(struct vm_area_struct *vma, unsigned long address)
 
 	address &= PAGE_MASK;
 
-	if (address >= STUB_START && address < STUB_END)
-		goto kill;
-
 	pgd = pgd_offset(mm, address);
 	if (!pgd_present(*pgd))
 		goto kill;
@@ -599,21 +584,19 @@ void flush_tlb_mm_range(struct mm_struct *mm, unsigned long start,
 
 void flush_tlb_mm(struct mm_struct *mm)
 {
-	struct vm_area_struct *vma = mm->mmap;
+	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, mm, 0);
 
-	while (vma != NULL) {
+	for_each_vma(vmi, vma)
 		fix_range(mm, vma->vm_start, vma->vm_end, 0);
-		vma = vma->vm_next;
-	}
 }
 
 void force_flush_all(void)
 {
 	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma = mm->mmap;
+	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, mm, 0);
 
-	while (vma != NULL) {
+	for_each_vma(vmi, vma)
 		fix_range(mm, vma->vm_start, vma->vm_end, 1);
-		vma = vma->vm_next;
-	}
 }

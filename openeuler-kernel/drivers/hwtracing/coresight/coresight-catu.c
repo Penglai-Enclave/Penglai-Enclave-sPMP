@@ -365,26 +365,15 @@ static const struct etr_buf_operations etr_catu_buf_ops = {
 	.get_data = catu_get_data_etr_buf,
 };
 
-coresight_simple_reg32(struct catu_drvdata, devid, CORESIGHT_DEVID);
-coresight_simple_reg32(struct catu_drvdata, control, CATU_CONTROL);
-coresight_simple_reg32(struct catu_drvdata, status, CATU_STATUS);
-coresight_simple_reg32(struct catu_drvdata, mode, CATU_MODE);
-coresight_simple_reg32(struct catu_drvdata, axictrl, CATU_AXICTRL);
-coresight_simple_reg32(struct catu_drvdata, irqen, CATU_IRQEN);
-coresight_simple_reg64(struct catu_drvdata, sladdr,
-		       CATU_SLADDRLO, CATU_SLADDRHI);
-coresight_simple_reg64(struct catu_drvdata, inaddr,
-		       CATU_INADDRLO, CATU_INADDRHI);
-
 static struct attribute *catu_mgmt_attrs[] = {
-	&dev_attr_devid.attr,
-	&dev_attr_control.attr,
-	&dev_attr_status.attr,
-	&dev_attr_mode.attr,
-	&dev_attr_axictrl.attr,
-	&dev_attr_irqen.attr,
-	&dev_attr_sladdr.attr,
-	&dev_attr_inaddr.attr,
+	coresight_simple_reg32(devid, CORESIGHT_DEVID),
+	coresight_simple_reg32(control, CATU_CONTROL),
+	coresight_simple_reg32(status, CATU_STATUS),
+	coresight_simple_reg32(mode, CATU_MODE),
+	coresight_simple_reg32(axictrl, CATU_AXICTRL),
+	coresight_simple_reg32(irqen, CATU_IRQEN),
+	coresight_simple_reg64(sladdr, CATU_SLADDRLO, CATU_SLADDRHI),
+	coresight_simple_reg64(inaddr, CATU_INADDRLO, CATU_INADDRHI),
 	NULL,
 };
 
@@ -401,8 +390,9 @@ static const struct attribute_group *catu_groups[] = {
 
 static inline int catu_wait_for_ready(struct catu_drvdata *drvdata)
 {
-	return coresight_timeout(drvdata->base,
-				 CATU_STATUS, CATU_STATUS_READY, 1);
+	struct csdev_access *csa = &drvdata->csdev->access;
+
+	return coresight_timeout(csa, CATU_STATUS, CATU_STATUS_READY, 1);
 }
 
 static int catu_enable_hw(struct catu_drvdata *drvdata, void *data)
@@ -411,6 +401,7 @@ static int catu_enable_hw(struct catu_drvdata *drvdata, void *data)
 	u32 control, mode;
 	struct etr_buf *etr_buf = data;
 	struct device *dev = &drvdata->csdev->dev;
+	struct coresight_device *csdev = drvdata->csdev;
 
 	if (catu_wait_for_ready(drvdata))
 		dev_warn(dev, "Timeout while waiting for READY\n");
@@ -421,7 +412,7 @@ static int catu_enable_hw(struct catu_drvdata *drvdata, void *data)
 		return -EBUSY;
 	}
 
-	rc = coresight_claim_device_unlocked(drvdata->base);
+	rc = coresight_claim_device_unlocked(csdev);
 	if (rc)
 		return rc;
 
@@ -465,9 +456,10 @@ static int catu_disable_hw(struct catu_drvdata *drvdata)
 {
 	int rc = 0;
 	struct device *dev = &drvdata->csdev->dev;
+	struct coresight_device *csdev = drvdata->csdev;
 
 	catu_write_control(drvdata, 0);
-	coresight_disclaim_device_unlocked(drvdata->base);
+	coresight_disclaim_device_unlocked(csdev);
 	if (catu_wait_for_ready(drvdata)) {
 		dev_info(dev, "Timeout while waiting for READY\n");
 		rc = -EAGAIN;
@@ -551,6 +543,7 @@ static int catu_probe(struct amba_device *adev, const struct amba_id *id)
 	dev->platform_data = pdata;
 
 	drvdata->base = base;
+	catu_desc.access = CSDEV_ACCESS_IOMEM(base);
 	catu_desc.pdata = pdata;
 	catu_desc.dev = dev;
 	catu_desc.groups = catu_groups;
@@ -567,12 +560,11 @@ out:
 	return ret;
 }
 
-static int catu_remove(struct amba_device *adev)
+static void catu_remove(struct amba_device *adev)
 {
 	struct catu_drvdata *drvdata = dev_get_drvdata(&adev->dev);
 
 	coresight_unregister(drvdata->csdev);
-	return 0;
 }
 
 static struct amba_id catu_ids[] = {

@@ -32,10 +32,19 @@ static bool cpu0_node_has_opp_v2_prop(void)
 	return ret;
 }
 
+static void tegra20_cpufreq_put_supported_hw(void *opp_token)
+{
+	dev_pm_opp_put_supported_hw((unsigned long) opp_token);
+}
+
+static void tegra20_cpufreq_dt_unregister(void *cpufreq_dt)
+{
+	platform_device_unregister(cpufreq_dt);
+}
+
 static int tegra20_cpufreq_probe(struct platform_device *pdev)
 {
 	struct platform_device *cpufreq_dt;
-	struct opp_table *opp_table;
 	struct device *cpu_dev;
 	u32 versions[2];
 	int err;
@@ -61,49 +70,37 @@ static int tegra20_cpufreq_probe(struct platform_device *pdev)
 	if (WARN_ON(!cpu_dev))
 		return -ENODEV;
 
-	opp_table = dev_pm_opp_set_supported_hw(cpu_dev, versions, 2);
-	err = PTR_ERR_OR_ZERO(opp_table);
-	if (err) {
+	err = dev_pm_opp_set_supported_hw(cpu_dev, versions, 2);
+	if (err < 0) {
 		dev_err(&pdev->dev, "failed to set supported hw: %d\n", err);
 		return err;
 	}
+
+	err = devm_add_action_or_reset(&pdev->dev,
+				       tegra20_cpufreq_put_supported_hw,
+				       (void *)((unsigned long) err));
+	if (err)
+		return err;
 
 	cpufreq_dt = platform_device_register_simple("cpufreq-dt", -1, NULL, 0);
 	err = PTR_ERR_OR_ZERO(cpufreq_dt);
 	if (err) {
 		dev_err(&pdev->dev,
 			"failed to create cpufreq-dt device: %d\n", err);
-		goto err_put_supported_hw;
+		return err;
 	}
 
-	platform_set_drvdata(pdev, cpufreq_dt);
-
-	return 0;
-
-err_put_supported_hw:
-	dev_pm_opp_put_supported_hw(opp_table);
-
-	return err;
-}
-
-static int tegra20_cpufreq_remove(struct platform_device *pdev)
-{
-	struct platform_device *cpufreq_dt;
-	struct opp_table *opp_table;
-
-	cpufreq_dt = platform_get_drvdata(pdev);
-	platform_device_unregister(cpufreq_dt);
-
-	opp_table = dev_pm_opp_get_opp_table(get_cpu_device(0));
-	dev_pm_opp_put_supported_hw(opp_table);
-	dev_pm_opp_put_opp_table(opp_table);
+	err = devm_add_action_or_reset(&pdev->dev,
+				       tegra20_cpufreq_dt_unregister,
+				       cpufreq_dt);
+	if (err)
+		return err;
 
 	return 0;
 }
 
 static struct platform_driver tegra20_cpufreq_driver = {
 	.probe		= tegra20_cpufreq_probe,
-	.remove		= tegra20_cpufreq_remove,
 	.driver		= {
 		.name	= "tegra20-cpufreq",
 	},

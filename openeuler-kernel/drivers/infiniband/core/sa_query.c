@@ -32,7 +32,6 @@
  * SOFTWARE.
  */
 
-#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/random.h>
@@ -51,6 +50,7 @@
 #include <rdma/ib_marshall.h>
 #include <rdma/ib_addr.h>
 #include <rdma/opa_addr.h>
+#include <rdma/rdma_cm.h>
 #include "sa.h"
 #include "core_priv.h"
 
@@ -95,7 +95,7 @@ struct ib_sa_port {
 	struct delayed_work ib_cpi_work;
 	spinlock_t                   classport_lock; /* protects class port info set */
 	spinlock_t           ah_lock;
-	u8                   port_num;
+	u32		     port_num;
 };
 
 struct ib_sa_device {
@@ -105,7 +105,8 @@ struct ib_sa_device {
 };
 
 struct ib_sa_query {
-	void (*callback)(struct ib_sa_query *, int, struct ib_sa_mad *);
+	void (*callback)(struct ib_sa_query *sa_query, int status,
+			 int num_prs, struct ib_sa_mad *mad);
 	void (*release)(struct ib_sa_query *);
 	struct ib_sa_client    *client;
 	struct ib_sa_port      *port;
@@ -117,20 +118,21 @@ struct ib_sa_query {
 	u32			seq; /* Local svc request sequence number */
 	unsigned long		timeout; /* Local svc timeout */
 	u8			path_use; /* How will the pathrecord be used */
+
+	/* A separate buffer to save pathrecords of a response, as in cases
+	 * like IB/netlink, mulptiple pathrecords are supported, so that
+	 * mad->data is not large enough to hold them
+	 */
+	void			*resp_pr_data;
 };
 
 #define IB_SA_ENABLE_LOCAL_SERVICE	0x00000001
 #define IB_SA_CANCEL			0x00000002
 #define IB_SA_QUERY_OPA			0x00000004
 
-struct ib_sa_service_query {
-	void (*callback)(int, struct ib_sa_service_rec *, void *);
-	void *context;
-	struct ib_sa_query sa_query;
-};
-
 struct ib_sa_path_query {
-	void (*callback)(int, struct sa_path_rec *, void *);
+	void (*callback)(int status, struct sa_path_rec *rec,
+			 int num_paths, void *context);
 	void *context;
 	struct ib_sa_query sa_query;
 	struct sa_path_rec *conv_pr;
@@ -502,54 +504,6 @@ static const struct ib_field mcmember_rec_table[] = {
 	  .size_bits    = 23 },
 };
 
-#define SERVICE_REC_FIELD(field) \
-	.struct_offset_bytes = offsetof(struct ib_sa_service_rec, field),	\
-	.struct_size_bytes   = sizeof_field(struct ib_sa_service_rec, field),	\
-	.field_name          = "sa_service_rec:" #field
-
-static const struct ib_field service_rec_table[] = {
-	{ SERVICE_REC_FIELD(id),
-	  .offset_words = 0,
-	  .offset_bits  = 0,
-	  .size_bits    = 64 },
-	{ SERVICE_REC_FIELD(gid),
-	  .offset_words = 2,
-	  .offset_bits  = 0,
-	  .size_bits    = 128 },
-	{ SERVICE_REC_FIELD(pkey),
-	  .offset_words = 6,
-	  .offset_bits  = 0,
-	  .size_bits    = 16 },
-	{ SERVICE_REC_FIELD(lease),
-	  .offset_words = 7,
-	  .offset_bits  = 0,
-	  .size_bits    = 32 },
-	{ SERVICE_REC_FIELD(key),
-	  .offset_words = 8,
-	  .offset_bits  = 0,
-	  .size_bits    = 128 },
-	{ SERVICE_REC_FIELD(name),
-	  .offset_words = 12,
-	  .offset_bits  = 0,
-	  .size_bits    = 64*8 },
-	{ SERVICE_REC_FIELD(data8),
-	  .offset_words = 28,
-	  .offset_bits  = 0,
-	  .size_bits    = 16*8 },
-	{ SERVICE_REC_FIELD(data16),
-	  .offset_words = 32,
-	  .offset_bits  = 0,
-	  .size_bits    = 8*16 },
-	{ SERVICE_REC_FIELD(data32),
-	  .offset_words = 36,
-	  .offset_bits  = 0,
-	  .size_bits    = 4*32 },
-	{ SERVICE_REC_FIELD(data64),
-	  .offset_words = 40,
-	  .offset_bits  = 0,
-	  .size_bits    = 2*64 },
-};
-
 #define CLASSPORTINFO_REC_FIELD(field) \
 	.struct_offset_bytes = offsetof(struct ib_class_port_info, field),	\
 	.struct_size_bytes   = sizeof_field(struct ib_class_port_info, field),	\
@@ -760,13 +714,14 @@ static void ib_nl_set_path_rec_attrs(struct sk_buff *skb,
 
 	/* Construct the family header first */
 	header = skb_put(skb, NLMSG_ALIGN(sizeof(*header)));
-	memcpy(header->device_name, dev_name(&query->port->agent->device->dev),
-	       LS_DEVICE_NAME_MAX);
+	strscpy_pad(header->device_name,
+		    dev_name(&query->port->agent->device->dev),
+		    LS_DEVICE_NAME_MAX);
 	header->port_num = query->port->port_num;
 
 	if ((comp_mask & IB_SA_PATH_REC_REVERSIBLE) &&
 	    sa_rec->reversible != 0)
-		query->path_use = LS_RESOLVE_PATH_USE_GMP;
+		query->path_use = LS_RESOLVE_PATH_USE_ALL;
 	else
 		query->path_use = LS_RESOLVE_PATH_USE_UNIDIRECTIONAL;
 	header->path_use = query->path_use;
@@ -919,50 +874,81 @@ static void send_handler(struct ib_mad_agent *agent,
 static void ib_nl_process_good_resolve_rsp(struct ib_sa_query *query,
 					   const struct nlmsghdr *nlh)
 {
+	struct ib_path_rec_data *srec, *drec;
+	struct ib_sa_path_query *path_query;
 	struct ib_mad_send_wc mad_send_wc;
-	struct ib_sa_mad *mad = NULL;
 	const struct nlattr *head, *curr;
-	struct ib_path_rec_data  *rec;
-	int len, rem;
+	struct ib_sa_mad *mad = NULL;
+	int len, rem, num_prs = 0;
 	u32 mask = 0;
 	int status = -EIO;
 
-	if (query->callback) {
-		head = (const struct nlattr *) nlmsg_data(nlh);
-		len = nlmsg_len(nlh);
-		switch (query->path_use) {
-		case LS_RESOLVE_PATH_USE_UNIDIRECTIONAL:
-			mask = IB_PATH_PRIMARY | IB_PATH_OUTBOUND;
-			break;
+	if (!query->callback)
+		goto out;
 
-		case LS_RESOLVE_PATH_USE_ALL:
-		case LS_RESOLVE_PATH_USE_GMP:
-		default:
-			mask = IB_PATH_PRIMARY | IB_PATH_GMP |
-				IB_PATH_BIDIRECTIONAL;
-			break;
+	path_query = container_of(query, struct ib_sa_path_query, sa_query);
+	mad = query->mad_buf->mad;
+	if (!path_query->conv_pr &&
+	    (be16_to_cpu(mad->mad_hdr.attr_id) == IB_SA_ATTR_PATH_REC)) {
+		/* Need a larger buffer for possible multiple PRs */
+		query->resp_pr_data = kvcalloc(RDMA_PRIMARY_PATH_MAX_REC_NUM,
+					       sizeof(*drec), GFP_KERNEL);
+		if (!query->resp_pr_data) {
+			query->callback(query, -ENOMEM, 0, NULL);
+			return;
 		}
-		nla_for_each_attr(curr, head, len, rem) {
-			if (curr->nla_type == LS_NLA_TYPE_PATH_RECORD) {
-				rec = nla_data(curr);
-				/*
-				 * Get the first one. In the future, we may
-				 * need to get up to 6 pathrecords.
-				 */
-				if ((rec->flags & mask) == mask) {
-					mad = query->mad_buf->mad;
-					mad->mad_hdr.method |=
-						IB_MGMT_METHOD_RESP;
-					memcpy(mad->data, rec->path_rec,
-					       sizeof(rec->path_rec));
-					status = 0;
-					break;
-				}
-			}
-		}
-		query->callback(query, status, mad);
 	}
 
+	head = (const struct nlattr *) nlmsg_data(nlh);
+	len = nlmsg_len(nlh);
+	switch (query->path_use) {
+	case LS_RESOLVE_PATH_USE_UNIDIRECTIONAL:
+		mask = IB_PATH_PRIMARY | IB_PATH_OUTBOUND;
+		break;
+
+	case LS_RESOLVE_PATH_USE_ALL:
+		mask = IB_PATH_PRIMARY;
+		break;
+
+	case LS_RESOLVE_PATH_USE_GMP:
+	default:
+		mask = IB_PATH_PRIMARY | IB_PATH_GMP |
+			IB_PATH_BIDIRECTIONAL;
+		break;
+	}
+
+	drec = (struct ib_path_rec_data *)query->resp_pr_data;
+	nla_for_each_attr(curr, head, len, rem) {
+		if (curr->nla_type != LS_NLA_TYPE_PATH_RECORD)
+			continue;
+
+		srec = nla_data(curr);
+		if ((srec->flags & mask) != mask)
+			continue;
+
+		status = 0;
+		if (!drec) {
+			memcpy(mad->data, srec->path_rec,
+			       sizeof(srec->path_rec));
+			num_prs = 1;
+			break;
+		}
+
+		memcpy(drec, srec, sizeof(*drec));
+		drec++;
+		num_prs++;
+		if (num_prs >= RDMA_PRIMARY_PATH_MAX_REC_NUM)
+			break;
+	}
+
+	if (!status)
+		mad->mad_hdr.method |= IB_MGMT_METHOD_RESP;
+
+	query->callback(query, status, num_prs, mad);
+	kvfree(query->resp_pr_data);
+	query->resp_pr_data = NULL;
+
+out:
 	mad_send_wc.send_buf = query->mad_buf;
 	mad_send_wc.status = IB_WC_SUCCESS;
 	send_handler(query->mad_buf->mad_agent, &mad_send_wc);
@@ -1088,10 +1074,9 @@ int ib_nl_handle_resolve_resp(struct sk_buff *skb,
 			      struct netlink_ext_ack *extack)
 {
 	unsigned long flags;
-	struct ib_sa_query *query;
+	struct ib_sa_query *query = NULL, *iter;
 	struct ib_mad_send_buf *send_buf;
 	struct ib_mad_send_wc mad_send_wc;
-	int found = 0;
 	int ret;
 
 	if ((nlh->nlmsg_flags & NLM_F_REQUEST) ||
@@ -1099,20 +1084,21 @@ int ib_nl_handle_resolve_resp(struct sk_buff *skb,
 		return -EPERM;
 
 	spin_lock_irqsave(&ib_nl_request_lock, flags);
-	list_for_each_entry(query, &ib_nl_request_list, list) {
+	list_for_each_entry(iter, &ib_nl_request_list, list) {
 		/*
 		 * If the query is cancelled, let the timeout routine
 		 * take care of it.
 		 */
-		if (nlh->nlmsg_seq == query->seq) {
-			found = !ib_sa_query_cancelled(query);
-			if (found)
-				list_del(&query->list);
+		if (nlh->nlmsg_seq == iter->seq) {
+			if (!ib_sa_query_cancelled(iter)) {
+				list_del(&iter->list);
+				query = iter;
+			}
 			break;
 		}
 	}
 
-	if (!found) {
+	if (!query) {
 		spin_unlock_irqrestore(&ib_nl_request_lock, flags);
 		goto resp_out;
 	}
@@ -1172,7 +1158,6 @@ EXPORT_SYMBOL(ib_sa_unregister_client);
 void ib_sa_cancel_query(int id, struct ib_sa_query *query)
 {
 	unsigned long flags;
-	struct ib_mad_agent *agent;
 	struct ib_mad_send_buf *mad_buf;
 
 	xa_lock_irqsave(&queries, flags);
@@ -1180,7 +1165,6 @@ void ib_sa_cancel_query(int id, struct ib_sa_query *query)
 		xa_unlock_irqrestore(&queries, flags);
 		return;
 	}
-	agent = query->port->agent;
 	mad_buf = query->mad_buf;
 	xa_unlock_irqrestore(&queries, flags);
 
@@ -1190,11 +1174,11 @@ void ib_sa_cancel_query(int id, struct ib_sa_query *query)
 	 * sent to the MAD layer and has to be cancelled from there.
 	 */
 	if (!ib_nl_cancel_request(query))
-		ib_cancel_mad(agent, mad_buf);
+		ib_cancel_mad(mad_buf);
 }
 EXPORT_SYMBOL(ib_sa_cancel_query);
 
-static u8 get_src_path_mask(struct ib_device *device, u8 port_num)
+static u8 get_src_path_mask(struct ib_device *device, u32 port_num)
 {
 	struct ib_sa_device *sa_dev;
 	struct ib_sa_port   *port;
@@ -1213,7 +1197,7 @@ static u8 get_src_path_mask(struct ib_device *device, u8 port_num)
 	return src_path_mask;
 }
 
-static int init_ah_attr_grh_fields(struct ib_device *device, u8 port_num,
+static int init_ah_attr_grh_fields(struct ib_device *device, u32 port_num,
 				   struct sa_path_rec *rec,
 				   struct rdma_ah_attr *ah_attr,
 				   const struct ib_gid_attr *gid_attr)
@@ -1251,7 +1235,7 @@ static int init_ah_attr_grh_fields(struct ib_device *device, u8 port_num,
  * User must invoke rdma_destroy_ah_attr() to release reference to SGID
  * attributes which are initialized using ib_init_ah_attr_from_path().
  */
-int ib_init_ah_attr_from_path(struct ib_device *device, u8 port_num,
+int ib_init_ah_attr_from_path(struct ib_device *device, u32 port_num,
 			      struct sa_path_rec *rec,
 			      struct rdma_ah_attr *ah_attr,
 			      const struct ib_gid_attr *gid_attr)
@@ -1360,6 +1344,7 @@ static int send_mad(struct ib_sa_query *query, unsigned long timeout_ms,
 {
 	unsigned long flags;
 	int ret, id;
+	const int nmbr_sa_query_retries = 10;
 
 	xa_lock_irqsave(&queries, flags);
 	ret = __xa_alloc(&queries, &id, query, xa_limit_32b, gfp_mask);
@@ -1367,7 +1352,13 @@ static int send_mad(struct ib_sa_query *query, unsigned long timeout_ms,
 	if (ret < 0)
 		return ret;
 
-	query->mad_buf->timeout_ms  = timeout_ms;
+	query->mad_buf->timeout_ms  = timeout_ms / nmbr_sa_query_retries;
+	query->mad_buf->retries = nmbr_sa_query_retries;
+	if (!query->mad_buf->timeout_ms) {
+		/* Special case, very small timeout_ms */
+		query->mad_buf->timeout_ms = 1;
+		query->mad_buf->retries = timeout_ms;
+	}
 	query->mad_buf->context[0] = query;
 	query->id = id;
 
@@ -1409,7 +1400,7 @@ EXPORT_SYMBOL(ib_sa_pack_path);
 
 static bool ib_sa_opa_pathrecord_support(struct ib_sa_client *client,
 					 struct ib_sa_device *sa_dev,
-					 u8 port_num)
+					 u32 port_num)
 {
 	struct ib_sa_port *port;
 	unsigned long flags;
@@ -1434,8 +1425,9 @@ enum opa_pr_supported {
 	PR_IB_SUPPORTED
 };
 
-/**
- * Check if current PR query can be an OPA query.
+/*
+ * opa_pr_query_possible - Check if current PR query can be an OPA query.
+ *
  * Retuns PR_NOT_SUPPORTED if a path record query is not
  * possible, PR_OPA_SUPPORTED if an OPA path record query
  * is possible and PR_IB_SUPPORTED if an IB path record
@@ -1443,8 +1435,7 @@ enum opa_pr_supported {
  */
 static int opa_pr_query_possible(struct ib_sa_client *client,
 				 struct ib_sa_device *sa_dev,
-				 struct ib_device *device, u8 port_num,
-				 struct sa_path_rec *rec)
+				 struct ib_device *device, u32 port_num)
 {
 	struct ib_port_attr port_attr;
 
@@ -1460,41 +1451,90 @@ static int opa_pr_query_possible(struct ib_sa_client *client,
 		return PR_IB_SUPPORTED;
 }
 
+static void ib_sa_pr_callback_single(struct ib_sa_path_query *query,
+				     int status, struct ib_sa_mad *mad)
+{
+	struct sa_path_rec rec = {};
+
+	ib_unpack(path_rec_table, ARRAY_SIZE(path_rec_table),
+		  mad->data, &rec);
+	rec.rec_type = SA_PATH_REC_TYPE_IB;
+	sa_path_set_dmac_zero(&rec);
+
+	if (query->conv_pr) {
+		struct sa_path_rec opa;
+
+		memset(&opa, 0, sizeof(struct sa_path_rec));
+		sa_convert_path_ib_to_opa(&opa, &rec);
+		query->callback(status, &opa, 1, query->context);
+	} else {
+		query->callback(status, &rec, 1, query->context);
+	}
+}
+
+/**
+ * ib_sa_pr_callback_multiple() - Parse path records then do callback.
+ *
+ * In a multiple-PR case the PRs are saved in "query->resp_pr_data"
+ * (instead of"mad->data") and with "ib_path_rec_data" structure format,
+ * so that rec->flags can be set to indicate the type of PR.
+ * This is valid only in IB fabric.
+ */
+static void ib_sa_pr_callback_multiple(struct ib_sa_path_query *query,
+				       int status, int num_prs,
+				       struct ib_path_rec_data *rec_data)
+{
+	struct sa_path_rec *rec;
+	int i;
+
+	rec = kvcalloc(num_prs, sizeof(*rec), GFP_KERNEL);
+	if (!rec) {
+		query->callback(-ENOMEM, NULL, 0, query->context);
+		return;
+	}
+
+	for (i = 0; i < num_prs; i++) {
+		ib_unpack(path_rec_table, ARRAY_SIZE(path_rec_table),
+			  rec_data[i].path_rec, rec + i);
+		rec[i].rec_type = SA_PATH_REC_TYPE_IB;
+		sa_path_set_dmac_zero(rec + i);
+		rec[i].flags = rec_data[i].flags;
+	}
+
+	query->callback(status, rec, num_prs, query->context);
+	kvfree(rec);
+}
+
 static void ib_sa_path_rec_callback(struct ib_sa_query *sa_query,
-				    int status,
+				    int status, int num_prs,
 				    struct ib_sa_mad *mad)
 {
 	struct ib_sa_path_query *query =
 		container_of(sa_query, struct ib_sa_path_query, sa_query);
+	struct sa_path_rec rec;
 
-	if (mad) {
-		struct sa_path_rec rec;
+	if (!mad || !num_prs) {
+		query->callback(status, NULL, 0, query->context);
+		return;
+	}
 
-		if (sa_query->flags & IB_SA_QUERY_OPA) {
-			ib_unpack(opa_path_rec_table,
-				  ARRAY_SIZE(opa_path_rec_table),
-				  mad->data, &rec);
-			rec.rec_type = SA_PATH_REC_TYPE_OPA;
-			query->callback(status, &rec, query->context);
-		} else {
-			ib_unpack(path_rec_table,
-				  ARRAY_SIZE(path_rec_table),
-				  mad->data, &rec);
-			rec.rec_type = SA_PATH_REC_TYPE_IB;
-			sa_path_set_dmac_zero(&rec);
-
-			if (query->conv_pr) {
-				struct sa_path_rec opa;
-
-				memset(&opa, 0, sizeof(struct sa_path_rec));
-				sa_convert_path_ib_to_opa(&opa, &rec);
-				query->callback(status, &opa, query->context);
-			} else {
-				query->callback(status, &rec, query->context);
-			}
+	if (sa_query->flags & IB_SA_QUERY_OPA) {
+		if (num_prs != 1) {
+			query->callback(-EINVAL, NULL, 0, query->context);
+			return;
 		}
-	} else
-		query->callback(status, NULL, query->context);
+
+		ib_unpack(opa_path_rec_table, ARRAY_SIZE(opa_path_rec_table),
+			  mad->data, &rec);
+		rec.rec_type = SA_PATH_REC_TYPE_OPA;
+		query->callback(status, &rec, num_prs, query->context);
+	} else {
+		if (!sa_query->resp_pr_data)
+			ib_sa_pr_callback_single(query, status, mad);
+		else
+			ib_sa_pr_callback_multiple(query, status, num_prs,
+						   sa_query->resp_pr_data);
+	}
 }
 
 static void ib_sa_path_rec_release(struct ib_sa_query *sa_query)
@@ -1532,13 +1572,13 @@ static void ib_sa_path_rec_release(struct ib_sa_query *sa_query)
  * the query.
  */
 int ib_sa_path_rec_get(struct ib_sa_client *client,
-		       struct ib_device *device, u8 port_num,
+		       struct ib_device *device, u32 port_num,
 		       struct sa_path_rec *rec,
 		       ib_sa_comp_mask comp_mask,
 		       unsigned long timeout_ms, gfp_t gfp_mask,
 		       void (*callback)(int status,
 					struct sa_path_rec *resp,
-					void *context),
+					int num_paths, void *context),
 		       void *context,
 		       struct ib_sa_query **sa_query)
 {
@@ -1566,8 +1606,7 @@ int ib_sa_path_rec_get(struct ib_sa_client *client,
 
 	query->sa_query.port     = port;
 	if (rec->rec_type == SA_PATH_REC_TYPE_OPA) {
-		status = opa_pr_query_possible(client, sa_dev, device, port_num,
-					       rec);
+		status = opa_pr_query_possible(client, sa_dev, device, port_num);
 		if (status == PR_NOT_SUPPORTED) {
 			ret = -EINVAL;
 			goto err1;
@@ -1637,131 +1676,8 @@ err1:
 }
 EXPORT_SYMBOL(ib_sa_path_rec_get);
 
-static void ib_sa_service_rec_callback(struct ib_sa_query *sa_query,
-				    int status,
-				    struct ib_sa_mad *mad)
-{
-	struct ib_sa_service_query *query =
-		container_of(sa_query, struct ib_sa_service_query, sa_query);
-
-	if (mad) {
-		struct ib_sa_service_rec rec;
-
-		ib_unpack(service_rec_table, ARRAY_SIZE(service_rec_table),
-			  mad->data, &rec);
-		query->callback(status, &rec, query->context);
-	} else
-		query->callback(status, NULL, query->context);
-}
-
-static void ib_sa_service_rec_release(struct ib_sa_query *sa_query)
-{
-	kfree(container_of(sa_query, struct ib_sa_service_query, sa_query));
-}
-
-/**
- * ib_sa_service_rec_query - Start Service Record operation
- * @client:SA client
- * @device:device to send request on
- * @port_num: port number to send request on
- * @method:SA method - should be get, set, or delete
- * @rec:Service Record to send in request
- * @comp_mask:component mask to send in request
- * @timeout_ms:time to wait for response
- * @gfp_mask:GFP mask to use for internal allocations
- * @callback:function called when request completes, times out or is
- * canceled
- * @context:opaque user context passed to callback
- * @sa_query:request context, used to cancel request
- *
- * Send a Service Record set/get/delete to the SA to register,
- * unregister or query a service record.
- * The callback function will be called when the request completes (or
- * fails); status is 0 for a successful response, -EINTR if the query
- * is canceled, -ETIMEDOUT is the query timed out, or -EIO if an error
- * occurred sending the query.  The resp parameter of the callback is
- * only valid if status is 0.
- *
- * If the return value of ib_sa_service_rec_query() is negative, it is an
- * error code.  Otherwise it is a request ID that can be used to cancel
- * the query.
- */
-int ib_sa_service_rec_query(struct ib_sa_client *client,
-			    struct ib_device *device, u8 port_num, u8 method,
-			    struct ib_sa_service_rec *rec,
-			    ib_sa_comp_mask comp_mask,
-			    unsigned long timeout_ms, gfp_t gfp_mask,
-			    void (*callback)(int status,
-					     struct ib_sa_service_rec *resp,
-					     void *context),
-			    void *context,
-			    struct ib_sa_query **sa_query)
-{
-	struct ib_sa_service_query *query;
-	struct ib_sa_device *sa_dev = ib_get_client_data(device, &sa_client);
-	struct ib_sa_port   *port;
-	struct ib_mad_agent *agent;
-	struct ib_sa_mad *mad;
-	int ret;
-
-	if (!sa_dev)
-		return -ENODEV;
-
-	port  = &sa_dev->port[port_num - sa_dev->start_port];
-	agent = port->agent;
-
-	if (method != IB_MGMT_METHOD_GET &&
-	    method != IB_MGMT_METHOD_SET &&
-	    method != IB_SA_METHOD_DELETE)
-		return -EINVAL;
-
-	query = kzalloc(sizeof(*query), gfp_mask);
-	if (!query)
-		return -ENOMEM;
-
-	query->sa_query.port     = port;
-	ret = alloc_mad(&query->sa_query, gfp_mask);
-	if (ret)
-		goto err1;
-
-	ib_sa_client_get(client);
-	query->sa_query.client = client;
-	query->callback        = callback;
-	query->context         = context;
-
-	mad = query->sa_query.mad_buf->mad;
-	init_mad(&query->sa_query, agent);
-
-	query->sa_query.callback = callback ? ib_sa_service_rec_callback : NULL;
-	query->sa_query.release  = ib_sa_service_rec_release;
-	mad->mad_hdr.method	 = method;
-	mad->mad_hdr.attr_id	 = cpu_to_be16(IB_SA_ATTR_SERVICE_REC);
-	mad->sa_hdr.comp_mask	 = comp_mask;
-
-	ib_pack(service_rec_table, ARRAY_SIZE(service_rec_table),
-		rec, mad->data);
-
-	*sa_query = &query->sa_query;
-
-	ret = send_mad(&query->sa_query, timeout_ms, gfp_mask);
-	if (ret < 0)
-		goto err2;
-
-	return ret;
-
-err2:
-	*sa_query = NULL;
-	ib_sa_client_put(query->sa_query.client);
-	free_mad(&query->sa_query);
-
-err1:
-	kfree(query);
-	return ret;
-}
-EXPORT_SYMBOL(ib_sa_service_rec_query);
-
 static void ib_sa_mcmember_rec_callback(struct ib_sa_query *sa_query,
-					int status,
+					int status, int num_prs,
 					struct ib_sa_mad *mad)
 {
 	struct ib_sa_mcmember_query *query =
@@ -1783,7 +1699,7 @@ static void ib_sa_mcmember_rec_release(struct ib_sa_query *sa_query)
 }
 
 int ib_sa_mcmember_rec_query(struct ib_sa_client *client,
-			     struct ib_device *device, u8 port_num,
+			     struct ib_device *device, u32 port_num,
 			     u8 method,
 			     struct ib_sa_mcmember_rec *rec,
 			     ib_sa_comp_mask comp_mask,
@@ -1853,7 +1769,7 @@ err1:
 
 /* Support GuidInfoRecord */
 static void ib_sa_guidinfo_rec_callback(struct ib_sa_query *sa_query,
-					int status,
+					int status, int num_paths,
 					struct ib_sa_mad *mad)
 {
 	struct ib_sa_guidinfo_query *query =
@@ -1875,7 +1791,7 @@ static void ib_sa_guidinfo_rec_release(struct ib_sa_query *sa_query)
 }
 
 int ib_sa_guid_info_rec_query(struct ib_sa_client *client,
-			      struct ib_device *device, u8 port_num,
+			      struct ib_device *device, u32 port_num,
 			      struct ib_sa_guidinfo_rec *rec,
 			      ib_sa_comp_mask comp_mask, u8 method,
 			      unsigned long timeout_ms, gfp_t gfp_mask,
@@ -1950,30 +1866,6 @@ err1:
 }
 EXPORT_SYMBOL(ib_sa_guid_info_rec_query);
 
-bool ib_sa_sendonly_fullmem_support(struct ib_sa_client *client,
-				    struct ib_device *device,
-				    u8 port_num)
-{
-	struct ib_sa_device *sa_dev = ib_get_client_data(device, &sa_client);
-	struct ib_sa_port *port;
-	bool ret = false;
-	unsigned long flags;
-
-	if (!sa_dev)
-		return ret;
-
-	port  = &sa_dev->port[port_num - sa_dev->start_port];
-
-	spin_lock_irqsave(&port->classport_lock, flags);
-	if ((port->classport_info.valid) &&
-	    (port->classport_info.data.type == RDMA_CLASS_PORT_INFO_IB))
-		ret = ib_get_cpi_capmask2(&port->classport_info.data.ib)
-			& IB_SA_CAP_MASK2_SENDONLY_FULL_MEM_SUPPORT;
-	spin_unlock_irqrestore(&port->classport_lock, flags);
-	return ret;
-}
-EXPORT_SYMBOL(ib_sa_sendonly_fullmem_support);
-
 struct ib_classport_info_context {
 	struct completion	done;
 	struct ib_sa_query	*sa_query;
@@ -1987,7 +1879,7 @@ static void ib_classportinfo_cb(void *context)
 }
 
 static void ib_sa_classport_info_rec_callback(struct ib_sa_query *sa_query,
-					      int status,
+					      int status, int num_prs,
 					      struct ib_sa_mad *mad)
 {
 	unsigned long flags;
@@ -2163,13 +2055,13 @@ static void send_handler(struct ib_mad_agent *agent,
 			/* No callback -- already got recv */
 			break;
 		case IB_WC_RESP_TIMEOUT_ERR:
-			query->callback(query, -ETIMEDOUT, NULL);
+			query->callback(query, -ETIMEDOUT, 0, NULL);
 			break;
 		case IB_WC_WR_FLUSH_ERR:
-			query->callback(query, -EINTR, NULL);
+			query->callback(query, -EINTR, 0, NULL);
 			break;
 		default:
-			query->callback(query, -EIO, NULL);
+			query->callback(query, -EIO, 0, NULL);
 			break;
 		}
 
@@ -2197,10 +2089,10 @@ static void recv_handler(struct ib_mad_agent *mad_agent,
 		if (mad_recv_wc->wc->status == IB_WC_SUCCESS)
 			query->callback(query,
 					mad_recv_wc->recv_buf.mad->mad_hdr.status ?
-					-EINVAL : 0,
+					-EINVAL : 0, 1,
 					(struct ib_sa_mad *) mad_recv_wc->recv_buf.mad);
 		else
-			query->callback(query, -EIO, NULL);
+			query->callback(query, -EIO, 0, NULL);
 	}
 
 	ib_free_recv_mad(mad_recv_wc);
@@ -2288,7 +2180,7 @@ static void ib_sa_event(struct ib_event_handler *handler,
 		unsigned long flags;
 		struct ib_sa_device *sa_dev =
 			container_of(handler, typeof(*sa_dev), event_handler);
-		u8 port_num = event->element.port_num - sa_dev->start_port;
+		u32 port_num = event->element.port_num - sa_dev->start_port;
 		struct ib_sa_port *port = &sa_dev->port[port_num];
 
 		if (!rdma_cap_ib_sa(handler->device, port->port_num))
@@ -2458,7 +2350,6 @@ err1:
 void ib_sa_cleanup(void)
 {
 	cancel_delayed_work(&ib_nl_timed_work);
-	flush_workqueue(ib_nl_wq);
 	destroy_workqueue(ib_nl_wq);
 	mcast_cleanup();
 	ib_unregister_client(&sa_client);

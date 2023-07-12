@@ -33,8 +33,6 @@
 #include "qxl_drv.h"
 #include "qxl_object.h"
 
-int qxl_log_level;
-
 static bool qxl_check_device(struct qxl_device *qdev)
 {
 	struct qxl_rom *rom = qdev->rom;
@@ -111,7 +109,6 @@ int qxl_device_init(struct qxl_device *qdev,
 {
 	int r, sb;
 
-	qdev->ddev.pdev = pdev;
 	pci_set_drvdata(pdev, &qdev->ddev);
 
 	mutex_init(&qdev->gem.mutex);
@@ -166,7 +163,7 @@ int qxl_device_init(struct qxl_device *qdev,
 		 (int)qdev->surfaceram_size / 1024,
 		 (sb == 4) ? "64bit" : "32bit");
 
-	qdev->rom = ioremap(qdev->rom_base, qdev->rom_size);
+	qdev->rom = ioremap_wc(qdev->rom_base, qdev->rom_size);
 	if (!qdev->rom) {
 		pr_err("Unable to ioremap ROM\n");
 		r = -ENOMEM;
@@ -184,7 +181,7 @@ int qxl_device_init(struct qxl_device *qdev,
 		goto rom_unmap;
 	}
 
-	qdev->ram_header = ioremap(qdev->vram_base +
+	qdev->ram_header = ioremap_wc(qdev->vram_base +
 				   qdev->rom->ram_header_offset,
 				   sizeof(*qdev->ram_header));
 	if (!qdev->ram_header) {
@@ -197,7 +194,6 @@ int qxl_device_init(struct qxl_device *qdev,
 					     sizeof(struct qxl_command),
 					     QXL_COMMAND_RING_SIZE,
 					     qdev->io_base + QXL_IO_NOTIFY_CMD,
-					     false,
 					     &qdev->display_event);
 	if (!qdev->command_ring) {
 		DRM_ERROR("Unable to create command ring\n");
@@ -210,7 +206,6 @@ int qxl_device_init(struct qxl_device *qdev,
 				sizeof(struct qxl_command),
 				QXL_CURSOR_RING_SIZE,
 				qdev->io_base + QXL_IO_NOTIFY_CURSOR,
-				false,
 				&qdev->cursor_event);
 
 	if (!qdev->cursor_ring) {
@@ -222,7 +217,7 @@ int qxl_device_init(struct qxl_device *qdev,
 	qdev->release_ring = qxl_ring_create(
 				&(qdev->ram_header->release_ring_hdr),
 				sizeof(uint64_t),
-				QXL_RELEASE_RING_SIZE, 0, true,
+				QXL_RELEASE_RING_SIZE, 0,
 				NULL);
 
 	if (!qdev->release_ring) {
@@ -231,11 +226,11 @@ int qxl_device_init(struct qxl_device *qdev,
 		goto cursor_ring_free;
 	}
 
-	idr_init(&qdev->release_idr);
+	idr_init_base(&qdev->release_idr, 1);
 	spin_lock_init(&qdev->release_idr_lock);
 	spin_lock_init(&qdev->release_lock);
 
-	idr_init(&qdev->surf_id_idr);
+	idr_init_base(&qdev->surf_id_idr, 1);
 	spin_lock_init(&qdev->surf_id_idr_lock);
 
 	mutex_init(&qdev->async_io_mutex);
@@ -287,11 +282,35 @@ vram_mapping_free:
 
 void qxl_device_fini(struct qxl_device *qdev)
 {
-	qxl_bo_unref(&qdev->current_release_bo[0]);
-	qxl_bo_unref(&qdev->current_release_bo[1]);
+	int cur_idx;
+
+	/* check if qxl_device_init() was successful (gc_work is initialized last) */
+	if (!qdev->gc_work.func)
+		return;
+
+	for (cur_idx = 0; cur_idx < 3; cur_idx++) {
+		if (!qdev->current_release_bo[cur_idx])
+			continue;
+		qxl_bo_unpin(qdev->current_release_bo[cur_idx]);
+		qxl_bo_unref(&qdev->current_release_bo[cur_idx]);
+		qdev->current_release_bo_offset[cur_idx] = 0;
+		qdev->current_release_bo[cur_idx] = NULL;
+	}
+
+	/*
+	 * Ask host to release resources (+fill release ring),
+	 * then wait for the release actually happening.
+	 */
+	qxl_io_notify_oom(qdev);
+	wait_event_timeout(qdev->release_event,
+			   atomic_read(&qdev->release_count) == 0,
+			   HZ);
+	flush_work(&qdev->gc_work);
+	qxl_surf_evict(qdev);
+	qxl_vram_evict(qdev);
+
 	qxl_gem_fini(qdev);
 	qxl_bo_fini(qdev);
-	flush_work(&qdev->gc_work);
 	qxl_ring_free(qdev->command_ring);
 	qxl_ring_free(qdev->cursor_ring);
 	qxl_ring_free(qdev->release_ring);

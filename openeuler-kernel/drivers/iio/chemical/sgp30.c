@@ -425,7 +425,7 @@ static int sgp_check_compat(struct sgp_data *data,
 
 	product = SGP_VERS_PRODUCT(data);
 	if (product != product_id) {
-		dev_err(dev, "sensor reports a different product: 0x%04hx\n",
+		dev_err(dev, "sensor reports a different product: 0x%04x\n",
 			product);
 		return -ENODEV;
 	}
@@ -552,15 +552,13 @@ static int sgp_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int sgp_remove(struct i2c_client *client)
+static void sgp_remove(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct sgp_data *data = iio_priv(indio_dev);
 
 	if (data->iaq_thread)
 		kthread_stop(data->iaq_thread);
-
-	return 0;
 }
 
 static const struct i2c_device_id sgp_id[] = {

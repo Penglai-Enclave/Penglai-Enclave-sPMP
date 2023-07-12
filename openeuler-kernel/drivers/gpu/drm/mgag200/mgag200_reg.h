@@ -96,7 +96,7 @@
 #define MGAREG_SRCORG		0x2cb4
 #define MGAREG_DSTORG		0x2cb8
 
-/* add or or this to one of the previous "power registers" to start
+/* add or this to one of the previous "power registers" to start
    the drawing engine */
 
 #define MGAREG_EXEC		0x0100
@@ -222,11 +222,10 @@
 
 #define MGAREG_MISC_IOADSEL	(0x1 << 0)
 #define MGAREG_MISC_RAMMAPEN	(0x1 << 1)
-#define MGAREG_MISC_CLK_SEL_MASK	GENMASK(3, 2)
-#define MGAREG_MISC_CLK_SEL_VGA25	(0x0 << 2)
-#define MGAREG_MISC_CLK_SEL_VGA28	(0x1 << 2)
-#define MGAREG_MISC_CLK_SEL_MGA_PIX	(0x2 << 2)
-#define MGAREG_MISC_CLK_SEL_MGA_MSK	(0x3 << 2)
+#define MGAREG_MISC_CLKSEL_MASK		GENMASK(3, 2)
+#define MGAREG_MISC_CLKSEL_VGA25	(0x0 << 2)
+#define MGAREG_MISC_CLKSEL_VGA28	(0x1 << 2)
+#define MGAREG_MISC_CLKSEL_MGA		(0x3 << 2)
 #define MGAREG_MISC_VIDEO_DIS	(0x1 << 4)
 #define MGAREG_MISC_HIGH_PG_SEL	(0x1 << 5)
 #define MGAREG_MISC_HSYNCPOL		BIT(6)
@@ -253,8 +252,10 @@
 
 #define MGAREG_CRTCEXT0_OFFSET_MASK	GENMASK(5, 4)
 
+#define MGAREG_CRTCEXT1_VRSTEN		BIT(7)
 #define MGAREG_CRTCEXT1_VSYNCOFF	BIT(5)
 #define MGAREG_CRTCEXT1_HSYNCOFF	BIT(4)
+#define MGAREG_CRTCEXT1_HRSTEN		BIT(3)
 
 #define MGAREG_CRTCEXT3_MGAMODE		BIT(7)
 

@@ -159,12 +159,12 @@ static void emulate_csb_update(struct intel_vgpu_execlist *execlist,
 	hwsp_gpa = intel_vgpu_gma_to_gpa(vgpu->gtt.ggtt_mm,
 					 vgpu->hws_pga[execlist->engine->id]);
 	if (hwsp_gpa != INTEL_GVT_INVALID_ADDR) {
-		intel_gvt_hypervisor_write_gpa(vgpu,
-					       hwsp_gpa + I915_HWS_CSB_BUF0_INDEX * 4 + write_pointer * 8,
-					       status, 8);
-		intel_gvt_hypervisor_write_gpa(vgpu,
-					       hwsp_gpa + intel_hws_csb_write_index(execlist->engine->i915) * 4,
-					       &write_pointer, 4);
+		intel_gvt_write_gpa(vgpu,
+			hwsp_gpa + I915_HWS_CSB_BUF0_INDEX * 4 + write_pointer * 8,
+			status, 8);
+		intel_gvt_write_gpa(vgpu,
+			hwsp_gpa + INTEL_HWS_CSB_WRITE_INDEX(execlist->engine->i915) * 4,
+			&write_pointer, 4);
 	}
 
 	gvt_dbg_el("vgpu%d: w pointer %u reg %x csb l %x csb h %x\n",
@@ -522,12 +522,11 @@ static void init_vgpu_execlist(struct intel_vgpu *vgpu,
 static void clean_execlist(struct intel_vgpu *vgpu,
 			   intel_engine_mask_t engine_mask)
 {
-	struct drm_i915_private *dev_priv = vgpu->gvt->gt->i915;
-	struct intel_engine_cs *engine;
 	struct intel_vgpu_submission *s = &vgpu->submission;
+	struct intel_engine_cs *engine;
 	intel_engine_mask_t tmp;
 
-	for_each_engine_masked(engine, &dev_priv->gt, engine_mask, tmp) {
+	for_each_engine_masked(engine, vgpu->gvt->gt, engine_mask, tmp) {
 		kfree(s->ring_scan_buffer[engine->id]);
 		s->ring_scan_buffer[engine->id] = NULL;
 		s->ring_scan_buffer_size[engine->id] = 0;
@@ -537,11 +536,10 @@ static void clean_execlist(struct intel_vgpu *vgpu,
 static void reset_execlist(struct intel_vgpu *vgpu,
 			   intel_engine_mask_t engine_mask)
 {
-	struct drm_i915_private *dev_priv = vgpu->gvt->gt->i915;
 	struct intel_engine_cs *engine;
 	intel_engine_mask_t tmp;
 
-	for_each_engine_masked(engine, &dev_priv->gt, engine_mask, tmp)
+	for_each_engine_masked(engine, vgpu->gvt->gt, engine_mask, tmp)
 		init_vgpu_execlist(vgpu, engine);
 }
 

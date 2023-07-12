@@ -30,29 +30,9 @@
 struct sg_table *nouveau_gem_prime_get_sg_table(struct drm_gem_object *obj)
 {
 	struct nouveau_bo *nvbo = nouveau_gem_object(obj);
-	int npages = nvbo->bo.num_pages;
 
-	return drm_prime_pages_to_sg(obj->dev, nvbo->bo.ttm->pages, npages);
-}
-
-void *nouveau_gem_prime_vmap(struct drm_gem_object *obj)
-{
-	struct nouveau_bo *nvbo = nouveau_gem_object(obj);
-	int ret;
-
-	ret = ttm_bo_kmap(&nvbo->bo, 0, nvbo->bo.num_pages,
-			  &nvbo->dma_buf_vmap);
-	if (ret)
-		return ERR_PTR(ret);
-
-	return nvbo->dma_buf_vmap.virtual;
-}
-
-void nouveau_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
-{
-	struct nouveau_bo *nvbo = nouveau_gem_object(obj);
-
-	ttm_bo_kunmap(&nvbo->dma_buf_vmap);
+	return drm_prime_pages_to_sg(obj->dev, nvbo->bo.ttm->pages,
+				     nvbo->bo.ttm->num_pages);
 }
 
 struct drm_gem_object *nouveau_gem_prime_import_sg_table(struct drm_device *dev,
@@ -77,6 +57,8 @@ struct drm_gem_object *nouveau_gem_prime_import_sg_table(struct drm_device *dev,
 
 	nvbo->valid_domains = NOUVEAU_GEM_DOMAIN_GART;
 
+	nvbo->bo.base.funcs = &nouveau_gem_object_funcs;
+
 	/* Initialize the embedded gem-object. We return a single gem-reference
 	 * to the caller, instead of a normal nouveau_bo ttm reference. */
 	ret = drm_gem_object_init(dev, &nvbo->bo.base, size);
@@ -89,7 +71,6 @@ struct drm_gem_object *nouveau_gem_prime_import_sg_table(struct drm_device *dev,
 	ret = nouveau_bo_init(nvbo, size, align, NOUVEAU_GEM_DOMAIN_GART,
 			      sg, robj);
 	if (ret) {
-		nouveau_bo_ref(NULL, &nvbo);
 		obj = ERR_PTR(ret);
 		goto unlock;
 	}

@@ -54,9 +54,6 @@
 #include <drm/ttm/ttm_bo_api.h>
 #include <drm/ttm/ttm_bo_driver.h>
 #include <drm/ttm/ttm_placement.h>
-#include <drm/ttm/ttm_memory.h>
-#include <drm/ttm/ttm_module.h>
-#include <drm/ttm/ttm_page_alloc.h>
 
 #include <drm/drm_audio_component.h>
 
@@ -105,7 +102,6 @@ struct nouveau_cli {
 	struct list_head head;
 	void *abi16;
 	struct list_head objects;
-	struct list_head notifys;
 	char name[32];
 
 	struct work_struct work;
@@ -142,6 +138,11 @@ struct nouveau_drm {
 
 	struct list_head clients;
 
+	/**
+	 * @clients_lock: Protects access to the @clients list of &struct nouveau_cli.
+	 */
+	struct mutex clients_lock;
+
 	u8 old_pm_cap;
 
 	struct {
@@ -153,7 +154,7 @@ struct nouveau_drm {
 
 	/* TTM interface support */
 	struct {
-		struct ttm_bo_device bdev;
+		struct ttm_device bdev;
 		atomic_t validate_sequence;
 		int (*move)(struct nouveau_channel *,
 			    struct ttm_buffer_object *,
@@ -223,6 +224,7 @@ struct nouveau_drm {
 
 	struct {
 		struct drm_audio_component *component;
+		struct mutex lock;
 		bool component_registered;
 	} audio;
 };

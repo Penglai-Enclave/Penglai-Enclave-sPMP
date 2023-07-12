@@ -75,7 +75,7 @@ static int (*nx842_powernv_exec)(const unsigned char *in,
 /**
  * setup_indirect_dde - Setup an indirect DDE
  *
- * The DDE is setup with the the DDE count, byte count, and address of
+ * The DDE is setup with the DDE count, byte count, and address of
  * first direct DDE in the list.
  */
 static void setup_indirect_dde(struct data_descriptor_entry *dde,
@@ -660,8 +660,8 @@ static int nx842_powernv_compress(const unsigned char *in, unsigned int inlen,
  * @inlen: input buffer size
  * @out: output buffer pointer
  * @outlenp: output buffer size pointer
- * @workmem: working memory buffer pointer, size determined by
- *           nx842_powernv_driver.workmem_size
+ * @wmem: working memory buffer pointer, size determined by
+ *        nx842_powernv_driver.workmem_size
  *
  * Returns: see @nx842_powernv_exec()
  */
@@ -827,7 +827,7 @@ static int __init vas_cfg_coproc_info(struct device_node *dn, int chip_id,
 		goto err_out;
 
 	vas_init_rx_win_attr(&rxattr, coproc->ct);
-	rxattr.rx_fifo = (void *)rx_fifo;
+	rxattr.rx_fifo = rx_fifo;
 	rxattr.rx_fifo_size = fifo_size;
 	rxattr.lnotify_lpid = lpid;
 	rxattr.lnotify_pid = pid;
@@ -932,8 +932,10 @@ static int __init nx_powernv_probe_vas(struct device_node *pn)
 			ret = find_nx_device_tree(dn, chip_id, vasid,
 				NX_CT_GZIP, "ibm,p9-nx-gzip", &ct_gzip);
 
-		if (ret)
+		if (ret) {
+			of_node_put(dn);
 			return ret;
+		}
 	}
 
 	if (!ct_842 || !ct_gzip) {
@@ -1090,8 +1092,8 @@ static __init int nx_compress_powernv_init(void)
 		 * normal FIFO priority is assigned for userspace.
 		 * 842 compression is supported only in kernel.
 		 */
-		ret = vas_register_coproc_api(THIS_MODULE, VAS_COP_TYPE_GZIP,
-						"nx-gzip");
+		ret = vas_register_api_powernv(THIS_MODULE, VAS_COP_TYPE_GZIP,
+					       "nx-gzip");
 
 		/*
 		 * GZIP is not supported in kernel right now.
@@ -1127,7 +1129,7 @@ static void __exit nx_compress_powernv_exit(void)
 	 * use. So delete this API use for GZIP engine.
 	 */
 	if (!nx842_ct)
-		vas_unregister_coproc_api();
+		vas_unregister_api_powernv();
 
 	crypto_unregister_alg(&nx842_powernv_alg);
 

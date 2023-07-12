@@ -2,12 +2,14 @@
 #ifndef _ASM_X86_PERF_EVENT_H
 #define _ASM_X86_PERF_EVENT_H
 
+#include <linux/static_call.h>
+
 /*
  * Performance event hw details:
  */
 
 #define INTEL_PMC_MAX_GENERIC				       32
-#define INTEL_PMC_MAX_FIXED					4
+#define INTEL_PMC_MAX_FIXED				       16
 #define INTEL_PMC_IDX_FIXED				       32
 
 #define X86_PMC_IDX_MAX					       64
@@ -87,6 +89,19 @@
 #define AMD64_RAW_EVENT_MASK_NB		\
 	(AMD64_EVENTSEL_EVENT        |  \
 	 ARCH_PERFMON_EVENTSEL_UMASK)
+
+#define AMD64_PERFMON_V2_EVENTSEL_EVENT_NB	\
+	(AMD64_EVENTSEL_EVENT	|		\
+	 GENMASK_ULL(37, 36))
+
+#define AMD64_PERFMON_V2_EVENTSEL_UMASK_NB	\
+	(ARCH_PERFMON_EVENTSEL_UMASK	|	\
+	 GENMASK_ULL(27, 24))
+
+#define AMD64_PERFMON_V2_RAW_EVENT_MASK_NB		\
+	(AMD64_PERFMON_V2_EVENTSEL_EVENT_NB	|	\
+	 AMD64_PERFMON_V2_EVENTSEL_UMASK_NB)
+
 #define AMD64_NUM_COUNTERS				4
 #define AMD64_NUM_COUNTERS_CORE				6
 #define AMD64_NUM_COUNTERS_NB				4
@@ -184,6 +199,22 @@ union cpuid28_ecx {
 	unsigned int            full;
 };
 
+/*
+ * AMD "Extended Performance Monitoring and Debug" CPUID
+ * detection/enumeration details:
+ */
+union cpuid_0x80000022_ebx {
+	struct {
+		/* Number of Core Performance Counters */
+		unsigned int	num_core_pmc:4;
+		/* Number of available LBR Stack Entries */
+		unsigned int	lbr_v2_stack_sz:6;
+		/* Number of Data Fabric Counters */
+		unsigned int	num_df_pmc:6;
+	} split;
+	unsigned int		full;
+};
+
 struct x86_pmu_capability {
 	int		version;
 	int		num_counters_gp;
@@ -192,6 +223,7 @@ struct x86_pmu_capability {
 	int		bit_width_fixed;
 	unsigned int	events_mask;
 	int		events_mask_len;
+	unsigned int	pebs_ept	:1;
 };
 
 /*
@@ -241,6 +273,11 @@ struct x86_pmu_capability {
 #define INTEL_PMC_IDX_FIXED_SLOTS	(INTEL_PMC_IDX_FIXED + 3)
 #define INTEL_PMC_MSK_FIXED_SLOTS	(1ULL << INTEL_PMC_IDX_FIXED_SLOTS)
 
+static inline bool use_fixed_pseudo_encoding(u64 code)
+{
+	return !(code & 0xff);
+}
+
 /*
  * We model BTS tracing as another fixed-mode PMC.
  *
@@ -261,8 +298,12 @@ struct x86_pmu_capability {
 #define INTEL_PMC_IDX_TD_BAD_SPEC		(INTEL_PMC_IDX_METRIC_BASE + 1)
 #define INTEL_PMC_IDX_TD_FE_BOUND		(INTEL_PMC_IDX_METRIC_BASE + 2)
 #define INTEL_PMC_IDX_TD_BE_BOUND		(INTEL_PMC_IDX_METRIC_BASE + 3)
-#define INTEL_PMC_IDX_METRIC_END		INTEL_PMC_IDX_TD_BE_BOUND
-#define INTEL_PMC_MSK_TOPDOWN			((0xfull << INTEL_PMC_IDX_METRIC_BASE) | \
+#define INTEL_PMC_IDX_TD_HEAVY_OPS		(INTEL_PMC_IDX_METRIC_BASE + 4)
+#define INTEL_PMC_IDX_TD_BR_MISPREDICT		(INTEL_PMC_IDX_METRIC_BASE + 5)
+#define INTEL_PMC_IDX_TD_FETCH_LAT		(INTEL_PMC_IDX_METRIC_BASE + 6)
+#define INTEL_PMC_IDX_TD_MEM_BOUND		(INTEL_PMC_IDX_METRIC_BASE + 7)
+#define INTEL_PMC_IDX_METRIC_END		INTEL_PMC_IDX_TD_MEM_BOUND
+#define INTEL_PMC_MSK_TOPDOWN			((0xffull << INTEL_PMC_IDX_METRIC_BASE) | \
 						INTEL_PMC_MSK_FIXED_SLOTS)
 
 /*
@@ -280,8 +321,14 @@ struct x86_pmu_capability {
 #define INTEL_TD_METRIC_BAD_SPEC		0x8100	/* Bad speculation metric */
 #define INTEL_TD_METRIC_FE_BOUND		0x8200	/* FE bound metric */
 #define INTEL_TD_METRIC_BE_BOUND		0x8300	/* BE bound metric */
-#define INTEL_TD_METRIC_MAX			INTEL_TD_METRIC_BE_BOUND
-#define INTEL_TD_METRIC_NUM			4
+/* Level 2 metrics */
+#define INTEL_TD_METRIC_HEAVY_OPS		0x8400  /* Heavy Operations metric */
+#define INTEL_TD_METRIC_BR_MISPREDICT		0x8500  /* Branch Mispredict metric */
+#define INTEL_TD_METRIC_FETCH_LAT		0x8600  /* Fetch Latency metric */
+#define INTEL_TD_METRIC_MEM_BOUND		0x8700  /* Memory bound metric */
+
+#define INTEL_TD_METRIC_MAX			INTEL_TD_METRIC_MEM_BOUND
+#define INTEL_TD_METRIC_NUM			8
 
 static inline bool is_metric_idx(int idx)
 {
@@ -356,6 +403,11 @@ struct pebs_xmm {
 };
 
 /*
+ * AMD Extended Performance Monitoring and Debug cpuid feature detection
+ */
+#define EXT_PERFMON_DEBUG_FEATURES		0x80000022
+
+/*
  * IBS cpuid feature detection
  */
 
@@ -376,6 +428,7 @@ struct pebs_xmm {
 #define IBS_CAPS_OPBRNFUSE		(1U<<8)
 #define IBS_CAPS_FETCHCTLEXTD		(1U<<9)
 #define IBS_CAPS_OPDATA4		(1U<<10)
+#define IBS_CAPS_ZEN4			(1U<<11)
 
 #define IBS_CAPS_DEFAULT		(IBS_CAPS_AVAIL		\
 					 | IBS_CAPS_FETCHSAM	\
@@ -389,6 +442,7 @@ struct pebs_xmm {
 #define IBSCTL_LVT_OFFSET_MASK		0x0F
 
 /* IBS fetch bits/masks */
+#define IBS_FETCH_L3MISSONLY	(1ULL<<59)
 #define IBS_FETCH_RAND_EN	(1ULL<<57)
 #define IBS_FETCH_VAL		(1ULL<<49)
 #define IBS_FETCH_ENABLE	(1ULL<<48)
@@ -405,6 +459,7 @@ struct pebs_xmm {
 #define IBS_OP_CNT_CTL		(1ULL<<19)
 #define IBS_OP_VAL		(1ULL<<18)
 #define IBS_OP_ENABLE		(1ULL<<17)
+#define IBS_OP_L3MISSONLY	(1ULL<<16)
 #define IBS_OP_MAX_CNT		0x0000FFFFULL
 #define IBS_OP_MAX_CNT_EXT	0x007FFFFFULL	/* not a register bit mask */
 #define IBS_OP_MAX_CNT_EXT_MASK	(0x7FULL<<20)	/* separate upper 7 bits */
@@ -467,7 +522,9 @@ struct x86_pmu_lbr {
 };
 
 extern void perf_get_x86_pmu_capability(struct x86_pmu_capability *cap);
+extern u64 perf_get_hw_event_config(int hw_event);
 extern void perf_check_microcode(void);
+extern void perf_clear_dirty_counters(void);
 extern int x86_perf_rdpmc_index(struct perf_event *event);
 #else
 static inline void perf_get_x86_pmu_capability(struct x86_pmu_capability *cap)
@@ -475,19 +532,20 @@ static inline void perf_get_x86_pmu_capability(struct x86_pmu_capability *cap)
 	memset(cap, 0, sizeof(*cap));
 }
 
+static inline u64 perf_get_hw_event_config(int hw_event)
+{
+	return 0;
+}
+
 static inline void perf_events_lapic_init(void)	{ }
 static inline void perf_check_microcode(void) { }
 #endif
 
 #if defined(CONFIG_PERF_EVENTS) && defined(CONFIG_CPU_SUP_INTEL)
-extern struct perf_guest_switch_msr *perf_guest_get_msrs(int *nr);
+extern struct perf_guest_switch_msr *perf_guest_get_msrs(int *nr, void *data);
 extern int x86_perf_get_lbr(struct x86_pmu_lbr *lbr);
 #else
-static inline struct perf_guest_switch_msr *perf_guest_get_msrs(int *nr)
-{
-	*nr = 0;
-	return NULL;
-}
+struct perf_guest_switch_msr *perf_guest_get_msrs(int *nr, void *data);
 static inline int x86_perf_get_lbr(struct x86_pmu_lbr *lbr)
 {
 	return -1;
@@ -506,6 +564,27 @@ static inline void intel_pt_handle_vmx(int on)
 #if defined(CONFIG_PERF_EVENTS) && defined(CONFIG_CPU_SUP_AMD)
  extern void amd_pmu_enable_virt(void);
  extern void amd_pmu_disable_virt(void);
+
+#if defined(CONFIG_PERF_EVENTS_AMD_BRS)
+
+#define PERF_NEEDS_LOPWR_CB 1
+
+/*
+ * architectural low power callback impacts
+ * drivers/acpi/processor_idle.c
+ * drivers/acpi/acpi_pad.c
+ */
+extern void perf_amd_brs_lopwr_cb(bool lopwr_in);
+
+DECLARE_STATIC_CALL(perf_lopwr_cb, perf_amd_brs_lopwr_cb);
+
+static inline void perf_lopwr_cb(bool lopwr_in)
+{
+	static_call_mod(perf_lopwr_cb)(lopwr_in);
+}
+
+#endif /* PERF_NEEDS_LOPWR_CB */
+
 #else
  static inline void amd_pmu_enable_virt(void) { }
  static inline void amd_pmu_disable_virt(void) { }

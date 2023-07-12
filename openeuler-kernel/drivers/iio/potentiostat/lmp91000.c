@@ -71,8 +71,8 @@ struct lmp91000_data {
 
 	struct completion completion;
 	u8 chan_select;
-
-	u32 buffer[4]; /* 64-bit data + 64-bit timestamp */
+	/* 64-bit data + 64-bit naturally aligned timestamp */
+	u32 buffer[4] __aligned(8);
 };
 
 static const struct iio_chan_spec lmp91000_channels[] = {
@@ -271,9 +271,6 @@ static int lmp91000_buffer_cb(const void *val, void *private)
 	return 0;
 }
 
-static const struct iio_trigger_ops lmp91000_trigger_ops = {
-};
-
 static int lmp91000_buffer_postenable(struct iio_dev *indio_dev)
 {
 	struct lmp91000_data *data = iio_priv(indio_dev);
@@ -322,15 +319,14 @@ static int lmp91000_probe(struct i2c_client *client,
 		return PTR_ERR(data->regmap);
 	}
 
-	data->trig = devm_iio_trigger_alloc(data->dev, "%s-mux%d",
-					    indio_dev->name, indio_dev->id);
+	data->trig = devm_iio_trigger_alloc(dev, "%s-mux%d",
+					    indio_dev->name,
+					    iio_device_id(indio_dev));
 	if (!data->trig) {
 		dev_err(dev, "cannot allocate iio trigger.\n");
 		return -ENOMEM;
 	}
 
-	data->trig->ops = &lmp91000_trigger_ops;
-	data->trig->dev.parent = dev;
 	init_completion(&data->completion);
 
 	ret = lmp91000_read_config(data);
@@ -388,7 +384,7 @@ error_unreg_trigger:
 	return ret;
 }
 
-static int lmp91000_remove(struct i2c_client *client)
+static void lmp91000_remove(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct lmp91000_data *data = iio_priv(indio_dev);
@@ -400,8 +396,6 @@ static int lmp91000_remove(struct i2c_client *client)
 
 	iio_triggered_buffer_cleanup(indio_dev);
 	iio_trigger_unregister(data->trig);
-
-	return 0;
 }
 
 static const struct of_device_id lmp91000_of_match[] = {

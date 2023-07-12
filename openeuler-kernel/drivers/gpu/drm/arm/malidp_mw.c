@@ -9,9 +9,11 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_edid.h>
+#include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_fourcc.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_writeback.h>
 
@@ -151,17 +153,14 @@ malidp_mw_encoder_atomic_check(struct drm_encoder *encoder,
 		malidp_hw_get_format_id(&malidp->dev->hw->map, SE_MEMWRITE,
 					fb->format->format, !!fb->modifier);
 	if (mw_state->format == MALIDP_INVALID_FORMAT_ID) {
-		struct drm_format_name_buf format_name;
-
-		DRM_DEBUG_KMS("Invalid pixel format %s\n",
-			      drm_get_format_name(fb->format->format,
-						  &format_name));
+		DRM_DEBUG_KMS("Invalid pixel format %p4cc\n",
+			      &fb->format->format);
 		return -EINVAL;
 	}
 
 	n_planes = fb->format->num_planes;
 	for (i = 0; i < n_planes; i++) {
-		struct drm_gem_cma_object *obj = drm_fb_cma_get_gem_obj(fb, i);
+		struct drm_gem_dma_object *obj = drm_fb_dma_get_gem_obj(fb, i);
 		/* memory write buffers are never rotated */
 		u8 alignment = malidp_hw_get_pitch_align(malidp->dev, 0);
 
@@ -171,7 +170,7 @@ malidp_mw_encoder_atomic_check(struct drm_encoder *encoder,
 			return -EINVAL;
 		}
 		mw_state->pitches[i] = fb->pitches[i];
-		mw_state->addrs[i] = obj->paddr + fb->offsets[i];
+		mw_state->addrs[i] = obj->dma_addr + fb->offsets[i];
 	}
 	mw_state->n_planes = n_planes;
 
@@ -215,7 +214,6 @@ int malidp_mw_connector_init(struct drm_device *drm)
 	if (!malidp->dev->hw->enable_memwrite)
 		return 0;
 
-	malidp->mw_connector.encoder.possible_crtcs = 1 << drm_crtc_index(&malidp->crtc);
 	drm_connector_helper_add(&malidp->mw_connector.base,
 				 &malidp_mw_connector_helper_funcs);
 
@@ -226,7 +224,8 @@ int malidp_mw_connector_init(struct drm_device *drm)
 	ret = drm_writeback_connector_init(drm, &malidp->mw_connector,
 					   &malidp_mw_connector_funcs,
 					   &malidp_mw_encoder_helper_funcs,
-					   formats, n_formats);
+					   formats, n_formats,
+					   1 << drm_crtc_index(&malidp->crtc));
 	kfree(formats);
 	if (ret)
 		return ret;

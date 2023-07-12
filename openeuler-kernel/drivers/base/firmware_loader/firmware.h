@@ -87,6 +87,7 @@ struct fw_priv {
 };
 
 extern struct mutex fw_lock;
+extern struct firmware_cache fw_cache;
 
 static inline bool __fw_state_check(struct fw_priv *fw_priv,
 				    enum fw_status status)
@@ -117,8 +118,16 @@ static inline void __fw_state_set(struct fw_priv *fw_priv,
 
 	WRITE_ONCE(fw_st->status, status);
 
-	if (status == FW_STATUS_DONE || status == FW_STATUS_ABORTED)
+	if (status == FW_STATUS_DONE || status == FW_STATUS_ABORTED) {
+#ifdef CONFIG_FW_LOADER_USER_HELPER
+		/*
+		 * Doing this here ensures that the fw_priv is deleted from
+		 * the pending list in all abort/done paths.
+		 */
+		list_del_init(&fw_priv->pending_list);
+#endif
 		complete_all(&fw_st->completion);
+	}
 }
 
 static inline void fw_state_aborted(struct fw_priv *fw_priv)
@@ -141,7 +150,39 @@ static inline void fw_state_done(struct fw_priv *fw_priv)
 	__fw_state_set(fw_priv, FW_STATUS_DONE);
 }
 
+static inline bool fw_state_is_done(struct fw_priv *fw_priv)
+{
+	return __fw_state_check(fw_priv, FW_STATUS_DONE);
+}
+
+static inline bool fw_state_is_loading(struct fw_priv *fw_priv)
+{
+	return __fw_state_check(fw_priv, FW_STATUS_LOADING);
+}
+
+int alloc_lookup_fw_priv(const char *fw_name, struct firmware_cache *fwc,
+			 struct fw_priv **fw_priv, void *dbuf, size_t size,
+			 size_t offset, u32 opt_flags);
 int assign_fw(struct firmware *fw, struct device *device);
+void free_fw_priv(struct fw_priv *fw_priv);
+void fw_state_init(struct fw_priv *fw_priv);
+
+#ifdef CONFIG_FW_LOADER
+bool firmware_is_builtin(const struct firmware *fw);
+bool firmware_request_builtin_buf(struct firmware *fw, const char *name,
+				  void *buf, size_t size);
+#else /* module case */
+static inline bool firmware_is_builtin(const struct firmware *fw)
+{
+	return false;
+}
+static inline bool firmware_request_builtin_buf(struct firmware *fw,
+						const char *name,
+						void *buf, size_t size)
+{
+	return false;
+}
+#endif
 
 #ifdef CONFIG_FW_LOADER_PAGED_BUF
 void fw_free_paged_buf(struct fw_priv *fw_priv);

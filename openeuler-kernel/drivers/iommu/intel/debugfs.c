@@ -10,12 +10,13 @@
 
 #include <linux/debugfs.h>
 #include <linux/dmar.h>
-#include <linux/intel-iommu.h>
 #include <linux/pci.h>
 
 #include <asm/irq_remapping.h>
 
+#include "iommu.h"
 #include "pasid.h"
+#include "perf.h"
 
 struct tbl_walk {
 	u16 bus;
@@ -30,6 +31,9 @@ struct iommu_regset {
 	int offset;
 	const char *regs;
 };
+
+#define DEBUG_BUFFER_SIZE	1024
+static char debug_buf[DEBUG_BUFFER_SIZE];
 
 #define IOMMU_REGSET_ENTRY(_reg_)					\
 	{ DMAR_##_reg_##_REG, __stringify(_reg_) }
@@ -259,10 +263,9 @@ static void ctx_tbl_walk(struct seq_file *m, struct intel_iommu *iommu, u16 bus)
 
 static void root_tbl_walk(struct seq_file *m, struct intel_iommu *iommu)
 {
-	unsigned long flags;
 	u16 bus;
 
-	spin_lock_irqsave(&iommu->lock, flags);
+	spin_lock(&iommu->lock);
 	seq_printf(m, "IOMMU %s: Root Table Address: 0x%llx\n", iommu->name,
 		   (u64)virt_to_phys(iommu->root_entry));
 	seq_puts(m, "B.D.F\tRoot_entry\t\t\t\tContext_entry\t\t\t\tPASID\tPASID_table_entry\n");
@@ -274,8 +277,7 @@ static void root_tbl_walk(struct seq_file *m, struct intel_iommu *iommu)
 	 */
 	for (bus = 0; bus < 256; bus++)
 		ctx_tbl_walk(m, iommu, bus);
-
-	spin_unlock_irqrestore(&iommu->lock, flags);
+	spin_unlock(&iommu->lock);
 }
 
 static int dmar_translation_struct_show(struct seq_file *m, void *unused)
@@ -338,37 +340,56 @@ static void pgtable_walk_level(struct seq_file *m, struct dma_pte *pde,
 	}
 }
 
-static int show_device_domain_translation(struct device *dev, void *data)
+static int __show_device_domain_translation(struct device *dev, void *data)
 {
-	struct dmar_domain *domain = find_domain(dev);
+	struct dmar_domain *domain;
 	struct seq_file *m = data;
 	u64 path[6] = { 0 };
 
+	domain = to_dmar_domain(iommu_get_domain_for_dev(dev));
 	if (!domain)
 		return 0;
 
-	seq_printf(m, "Device %s with pasid %d @0x%llx\n",
-		   dev_name(dev), domain->default_pasid,
+	seq_printf(m, "Device %s @0x%llx\n", dev_name(dev),
 		   (u64)virt_to_phys(domain->pgd));
 	seq_puts(m, "IOVA_PFN\t\tPML5E\t\t\tPML4E\t\t\tPDPE\t\t\tPDE\t\t\tPTE\n");
 
 	pgtable_walk_level(m, domain->pgd, domain->agaw + 2, 0, path);
 	seq_putc(m, '\n');
 
+	/* Don't iterate */
+	return 1;
+}
+
+static int show_device_domain_translation(struct device *dev, void *data)
+{
+	struct iommu_group *group;
+
+	group = iommu_group_get(dev);
+	if (group) {
+		/*
+		 * The group->mutex is held across the callback, which will
+		 * block calls to iommu_attach/detach_group/device. Hence,
+		 * the domain of the device will not change during traversal.
+		 *
+		 * All devices in an iommu group share a single domain, hence
+		 * we only dump the domain of the first device. Even though,
+		 * this code still possibly races with the iommu_unmap()
+		 * interface. This could be solved by RCU-freeing the page
+		 * table pages in the iommu_unmap() path.
+		 */
+		iommu_group_for_each_dev(group, data,
+					 __show_device_domain_translation);
+		iommu_group_put(group);
+	}
+
 	return 0;
 }
 
 static int domain_translation_struct_show(struct seq_file *m, void *unused)
 {
-	unsigned long flags;
-	int ret;
-
-	spin_lock_irqsave(&device_domain_lock, flags);
-	ret = bus_for_each_dev(&pci_bus_type, NULL, m,
-			       show_device_domain_translation);
-	spin_unlock_irqrestore(&device_domain_lock, flags);
-
-	return ret;
+	return bus_for_each_dev(&pci_bus_type, NULL, m,
+				show_device_domain_translation);
 }
 DEFINE_SHOW_ATTRIBUTE(domain_translation_struct);
 
@@ -538,6 +559,111 @@ static int ir_translation_struct_show(struct seq_file *m, void *unused)
 DEFINE_SHOW_ATTRIBUTE(ir_translation_struct);
 #endif
 
+static void latency_show_one(struct seq_file *m, struct intel_iommu *iommu,
+			     struct dmar_drhd_unit *drhd)
+{
+	int ret;
+
+	seq_printf(m, "IOMMU: %s Register Base Address: %llx\n",
+		   iommu->name, drhd->reg_base_addr);
+
+	ret = dmar_latency_snapshot(iommu, debug_buf, DEBUG_BUFFER_SIZE);
+	if (ret < 0)
+		seq_puts(m, "Failed to get latency snapshot");
+	else
+		seq_puts(m, debug_buf);
+	seq_puts(m, "\n");
+}
+
+static int latency_show(struct seq_file *m, void *v)
+{
+	struct dmar_drhd_unit *drhd;
+	struct intel_iommu *iommu;
+
+	rcu_read_lock();
+	for_each_active_iommu(iommu, drhd)
+		latency_show_one(m, iommu, drhd);
+	rcu_read_unlock();
+
+	return 0;
+}
+
+static int dmar_perf_latency_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, latency_show, NULL);
+}
+
+static ssize_t dmar_perf_latency_write(struct file *filp,
+				       const char __user *ubuf,
+				       size_t cnt, loff_t *ppos)
+{
+	struct dmar_drhd_unit *drhd;
+	struct intel_iommu *iommu;
+	int counting;
+	char buf[64];
+
+	if (cnt > 63)
+		cnt = 63;
+
+	if (copy_from_user(&buf, ubuf, cnt))
+		return -EFAULT;
+
+	buf[cnt] = 0;
+
+	if (kstrtoint(buf, 0, &counting))
+		return -EINVAL;
+
+	switch (counting) {
+	case 0:
+		rcu_read_lock();
+		for_each_active_iommu(iommu, drhd) {
+			dmar_latency_disable(iommu, DMAR_LATENCY_INV_IOTLB);
+			dmar_latency_disable(iommu, DMAR_LATENCY_INV_DEVTLB);
+			dmar_latency_disable(iommu, DMAR_LATENCY_INV_IEC);
+			dmar_latency_disable(iommu, DMAR_LATENCY_PRQ);
+		}
+		rcu_read_unlock();
+		break;
+	case 1:
+		rcu_read_lock();
+		for_each_active_iommu(iommu, drhd)
+			dmar_latency_enable(iommu, DMAR_LATENCY_INV_IOTLB);
+		rcu_read_unlock();
+		break;
+	case 2:
+		rcu_read_lock();
+		for_each_active_iommu(iommu, drhd)
+			dmar_latency_enable(iommu, DMAR_LATENCY_INV_DEVTLB);
+		rcu_read_unlock();
+		break;
+	case 3:
+		rcu_read_lock();
+		for_each_active_iommu(iommu, drhd)
+			dmar_latency_enable(iommu, DMAR_LATENCY_INV_IEC);
+		rcu_read_unlock();
+		break;
+	case 4:
+		rcu_read_lock();
+		for_each_active_iommu(iommu, drhd)
+			dmar_latency_enable(iommu, DMAR_LATENCY_PRQ);
+		rcu_read_unlock();
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	*ppos += cnt;
+	return cnt;
+}
+
+static const struct file_operations dmar_perf_latency_fops = {
+	.open		= dmar_perf_latency_open,
+	.write		= dmar_perf_latency_write,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 void __init intel_iommu_debugfs_init(void)
 {
 	struct dentry *intel_iommu_debug = debugfs_create_dir("intel",
@@ -556,4 +682,6 @@ void __init intel_iommu_debugfs_init(void)
 	debugfs_create_file("ir_translation_struct", 0444, intel_iommu_debug,
 			    NULL, &ir_translation_struct_fops);
 #endif
+	debugfs_create_file("dmar_perf_latency", 0644, intel_iommu_debug,
+			    NULL, &dmar_perf_latency_fops);
 }

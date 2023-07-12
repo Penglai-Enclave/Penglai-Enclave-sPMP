@@ -34,6 +34,10 @@ struct amdgpu_gfxhub_funcs {
 	void (*set_fault_enable_default)(struct amdgpu_device *adev, bool value);
 	void (*init)(struct amdgpu_device *adev);
 	int (*get_xgmi_info)(struct amdgpu_device *adev);
+	void (*utcl2_harvest)(struct amdgpu_device *adev);
+	void (*mode2_save_regs)(struct amdgpu_device *adev);
+	void (*mode2_restore_regs)(struct amdgpu_device *adev);
+	void (*halt)(struct amdgpu_device *adev);
 };
 
 struct amdgpu_gfxhub {
