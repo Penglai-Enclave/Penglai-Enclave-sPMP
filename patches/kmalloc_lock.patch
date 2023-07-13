@@ -1,0 +1,216 @@
+diff --git a/opensbi-1.2/lib/sbi/sm/platform/pmp/enclave_mm.c b/opensbi-1.2/lib/sbi/sm/platform/pmp/enclave_mm.c
+index 5fbe1b91b..3db174150 100644
+--- a/opensbi-1.2/lib/sbi/sm/platform/pmp/enclave_mm.c
++++ b/opensbi-1.2/lib/sbi/sm/platform/pmp/enclave_mm.c
+@@ -139,7 +139,7 @@ static pte_t* walk_enclave_pt(pte_t *enclave_root_pt, uintptr_t vaddr)
+ 	return &pgdir[get_pt_index(vaddr , level - 1)];
+ }
+ 
+-static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
++/*static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
+ 					int (*check)(uintptr_t, uintptr_t, int))
+ {
+ 	uintptr_t pte_per_page = RISCV_PGSIZE/sizeof(pte_t);
+@@ -188,6 +188,7 @@ static int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va,
+ 
+ 	return 0;
+ }
++*/
+ 
+ /**
+  * \brief This function check the enclave page table set up by
+@@ -260,9 +261,57 @@ int check_enclave_pt(struct enclave_t *enclave)
+ 
+ 		return 0;
+ 	}
++	int iterate_over_enclave_pages(pte_t* ptes, int level, uintptr_t va)
++{
++	uintptr_t pte_per_page = RISCV_PGSIZE/sizeof(pte_t);
++	pte_t *pte;
++	uintptr_t i = 0;
++
++	//should never happen
++	if(level <= 0)
++		return 1;
++
++	for(pte = ptes, i = 0; i < pte_per_page; pte += 1, i += 1)
++	{
++		if(!(*pte & PTE_V))
++		{
++			continue;
++		}
++
++		uintptr_t curr_va = 0;
++		if(level == ((VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS))
++			curr_va = (uintptr_t)(-1UL << VA_BITS) +
++				(i << (VA_BITS - RISCV_PGLEVEL_BITS));
++		else
++			curr_va = va +
++				(i << ((level-1) * RISCV_PGLEVEL_BITS + RISCV_PGSHIFT));
++		uintptr_t pa = (*pte >> PTE_PPN_SHIFT) << RISCV_PGSHIFT;
++
++		//found leaf pte
++		if ((*pte & PTE_R) || (*pte & PTE_X)) {
++			//4K page
++			if (level == 1) {
++				if (check_page(curr_va, pa, 1 << RISCV_PGSHIFT) != 0)
++					return -1;
++			}
++			//2M page
++			else if (level == 2) {
++				if (check_page(curr_va, pa, 1 << (RISCV_PGSHIFT +
++						RISCV_PGLEVEL_BITS)) != 0)
++					return -1;
++			}
++		} else {
++			if (iterate_over_enclave_pages((pte_t *)pa, level - 1,
++							   curr_va) != 0)
++				return -1;
++		}
++	}
++
++	return 0;
++}
+ 	retval = iterate_over_enclave_pages(
+ 		(pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT),
+-		(VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS, 0, check_page
++		(VA_BITS - RISCV_PGSHIFT) / RISCV_PGLEVEL_BITS, 0
+ 	);
+ 	if(retval != 0){
+ 		printm_err("[Penglai Monitor@%s] Error: Enclave page table check failed, retval %d.\n",
+@@ -507,7 +556,7 @@ int grant_enclave_access(struct enclave_t* enclave)
+ 	pmp_idx = REGION_TO_PMP(region_idx);
+ #if 0
+ 	pmp_config.paddr = enclave->paddr;
+-	pmp_config.size = enclave->size;
++	pmp_config.size = enclave->size;   
+ #else
+ 	/* Even if we set this PMP region only contain the enclave's secure memory,
+ 	 * the enclave still have access to the secure memory of other enclaves,
+@@ -527,13 +576,13 @@ int grant_enclave_access(struct enclave_t* enclave)
+ 	set_pmp(pmp_idx, pmp_config);
+ 
+ 	/*FIXME: we should handle the case that the PMP region contains larger region */
+-	if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){
++	if (pmp_config.paddr != enclave->paddr || pmp_config.size != enclave->size){/*
+ 		printm("[Penglai Monitor@%s] warning, region != enclave mem\n", __func__);
+ 		printm("[Penglai Monitor@%s] region: paddr(0x%lx) size(0x%lx)\n",
+ 				__func__, pmp_config.paddr, pmp_config.size);
+ 		printm("[Penglai Monitor@%s] enclave mem: paddr(0x%lx) size(0x%lx)\n",
+ 				__func__, enclave->paddr, enclave->size);
+-	}
++	*/}
+ 
+ 	return 0;
+ }
+@@ -1056,4 +1105,4 @@ int mm_free(void* req_paddr, unsigned long free_size)
+ mm_free_out:
+ 	spin_unlock(&pmp_bitmap_lock);
+ 	return ret_val;
+-}
++}
+\ No newline at end of file
+diff --git a/penglai-enclave-driver/penglai-enclave-ioctl.c b/penglai-enclave-driver/penglai-enclave-ioctl.c
+index 55bef5a46..5f8f0bb78 100644
+--- a/penglai-enclave-driver/penglai-enclave-ioctl.c
++++ b/penglai-enclave-driver/penglai-enclave-ioctl.c
+@@ -126,9 +126,8 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
+ 		return -1;
+ 	}
+ 
+-	acquire_big_lock(__func__);
+ 
+-	enclave = create_enclave(total_pages);
++	enclave = create_enclave(total_pages);							//May sleep
+ 	if(!enclave)
+ 	{
+ 		printk("KERNEL MODULE: cannot create enclave\n");
+@@ -137,7 +136,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
+ 
+ 	elf_entry = 0;
+ 	if(penglai_enclave_eapp_preprare(enclave->enclave_mem, elf_ptr, elf_size,
+-				&elf_entry, STACK_POINT, stack_size))
++				&elf_entry, STACK_POINT, stack_size))				//May sleep
+ 	{
+ 		printk("KERNEL MODULE: penglai_enclave_eapp_preprare is failed\n");;
+ 		goto destroy_enclave;
+@@ -151,19 +150,19 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
+ 	untrusted_mem_size = 0x1 << (ilog2(untrusted_mem_size - 1) + 1);
+ 	if((untrusted_mem_ptr == 0) && (untrusted_mem_size > 0))
+ 	{
+-		alloc_untrusted_mem(untrusted_mem_size, &untrusted_mem_ptr, enclave);
++		alloc_untrusted_mem(untrusted_mem_size, &untrusted_mem_ptr, enclave);	//May sleep
+ 	}
+ 	enclave->untrusted_mem->addr = (vaddr_t)untrusted_mem_ptr;
+ 	enclave->untrusted_mem->size = untrusted_mem_size;
+ 	printk("[Penglai Driver@%s] untrusted_mem->addr:0x%lx untrusted_mem->size:0x%lx\n",
+ 			__func__, (vaddr_t)untrusted_mem_ptr, untrusted_mem_size);
+ 
+-	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);
++	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);	//May sleep
+ 	enclave->kbuffer = (vaddr_t)kbuffer_ptr;
+ 	enclave->kbuffer_size = ENCLAVE_DEFAULT_KBUFFER_SIZE;
+ 
+ 	free_mem = get_free_mem(&(enclave->enclave_mem->free_mem));
+-
++	acquire_big_lock(__func__);
+ 	create_sbi_param(enclave, enclave_sbi_param,
+ 			(unsigned long)(enclave->enclave_mem->paddr),
+ 			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
+@@ -298,7 +297,7 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
+ 	int retval = 0;
+ 	int resume_id = 0;
+ 
+-	printk("[Penglai Driver@%s] begin\n", __func__);
++	printk("[Penglai Driver@%s] begin get_enclave_by_id\n", __func__);
+ 	acquire_big_lock(__func__);
+ 
+ 	enclave = get_enclave_by_id(eid);
+diff --git a/penglai-enclave-driver/penglai-enclave.c b/penglai-enclave-driver/penglai-enclave.c
+index ff70af922..5f14aeaad 100644
+--- a/penglai-enclave-driver/penglai-enclave.c
++++ b/penglai-enclave-driver/penglai-enclave.c
+@@ -1,7 +1,7 @@
+ #include "penglai-enclave.h"
+ DEFINE_IDR(idr_enclave);
+ DEFINE_SPINLOCK(idr_enclave_lock);
+-
++DEFINE_SPINLOCK(kmalloc_enclave_lock);
+ /*
+  * ACK (DD): the idr_alloc function is learned from keystone :)
+  * */
+@@ -10,7 +10,7 @@ unsigned int enclave_idr_alloc(enclave_t* enclave)
+ 	unsigned int ueid;
+ 
+ 	spin_lock_bh(&idr_enclave_lock);
+-	ueid = idr_alloc(&idr_enclave, enclave, ENCLAVE_IDR_MIN, ENCLAVE_IDR_MAX, GFP_KERNEL);
++	ueid = idr_alloc(&idr_enclave, enclave, ENCLAVE_IDR_MIN, ENCLAVE_IDR_MAX, GFP_ATOMIC);
+ 	spin_unlock_bh(&idr_enclave_lock);
+ 
+ 	if (ueid < ENCLAVE_IDR_MIN || ueid >= ENCLAVE_IDR_MAX) {
+@@ -51,7 +51,7 @@ enclave_t* create_enclave(int total_pages)
+ 	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_KERNEL);
+ 	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_KERNEL);
+ 	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_KERNEL);
+-
++	spin_lock_bh(&kmalloc_enclave_lock);
+ 	int size;
+ 	struct sbiret ret;
+ 	unsigned long order = ilog2(total_pages-1) + 1;
+@@ -113,12 +113,15 @@ enclave_t* create_enclave(int total_pages)
+ 	addr = (vaddr_t)__va(pa);
+ 	size = require_sec_memory->resp_size;
+ 	INIT_LIST_HEAD(&enclave_mem->free_mem);
++	spin_unlock_bh(&kmalloc_enclave_lock);
+ 	enclave_mem_int(enclave_mem, addr, size, __pa(addr));
++	spin_lock_bh(&kmalloc_enclave_lock);
++
+ 	enclave->enclave_mem = enclave_mem;
+ 	enclave->untrusted_mem = untrusted_mem;
+ 
+     kfree(untrusted_mem);
+-
++	spin_unlock_bh(&kmalloc_enclave_lock);
+ 	//TODO: create untrusted mem
+ 
+ 	return enclave;

@@ -1,7 +1,7 @@
 #include "penglai-enclave.h"
 DEFINE_IDR(idr_enclave);
 DEFINE_SPINLOCK(idr_enclave_lock);
-
+DEFINE_SPINLOCK(kmalloc_enclave_lock);
 /*
  * ACK (DD): the idr_alloc function is learned from keystone :)
  * */
@@ -10,7 +10,7 @@ unsigned int enclave_idr_alloc(enclave_t* enclave)
 	unsigned int ueid;
 
 	spin_lock_bh(&idr_enclave_lock);
-	ueid = idr_alloc(&idr_enclave, enclave, ENCLAVE_IDR_MIN, ENCLAVE_IDR_MAX, GFP_KERNEL);
+	ueid = idr_alloc(&idr_enclave, enclave, ENCLAVE_IDR_MIN, ENCLAVE_IDR_MAX, GFP_ATOMIC);
 	spin_unlock_bh(&idr_enclave_lock);
 
 	if (ueid < ENCLAVE_IDR_MIN || ueid >= ENCLAVE_IDR_MAX) {
@@ -51,7 +51,7 @@ enclave_t* create_enclave(int total_pages)
 	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_KERNEL);
 	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_KERNEL);
 	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_KERNEL);
-
+	spin_lock_bh(&kmalloc_enclave_lock);
 	int size;
 	struct sbiret ret;
 	unsigned long order = ilog2(total_pages-1) + 1;
@@ -113,12 +113,15 @@ enclave_t* create_enclave(int total_pages)
 	addr = (vaddr_t)__va(pa);
 	size = require_sec_memory->resp_size;
 	INIT_LIST_HEAD(&enclave_mem->free_mem);
+	spin_unlock_bh(&kmalloc_enclave_lock);
 	enclave_mem_int(enclave_mem, addr, size, __pa(addr));
+	spin_lock_bh(&kmalloc_enclave_lock);
+
 	enclave->enclave_mem = enclave_mem;
 	enclave->untrusted_mem = untrusted_mem;
 
     kfree(untrusted_mem);
-
+	spin_unlock_bh(&kmalloc_enclave_lock);
 	//TODO: create untrusted mem
 
 	return enclave;

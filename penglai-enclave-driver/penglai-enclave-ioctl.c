@@ -126,9 +126,8 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		return -1;
 	}
 
-	acquire_big_lock(__func__);
 
-	enclave = create_enclave(total_pages);
+	enclave = create_enclave(total_pages);							//May sleep
 	if(!enclave)
 	{
 		printk("KERNEL MODULE: cannot create enclave\n");
@@ -137,7 +136,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	elf_entry = 0;
 	if(penglai_enclave_eapp_preprare(enclave->enclave_mem, elf_ptr, elf_size,
-				&elf_entry, STACK_POINT, stack_size))
+				&elf_entry, STACK_POINT, stack_size))				//May sleep
 	{
 		printk("KERNEL MODULE: penglai_enclave_eapp_preprare is failed\n");;
 		goto destroy_enclave;
@@ -151,19 +150,19 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	untrusted_mem_size = 0x1 << (ilog2(untrusted_mem_size - 1) + 1);
 	if((untrusted_mem_ptr == 0) && (untrusted_mem_size > 0))
 	{
-		alloc_untrusted_mem(untrusted_mem_size, &untrusted_mem_ptr, enclave);
+		alloc_untrusted_mem(untrusted_mem_size, &untrusted_mem_ptr, enclave);	//May sleep
 	}
 	enclave->untrusted_mem->addr = (vaddr_t)untrusted_mem_ptr;
 	enclave->untrusted_mem->size = untrusted_mem_size;
 	printk("[Penglai Driver@%s] untrusted_mem->addr:0x%lx untrusted_mem->size:0x%lx\n",
 			__func__, (vaddr_t)untrusted_mem_ptr, untrusted_mem_size);
 
-	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);
+	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);	//May sleep
 	enclave->kbuffer = (vaddr_t)kbuffer_ptr;
 	enclave->kbuffer_size = ENCLAVE_DEFAULT_KBUFFER_SIZE;
 
 	free_mem = get_free_mem(&(enclave->enclave_mem->free_mem));
-
+	acquire_big_lock(__func__);
 	create_sbi_param(enclave, enclave_sbi_param,
 			(unsigned long)(enclave->enclave_mem->paddr),
 			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
@@ -298,7 +297,7 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	int retval = 0;
 	int resume_id = 0;
 
-	printk("[Penglai Driver@%s] begin\n", __func__);
+	printk("[Penglai Driver@%s] begin get_enclave_by_id\n", __func__);
 	acquire_big_lock(__func__);
 
 	enclave = get_enclave_by_id(eid);
