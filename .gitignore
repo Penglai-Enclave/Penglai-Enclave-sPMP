@@ -31,3 +31,7 @@ Image-*
 opensbi-1.2-*
 
 *.zip
+run_mod.sh
+fw_payload-2003.elf
+fw_payload-2303.bin
+run_openeuler-2.sh
