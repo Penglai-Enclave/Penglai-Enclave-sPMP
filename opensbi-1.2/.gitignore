@@ -6,6 +6,7 @@
 #Build & install directories
 build/
 install/
+build-oe/
 
 # Development friendly files
 tags
