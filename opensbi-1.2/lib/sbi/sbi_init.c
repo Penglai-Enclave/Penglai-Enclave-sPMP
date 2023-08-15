@@ -25,6 +25,7 @@
 #include <sbi/sbi_string.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_tlb.h>
+#include <sbi/sbi_pmp.h>
 #include <sbi/sbi_version.h>
 
 #define BANNER                                              \
@@ -43,9 +44,9 @@ static void sbi_boot_print_banner(struct sbi_scratch *scratch)
 		return;
 
 #ifdef OPENSBI_VERSION_GIT
-	sbi_printf("\nOpenSBI %s\n", OPENSBI_VERSION_GIT);
+	sbi_printf("\nOpenSBI %s (with Penglai TEE)\n", OPENSBI_VERSION_GIT);
 #else
-	sbi_printf("\nOpenSBI v%d.%d\n", OPENSBI_VERSION_MAJOR,
+	sbi_printf("\nOpenSBI v%d.%d (with Penglai TEE)\n", OPENSBI_VERSION_MAJOR,
 		   OPENSBI_VERSION_MINOR);
 #endif
 
@@ -296,6 +297,14 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 		sbi_hart_hang();
 	}
 
+	/* Penglai PMP init for synchronize PMP settings among Harts */
+	rc = sbi_pmp_init(scratch, TRUE);
+	if (rc) {
+		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
+		sbi_hart_hang();
+	}
+
+
 	rc = sbi_timer_init(scratch, TRUE);
 	if (rc) {
 		sbi_printf("%s: timer init failed (error %d)\n", __func__, rc);
@@ -321,6 +330,11 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 		sbi_hart_hang();
 	}
 
+	/*
+	 * Note (DD):
+	 * 	In our case, the PMP set by domain will be erased, as penglai
+	 * 	will take control of PMP
+	 * */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc) {
 		sbi_printf("%s: PMP configure failed (error %d)\n",
@@ -344,6 +358,8 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	sbi_boot_print_domains(scratch);
 
 	sbi_boot_print_hart(scratch, hartid);
+	
+	sbi_printf("[Penglai] Penglai Enclave Preparing\n");
 
 	wake_coldboot_harts(scratch, hartid);
 
@@ -392,10 +408,21 @@ static void init_warm_startup(struct sbi_scratch *scratch, u32 hartid)
 	if (rc)
 		sbi_hart_hang();
 
+	rc = sbi_pmp_init(scratch, FALSE);
+	if (rc) {
+		sbi_printf("%s: (penglai) pmp init failed (error %d)\n", __func__, rc);
+		sbi_hart_hang();
+	}
+
 	rc = sbi_timer_init(scratch, FALSE);
 	if (rc)
 		sbi_hart_hang();
 
+	/*
+	 * Note (DD):
+	 * 	In our case, the PMP set by domain will be erased, as penglai
+	 * 	will take control of PMP
+	 * */
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc)
 		sbi_hart_hang();

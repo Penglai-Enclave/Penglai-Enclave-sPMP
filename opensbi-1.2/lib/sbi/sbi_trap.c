@@ -23,6 +23,8 @@
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
 
+#include <sm/sm.h>
+
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
 				      ulong mtinst, struct sbi_trap_regs *regs)
@@ -198,7 +200,7 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 	return 0;
 }
 
-static int sbi_trap_nonaia_irq(struct sbi_trap_regs *regs, ulong mcause)
+/* static int sbi_trap_nonaia_irq(struct sbi_trap_regs *regs, ulong mcause)
 {
 	mcause &= ~(1UL << (__riscv_xlen - 1));
 	switch (mcause) {
@@ -215,9 +217,9 @@ static int sbi_trap_nonaia_irq(struct sbi_trap_regs *regs, ulong mcause)
 	};
 
 	return 0;
-}
+} */
 
-static int sbi_trap_aia_irq(struct sbi_trap_regs *regs, ulong mcause)
+/* static int sbi_trap_aia_irq(struct sbi_trap_regs *regs, ulong mcause)
 {
 	int rc;
 	unsigned long mtopi;
@@ -242,7 +244,7 @@ static int sbi_trap_aia_irq(struct sbi_trap_regs *regs, ulong mcause)
 	}
 
 	return 0;
-}
+} */
 
 /**
  * Handle trap/interrupt
@@ -274,15 +276,26 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 	}
 
 	if (mcause & (1UL << (__riscv_xlen - 1))) {
-		if (sbi_hart_has_extension(sbi_scratch_thishart_ptr(),
-					   SBI_HART_EXT_SMAIA))
-			rc = sbi_trap_aia_irq(regs, mcause);
-		else
-			rc = sbi_trap_nonaia_irq(regs, mcause);
-		if (rc) {
-			msg = "unhandled local interrupt";
+		mcause &= ~(1UL << (__riscv_xlen - 1));
+		switch (mcause) {
+		case IRQ_M_TIMER:
+			if (check_in_enclave_world() >= 0) { //handle timer for enclaves
+				sm_do_timer_irq((uintptr_t *)regs, mcause, regs->mepc);
+			}else{
+				sbi_timer_process();
+			}
+			break;
+		case IRQ_M_SOFT:
+			sbi_ipi_process();
+			break;
+		case IRQ_M_EXT:
+			rc = sbi_irqchip_process(regs);
+			if (rc)
+				goto trap_error;
+		default:
+			msg = "unhandled external interrupt";
 			goto trap_error;
-		}
+		};
 		return regs;
 	}
 
@@ -299,6 +312,15 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 		rc  = sbi_misaligned_store_handler(mtval, mtval2, mtinst, regs);
 		msg = "misaligned store handler failed";
 		break;
+	case CAUSE_USER_ECALL:
+		//The only case for USER_ECALL is issued by Penglai Enclave now
+		if (check_in_enclave_world() <0) {
+			sbi_printf("[Penglai] Error, user ecall not in enclaves\n");
+			rc = -1;
+			break;
+		} else {// continue to sbi_ecall_handler
+			//sbi_printf("[Penglai] ecall from enclaves\n");
+		}
 	case CAUSE_SUPERVISOR_ECALL:
 	case CAUSE_MACHINE_ECALL:
 		rc  = sbi_ecall_handler(regs);
