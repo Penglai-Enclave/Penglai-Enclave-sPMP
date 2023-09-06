@@ -14,7 +14,7 @@ This repo maintains OpenSBI version of Penglai Enclave based on PMP.
 
 **How to use?**
 
-Simply replace the OpenSBI used in your system with opensbi-0.9 in the top directory in the repo.
+Simply replace the OpenSBI used in your system with opensbi-1.2 in the top directory in the repo.
 
 You can use our SDK and enclave-driver to build your trusted applications, or even write your own SDKs.
 
@@ -40,43 +40,58 @@ Therefore, the only requirement to build and run penglai-demo is:
 - Git: for downloading the code
 - Qemu for RISC-V (RV64): suggested version >= 5.2.0. You can download the qemu [here](https://www.qemu.org/) and follow the [instructions](https://wiki.qemu.org/Documentation/Platforms/RISCV) to build and install qemu.
 
-### Build openEuler Kernel
+### Build uboot
+U-boot 23.04 Download:https://github.com/u-boot/u-boot/archive/refs/tags/v2023.04.tar.gz
+Execute the following command to compile and get uboot.bin
+```shell
+make qemu_riscv64_smode_defconfig
+make ARCH=riscv CROSS_COMPILE=riscv64-unknown-linux-gnu- -j$(nproc)
+```
 
-Follow the instructions in openeuler riscv gitee to compile openEuler kernel.
+### Build OPENSBI
+Execute the following commands to compile fw_payload.bin (note that the local path should be changed as needed).
+```shell
+cd ../Penglai-Enclave-sPMP/opensbi-1.2
+rm -rf build-oe/qemu-virt
+mkdir -p build-oe/qemu-virt
+CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=../Penglai-Enclave-sPMP/u-boot.bin -j$(nproc)
+```
+### Run openEuler with Penglai Supports
 
-For example, download the OKL-5.10 in current directory, and compile with penglai's docker image:
+You should download the disk image of openEuler (i.e., openEuler-23.03-V1-base-qemu-preview.qcow2) from [openEuler-23.03](https://mirror.iscas.ac.cn/openeuler-sig-riscv/openEuler-RISC-V/preview/openEuler-23.03-V1-riscv64/QEMU/),download and unzip openEuler-23.03-V1-base-qemu-preview.qcow2.zst.
+```shell
+qemu-system-riscv64 -nographic -machine virt \
+        -smp 4 -m 2G \
+        -bios  ./fw_payload.bin  \
+        -drive file=openEuler-23.03-V1-base-qemu-preview.qcow2,format=qcow2,id=hd0 \
+        -object rng-random,filename=/dev/urandom,id=rng0 \
+        -device virtio-rng-device,rng=rng0 \
+        -device virtio-blk-device,drive=hd0  \
+        -device virtio-net-device,netdev=usernet \
+        -netdev user,id=usernet,hostfwd=tcp::12055-:22 \
+        -device qemu-xhci -usb -device usb-kbd -device usb-tablet
+```
 
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
-	# In the docker image
-	./scripts/build_euler_kernel.sh
+- The test qemu version is 8.0.
+- To login, username is "root", passwd is "openEuler12#$"
 
-### Build OpenSBI (with Penglai supports)
+### Compiling the kernel module in the qemu virtual machine
 
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
-	# In the docker image
-	cd /home/penglai/penglai-enclave/opensbi-0.9
-	mkdir -p build-oe/qemu-virt
-	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
+After the above startup is complete get the source code in the VM and execute compile kernel moudle:
+```shell
+sudo dnf install -y kernel-devel kernel-source
+```
+The kernel source code will be downloaded locally,the path is `/usr/lib/modules/6.1.19-2.oe2303.riscv64`.
 
-Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Kernel Image.
-
-A simpler way:
-
-	./docker_cmd.sh docker
-	#In the docker image
-	./scripts/build_opensbi.sh
-
-**Note**: if you use the simpler way, please **copy** your latest kernel image to the root dir of the repo.
-
-### Build Penglai SDK
-
-Following the commands to build enclave driver:
-
-	./docker_cmd.sh docker
-	# In the docker image
-	./scripts/build_enclave_driver.sh
-
-It will generate penglai.ko in the penglai-enclave-driver dir.
+Copy penglai-enclave-driver to the root/ directory of the oe VM.
+Go to the penglai-enclave-driver directory and modify the original kernel source path openeuler-kernel in the Makefile to `/usr/lib/modules/6.1.19-2.oe2303.riscv64/build/`.
+Compile and install the kernel module:
+```shell
+cd penglai-enclave-driver
+vim Makefile #modify source path 
+make -j$(nproc)
+insmod penglai.ko
+```
 
 Following the commnads to build user-level sdk and demos:
 
@@ -88,30 +103,6 @@ Following the commnads to build user-level sdk and demos:
 	cd sdk
 	PENGLAI_SDK=$(pwd) make -j8
 
-### Run openEuler with Penglai Supports
-
-You should download the disk image of openEuler (i.e., openEuler-preview.riscv64.qcow2) from [here](https://repo.openeuler.org/openEuler-preview/RISC-V/Image/)
-
-	qemu-system-riscv64 -nographic -machine virt \
-	-smp 4 -m 2G \
-	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
-	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
-	-object rng-random,filename=/dev/urandom,id=rng0 \
-	-device virtio-rng-device,rng=rng0 \
-	-device virtio-blk-device,drive=hd0  \
-	-device virtio-net-device,netdev=usernet \
-	-netdev user,id=usernet,hostfwd=tcp::12055-:22 \
-	-append 'root=/dev/vda1 rw console=ttyS0 systemd.default_timeout_start_sec=600 selinux=0 highres=off mem=4096M earlycon' \
-	-bios none
-
-
-- The test qemu version is 5.2.0.
-- The fw_payload.elf is the opensbi file.
-- The openEuler-preview.riscv64.qcow2 is the disk image for openEuler (You can download from https://repo.openeuler.org/openEuler-preview/RISC-V/Image/).
-- To login, username is "root", passwd is "openEuler12#$"
-
-Note: a script, run_openeuler.sh is provided to execute the above command easily
-
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
 
@@ -121,15 +112,10 @@ You can copy any files to the VM using *scp*.
 
 For example, to run the following demo, you should:
 
-	scp -P 12055 penglai-enclave-driver/penglai.ko root@localhost:~/
 	scp -P 12055 sdk/demo/host/host root@localhost:~/
 	scp -P 12055 sdk/demo/prime/prime root@localhost:~/
 
 The passwd is "openEuler12#$"
-
-**Insmod the enclave-driver**
-
-`insmod penglai.ko`
 
 And the, you can run a demo, e.g., a prime enclave, using
 
@@ -143,9 +129,9 @@ Mulan Permissive Software License，Version 1 (Mulan PSL v1)
 
 ## Code Structures
 
-- opensbi-0.9: The Penglai-equipped OpenSBI, version 0.9
+- opensbi-1.2: The Penglai-equipped OpenSBI, version 1.2
 - openeuler-kernel: openEuler Kernel
-- riscv-qemu: The modified qemu (4.1) to support sPMP (you can also use the standard qemu)
+- riscv-qemu: Tstandard qemu (8.0)
 - scripts: some scripts to build/run Penglai demo
 
 ## Code Contributions
