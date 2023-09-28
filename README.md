@@ -38,7 +38,17 @@ Therefore, the only requirement to build and run penglai-demo is:
 
 - [Docker](https://docs.docker.com): for building/running Penglai
 - Git: for downloading the code
-- Qemu for RISC-V (RV64): suggested version >= 5.2.0. You can download the qemu [here](https://www.qemu.org/) and follow the [instructions](https://wiki.qemu.org/Documentation/Platforms/RISCV) to build and install qemu.
+- Qemu for RISC-V (RV64): suggested version >= 5.2.0. You can download the qemu [here](https://www.qemu.org/) and follow the [instructions](https://wiki.qemu.org/Documentation/Platforms/RISCV) to build and install qemu.For openEuler version 2303, we tests using qemu-8.0.
+
+### Build uboot
+
+Follow the instructions in openeuler riscv gitee to compile uboot for OE-23.X.
+
+```
+cd ./u-boot
+make qemu-riscv64_defconfig
+make ARCH=riscv CROSS_COMPILE=riscv64-unknown-linux-gnu- -j$(nproc)
+```
 
 ### Build openEuler Kernel
 
@@ -50,7 +60,10 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 	# In the docker image
 	./scripts/build_euler_kernel.sh
 
+Note:The kernel image needs to be compiled only when openeuler version is less than 23
+
 ### Build OpenSBI (with Penglai supports)
+For openEuler version < 23:
 
 	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
@@ -60,17 +73,29 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 
 Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Kernel Image.
 
+For openEuler version >= 23:
+
+```
+docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
+cd ../Penglai-Enclave-sPMP/opensbi-1.2
+rm -rf build-oe/qemu-virt
+mkdir -p build-oe/qemu-virt
+CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=../Penglai-Enclave-sPMP/u-boot.bin -j$(nproc)
+```
+
 A simpler way:
 
-	./docker_cmd.sh docker
-	#In the docker image
-	./scripts/build_opensbi.sh
+```
+./docker_cmd.sh docker
+#In the docker image，build opensbi 1.2 for OE20.03
+./scripts/build_opensbi.sh -v 1.2 -k 2003
+```
 
-**Note**: if you use the simpler way, please **copy** your latest kernel image to the root dir of the repo.
+**Note**: if you use the simpler way, please **copy** your latest kernel *Image* file to the root dir of the repo.
 
 ### Build Penglai SDK
 
-Following the commands to build enclave driver:
+When openeuler version is less than 23,following the commands to build enclave driver:
 
 	./docker_cmd.sh docker
 	# In the docker image
@@ -78,7 +103,28 @@ Following the commands to build enclave driver:
 
 It will generate penglai.ko in the penglai-enclave-driver dir.
 
-Following the commnads to build user-level sdk and demos:
+**Note:When openEuler version is >= 23,you need to start openEuler in qemu After starting the VM as the next step *Run openEuler with Penglai Supports* before compiling penglai-driver.**
+
+For openEuler version greater than 23, get the source code in the qemu VM and execute compile kernel moudle:
+
+```
+#in VM
+cd ~/
+sudo dnf install -y kernel-devel kernel-source
+```
+
+The kernel source code will be downloaded locally,the path is `/usr/lib/modules/6.1.19-2.oe2303.riscv64`.
+
+Copy penglai-enclave-driver to the root/ directory of the oe VM. Go to the penglai-enclave-driver directory and modify the original kernel source path openeuler-kernel in the Makefile to `/usr/lib/modules/6.1.19-2.oe2303.riscv64/build/`. Compile and install the kernel module:
+
+```
+cd penglai-enclave-driver
+vim Makefile #modify source path 
+make -j$(nproc)
+insmod penglai.ko
+```
+
+When penglai.ko is completed,following the commnads to build user-level sdk and demos:
 
 	# Fetch the sdk submodule
 	git submodule update --init --recursive
@@ -90,8 +136,19 @@ Following the commnads to build user-level sdk and demos:
 
 ### Run openEuler with Penglai Supports
 
-You should download the disk image of openEuler (i.e., openEuler-preview.riscv64.qcow2) from [here](https://repo.openeuler.org/openEuler-preview/RISC-V/Image/)
+You should download the disk image of openEuler (i.e., openEuler-preview.riscv64.qcow2) and raname image file to openEuler-xxxx-qemu-riscv64.qcow2.
 
+You can download OE 2303 from [openEuler-23.03-V1-riscv64](https://mirror.iscas.ac.cn/openeuler-sig-riscv/openEuler-RISC-V/preview/openEuler-23.03-V1-riscv64/QEMU/)(i.e., openEuler-23.03-V1-base-qemu-preview.qcow2）or download [openEuler 20.03](http://pan.sjtu.edu.cn/web/share/6ec2212dcc10ac97345e9db1cb7595e9).
+
+```
+wget https://mirror.iscas.ac.cn/openeuler-sig-riscv/openEuler-RISC-V/preview/openEuler-23.03-V1-riscv64/QEMU/openEuler-23.03-V1-base-qemu-preview.qcow2.zst
+unzstd openEuler-23.03-V1-base-qemu-preview.qcow2.zst
+mv openEuler-23.03-V1-base-qemu-preview.qcow2 openEuler-2303-qemu-riscv64.qcow2
+```
+
+Run VM in QEMU：
+
+	# For openEuler version is 20.03
 	qemu-system-riscv64 -nographic -machine virt \
 	-smp 4 -m 2G \
 	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
@@ -112,8 +169,16 @@ You should download the disk image of openEuler (i.e., openEuler-preview.riscv64
 
 Note: a script, run_openeuler.sh is provided to execute the above command easily
 
+```
+#when openEuler version less than 23,eg 2003
+./run_openeuler.sh -k 2003 -o 1.2
+#when openEuler version is greater than or equal 23,eg 2303
+./run_openeuler.sh -k 2303 -o 1.2
+```
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
+
+### RUN demo
 
 **Copy files to openEuler Qemu**
 
@@ -187,4 +252,3 @@ We thank all of our collaborators (companies, organizations, and communities).
 ## Acknowledgements
 
 The design of Penglai was inspired by Sanctum, Keystone and HexFive, thanks to their great work!
-
