@@ -68,3 +68,31 @@ libsbi-objs-y += sbi_tlb.o
 libsbi-objs-y += sbi_trap.o
 libsbi-objs-y += sbi_unpriv.o
 libsbi-objs-y += sbi_expected_trap.o
+libsbi-objs-y += sbi_pmp.o
+
+## Add by Dong Du
+#  The Penglai related files here
+libsbi-objs-y += sbi_ecall_penglai.o
+libsbi-objs-y += sm/enclave.o
+libsbi-objs-y += sm/pmp.o
+libsbi-objs-y += sm/sm.o
+libsbi-objs-y += sm/thread.o
+libsbi-objs-y += sm/utils.o
+libsbi-objs-y += sm/platform/pmp/platform.o
+libsbi-objs-y += sm/attest.o
+
+libsbi-objs-y += sm/gm/miracl/mrcore.o
+libsbi-objs-y += sm/gm/miracl/mrarth0.o
+libsbi-objs-y += sm/gm/miracl/mrarth1.o
+libsbi-objs-y += sm/gm/miracl/mrarth2.o
+libsbi-objs-y += sm/gm/miracl/mrcurve.o
+libsbi-objs-y += sm/gm/miracl/mrxgcd.o
+libsbi-objs-y += sm/gm/miracl/mrarth3.o
+libsbi-objs-y += sm/gm/miracl/mrjack.o
+libsbi-objs-y += sm/gm/miracl/mrbits.o
+libsbi-objs-y += sm/gm/miracl/mrmonty.o
+libsbi-objs-y += sm/gm/miracl/mrrand.o
+libsbi-objs-y += sm/gm/miracl/mrsroot.o
+libsbi-objs-y += sm/gm/miracl/mrlucas.o
+libsbi-objs-y += sm/gm/SM2_sv.o
+libsbi-objs-y += sm/gm/SM3.o

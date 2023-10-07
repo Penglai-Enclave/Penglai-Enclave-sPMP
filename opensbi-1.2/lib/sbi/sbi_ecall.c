@@ -12,6 +12,7 @@
 #include <sbi/sbi_ecall_interface.h>
 #include <sbi/sbi_error.h>
 #include <sbi/sbi_trap.h>
+#include "sm/enclave.h"
 
 extern struct sbi_ecall_extension *sbi_ecall_exts[];
 extern unsigned long sbi_ecall_exts_size;
@@ -119,6 +120,16 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 	if (ret == SBI_ETRAP) {
 		trap.epc = regs->mepc;
 		sbi_trap_redirect(regs, &trap);
+	} else if (extension_id == SBI_EXT_PENGLAI_HOST ||
+			extension_id == SBI_EXT_PENGLAI_ENCLAVE) {
+		//FIXME: update the return value assignment when we update enclave side SBI routines
+		regs->a0 = out_val;
+		if (!is_0_1_spec){
+			if(check_in_enclave_world() == -1){
+				regs->a0 = ret;
+				regs->a1 = out_val;
+			}
+		}
 	} else {
 		if (ret < SBI_LAST_ERR) {
 			sbi_printf("%s: Invalid error %d for ext=0x%lx "
@@ -147,15 +158,47 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 int sbi_ecall_init(void)
 {
 	int ret;
-	struct sbi_ecall_extension *ext;
-	unsigned long i;
+	// struct sbi_ecall_extension *ext;
+	// unsigned long i;
 
-	for (i = 0; i < sbi_ecall_exts_size; i++) {
+	/* for (i = 0; i < sbi_ecall_exts_size; i++) {
 		ext = sbi_ecall_exts[i];
 		ret = sbi_ecall_register_extension(ext);
 		if (ret)
 			return ret;
-	}
-
+	} */
+	ret = sbi_ecall_register_extension(&ecall_time);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_rfence);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_ipi);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_base);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_hsm);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_srst);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_pmu);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_legacy);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_vendor);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_penglai_host);
+	if (ret)
+		return ret;
+	ret = sbi_ecall_register_extension(&ecall_penglai_enclave);
+	if (ret)
+		return ret;
 	return 0;
 }

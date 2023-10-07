@@ -30,6 +30,10 @@
 #define SBI_EXT_SRST				0x53525354
 #define SBI_EXT_PMU				0x504D55
 
+//Penglai
+#define SBI_EXT_PENGLAI_HOST            0x100100
+#define SBI_EXT_PENGLAI_ENCLAVE     0x100101
+
 /* SBI function IDs for BASE extension*/
 #define SBI_EXT_BASE_GET_SPEC_VERSION		0x0
 #define SBI_EXT_BASE_GET_IMP_ID			0x1
