@@ -98,9 +98,11 @@ function run_qemu_2(){
 
 if ((kernel_version < 2303))
 then
+	echo "Run openEuer $kernel_version with opensbi $opensbi_version"
 	run_qemu_1 $imagepath $opensbi_path
 	exit 0
 else
+	echo "Run openEuer $kernel_version with opensbi $opensbi_version"
 	run_qemu_2 $imagepath $opensbi_path
 	exit 0
 fi

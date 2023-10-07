@@ -6,4 +6,4 @@
 	url = https://github.com/Penglai-Enclave/penglai-qemu.git
 [submodule "u-boot"]
 	path = u-boot
-	url = git@github.com:Fly0307/u-boot.git
+	url = https://github.com/u-boot/u-boot.git

@@ -64,9 +64,11 @@ if
 
 if [ $(echo "$kernel_version < 2303" | bc -l) -eq 1 ]
 then
+	echo "Begin build opensbi $opensbi_version for openEuler $kernel_version"
 	build_opensbi_1  $opensbi_path
 	exit 0
 else
+	echo "Begin build opensbi $opensbi_version for openEuler $kernel_version"
 	build_opensbi_2  $opensbi_path
 	exit 0
 fi
