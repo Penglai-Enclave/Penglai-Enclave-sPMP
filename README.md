@@ -73,7 +73,7 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 For oe versions greater than 23, you can access the source code after [Run openEuler with Penglai Supports](#run-openeuler-with-penglai-supports) and don't need to compile the image like in the previous step for  version $\lt$ 23.
 
 ### Build OpenSBI (with Penglai supports)
-**For openEuler version < 23:**
+**For openEuler version $\lt$ 23:**
 
 	copy openeuler-kernel/arch/riscv/boot/Image .
 	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
@@ -84,7 +84,7 @@ For oe versions greater than 23, you can access the source code after [Run openE
 
 Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Kernel Image.
 
-**For openEuler version >= 23:**
+**For openEuler version $\ge$ 23:**
 
 ```
 copy ../Penglai-Enclave-sPMP/u-boot/u-boot.bin
@@ -108,7 +108,7 @@ A simpler way:
 
 ### Build Penglai SDK
 
-**For openEuler version < 23:**
+**For openEuler version $\lt$ 23:**
 
 When openeuler version is less than 23,following the commands to build enclave driver:
 
@@ -118,7 +118,7 @@ When openeuler version is less than 23,following the commands to build enclave d
 
 It will generate penglai.ko in the penglai-enclave-driver dir.
 
-**For openEuler version >= 23:**
+**For openEuler version $\ge$ 23:**
 
 When openEuler version is >= 23,  you need to start openEuler in qemu as the next step [Run openEuler with Penglai Supports](#run-openeuler-with-penglai-supports) finished before compiling penglai-driver.
 
@@ -146,7 +146,7 @@ unzstd openEuler-23.03-V1-base-qemu-preview.qcow2.zst
 mv openEuler-23.03-V1-base-qemu-preview.qcow2 openEuler-2303-qemu-riscv64.qcow2
 ```
 
-**For openEuler version < 23:**
+**For openEuler version $\lt$ 23:**
 
 Run VM in QEMU：
 
@@ -181,7 +181,7 @@ Note: a script, run_openeuler.sh is provided to execute the above command easily
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
 
-**For openEuler version >= 23:**
+**For openEuler version $\ge$ 23:**
 
 For openEuler version greater than 23, get the source code in the qemu VM and execute compile kernel moudle with penglai-driver.
 
@@ -192,7 +192,7 @@ Copy penglai-enclave-driver to the root/ directory of the oe VM:
 scp -P 12055 penglai-enclave-driver root@localhost:~/
 ```
 
-Execute the following commands and the kernel source code will be downloaded locally,the path is `/usr/lib/modules/6.1.19-2.oe2303.riscv64`.
+Execute the following commands and the kernel source code will be downloaded locally, the path is `/usr/lib/modules/6.1.19-2.oe2303.riscv64`.
 
 ```
 #in VM
