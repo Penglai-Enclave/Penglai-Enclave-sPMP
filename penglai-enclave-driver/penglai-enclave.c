@@ -66,14 +66,7 @@ enclave_t* create_enclave(int total_pages)
 			__func__, total_pages, order);
 	//Note: SBI_SM_ALLOC_ENCLAVE_MEM's arg is the num of bytes instead of pages
 	require_sec_memory->size = total_pages << RISCV_PGSHIFT;
-    printk("[Penglai Driver] before printk\n");
-    printk("[Penglai Driver@%s] require_sec_memory va: %lx, pa: %lx, __va(pa): %lx\n",
-			__func__, (unsigned long)require_sec_memory, __pa(require_sec_memory), (unsigned long)__va(__pa(require_sec_memory)));
-    if(is_linear_mapping((unsigned long)require_sec_memory))
-        printk("[Penglai Driver]: va: %lx is linear mapping\n", (unsigned long)require_sec_memory);
-    else
-        printk("[Penglai Driver]: va: %lx is kernel mapping\n", (unsigned long)require_sec_memory);
-    printk("[Penglai Driver] after printk\n");
+
 	ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, __pa(require_sec_memory));
 	pa = require_sec_memory->paddr;
 

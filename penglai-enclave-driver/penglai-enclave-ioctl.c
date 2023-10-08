@@ -97,10 +97,6 @@ int check_eapp_memory_size(long elf_size, long stack_size, long untrusted_mem_si
 int penglai_enclave_create(struct file * filep, unsigned long args)
 {
 	struct penglai_enclave_user_param* enclave_param = (struct penglai_enclave_user_param*)args;
-	printk("KERNEL MODULE: enclave_param->elf_ptr: %lx\n", enclave_param->elf_ptr);
-    printk("KERNEL MODULE: enclave_param->stack_size: %lx\n", enclave_param->stack_size);
-    printk("KERNEL MODULE: enclave_param->untrusted_mem_size: %lx\n", enclave_param->untrusted_mem_size);
-    printk("KERNEL MODULE: enclave_param->untrusted_mem_ptr: %lx\n", enclave_param->untrusted_mem_ptr);
     void *elf_ptr = (void*)enclave_param->elf_ptr;
 	int elf_size = 0;
 	if(penglai_enclave_elfmemsize(elf_ptr, &elf_size) < 0)
@@ -297,7 +293,6 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	int retval = 0;
 	int resume_id = 0;
 
-	printk("[Penglai Driver@%s] begin get_enclave_by_id\n", __func__);
 	acquire_big_lock(__func__);
 
 	enclave = get_enclave_by_id(eid);
