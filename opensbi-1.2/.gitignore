@@ -1,0 +1,14 @@
+# Object files
+*.o
+*.a
+*.dep
+
+#Build & install directories
+build/
+build-oe/
+install/
+
+# Development friendly files
+tags
+cscope*
+*.swp
