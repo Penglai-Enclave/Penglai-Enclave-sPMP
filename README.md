@@ -75,7 +75,7 @@ For oe versions greater than 23, you can access the source code after [Run openE
 ### Build OpenSBI (with Penglai supports)
 **For openEuler version $\lt$ 23:**
 
-	copy openeuler-kernel/arch/riscv/boot/Image .
+	cp openeuler-kernel/arch/riscv/boot/Image .
 	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 	# In the docker image
 	cd /home/penglai/penglai-enclave/opensbi-0.9
@@ -87,12 +87,12 @@ Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Ke
 **For openEuler version $\ge$ 23:**
 
 ```
-cp ../Penglai-Enclave-sPMP/u-boot/u-boot.bin
+cp ../Penglai-Enclave-sPMP/u-boot/u-boot.bin .
 docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
-cd ../Penglai-Enclave-sPMP/opensbi-1.2
+cd /home/penglai/penglai-enclave/opensbi-1.2
 rm -rf build-oe/qemu-virt
 mkdir -p build-oe/qemu-virt
-CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=../Penglai-Enclave-sPMP/u-boot.bin -j$(nproc)
+CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot.bin -j$(nproc)
 ```
 
 A simpler way:
@@ -152,16 +152,16 @@ Run VM in QEMU：
 
 	# For openEuler version is 20.03
 	qemu-system-riscv64 -nographic -machine virt \
-	-smp 4 -m 2G \
-	-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
-	-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
-	-object rng-random,filename=/dev/urandom,id=rng0 \
-	-device virtio-rng-device,rng=rng0 \
-	-device virtio-blk-device,drive=hd0  \
-	-device virtio-net-device,netdev=usernet \
-	-netdev user,id=usernet,hostfwd=tcp::12055-:22 \
-	-append 'root=/dev/vda1 rw console=ttyS0 systemd.default_timeout_start_sec=600 selinux=0 highres=off mem=4096M earlycon' \
-	-bios none
+						-smp 4 -m 2G \
+						-kernel  ./opensbi-0.9/build-oe/qemu-virt/platform/generic/firmware/fw_payload.elf  \
+						-drive file=openEuler-preview.riscv64.qcow2,format=qcow2,id=hd0 \
+						-object rng-random,filename=/dev/urandom,id=rng0 \
+						-device virtio-rng-device,rng=rng0 \
+						-device virtio-blk-device,drive=hd0  \
+						-device virtio-net-device,netdev=usernet \
+						-netdev user,id=usernet,hostfwd=tcp::12055-:22 \
+						-append 'root=/dev/vda1 rw console=ttyS0 systemd.default_timeout_start_sec=600 selinux=0 highres=off mem=4096M earlycon' \
+						-bios none
 
 
 - The test qemu version is 5.2.0 or 8.0.0.

@@ -3,22 +3,21 @@
 ## Author: Dong Du, dd_nirvana@sjtu.edu.cn
 ## Description: This script is for building opensbi v0.9
 ## 		For older version (e.g., v0.6), please find other scripts
-opensbi_version	= 1.2
-kernel_version	= 2003
+opensbi_version=1.2
+kernel_version=2003
 
 function build_opensbi_1() {
     # build opensbi
     cd /home/penglai/penglai-enclave/opensbi-${1}
-mkdir -p build-oe/qemu-virt
-CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
-#cp build-oe/qemu-virt/platform/qemu/virt/firmware/fw_payload.elf build-oe/qemu-virt/boot/fw_payload_oe_qemuvirt.elf
+	mkdir -p build-oe/qemu-virt
+	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 }
 
 function build_opensbi_2() {
     cd ../Penglai-Enclave-sPMP/opensbi-${1}
     rm -rf build-oe/qemu-virt
     mkdir -p build-oe/qemu-virt
-    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=../Penglai-Enclave-sPMP/u-boot/u-boot.bin -j$(nproc)
+    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot/u-boot.bin -j$(nproc)
 }
 
 function print_usage() {
@@ -44,7 +43,7 @@ if [[ $1 == *"help"* ]]; then
 	exit 0
 fi
 
-while getopts ":v:" opt; do
+while getopts ":v:k:" opt; do
   case $opt in
     v)
       opensbi_version=$OPTARG
@@ -60,15 +59,12 @@ while getopts ":v:" opt; do
   esac
 done
 
-if
 
 if [ $(echo "$kernel_version < 2303" | bc -l) -eq 1 ]
 then
-	echo "Begin build opensbi $opensbi_version for openEuler $kernel_version"
-	build_opensbi_1  $opensbi_path
+	build_opensbi_1  $opensbi_version
 	exit 0
 else
-	echo "Begin build opensbi $opensbi_version for openEuler $kernel_version"
-	build_opensbi_2  $opensbi_path
+	build_opensbi_2  $opensbi_version
 	exit 0
 fi
