@@ -55,6 +55,7 @@ int penglai_enclave_loadelf(enclave_mem_t*enclave_mem, void* __user elf_ptr, uns
 		printk("KERNEL MODULE:  elf_hdr copy_from_user failed\n");
 		return -1;
 	}
+
 	*elf_entry_point = elf_hdr.e_entry;
 	elf_sect_ptr = (vaddr_t) elf_ptr + elf_hdr.e_shoff;
 
@@ -127,6 +128,7 @@ int penglai_enclave_elfmemsize(void* __user elf_ptr, int* size)
 		printk("[Penglai Driver@%s] elf_hdr copy_from_user failed\n", __func__);
 		return -1;
 	}
+
 	elf_sect_ptr = (vaddr_t) elf_ptr + elf_hdr.e_shoff;
 
 	for (i = 0; i < elf_hdr.e_shnum;i++)
