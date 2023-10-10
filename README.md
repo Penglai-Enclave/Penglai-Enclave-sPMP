@@ -183,7 +183,30 @@ If everything is fine, you will enter a Linux terminal booted by Qemu with Pengl
 
 **For openEuler version $\ge$ 23:**
 
-For openEuler version greater than 23, get the source code in the qemu VM and execute compile kernel moudle with penglai-driver.
+Run VM in QEMU：
+
+```
+qemu-system-riscv64 -nographic -machine virt \
+			-smp 4 -m 2G \
+			-bios  ./opensbi-1.2/build-oe/qemu-virt/platform/generic/firmware/fw_payload.bin  \
+			-drive file=openEuler-2303-qemu-riscv64.qcow2,format=qcow2,id=hd0 \
+			-object rng-random,filename=/dev/urandom,id=rng0 \
+			-device virtio-rng-device,rng=rng0 \
+			-device virtio-blk-device,drive=hd0  \
+			-device virtio-net-device,netdev=usernet \
+			-netdev user,id=usernet,hostfwd=tcp::12055-:22 \
+			-device qemu-xhci -usb -device usb-kbd -device usb-tablet
+```
+
+a simple way:
+
+```
+./run_openeuler.sh -k [openEuler version] -o [opensbi version]
+#when openEuler version is greater than or equal 23,eg 2303
+./run_openeuler.sh -k 2303 -o 1.2
+```
+
+After starting the VM, you need to get the source code in the qemu VM and execute compile kernel moudle with penglai-driver for openEuler version $\ge$ 23.
 
 Copy penglai-enclave-driver to the root/ directory of the oe VM:
 
