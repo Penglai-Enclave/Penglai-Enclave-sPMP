@@ -87,7 +87,7 @@ Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Ke
 **For openEuler version $\ge$ 23:**
 
 ```
-copy ../Penglai-Enclave-sPMP/u-boot/u-boot.bin
+cp ../Penglai-Enclave-sPMP/u-boot/u-boot.bin
 docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
 cd ../Penglai-Enclave-sPMP/opensbi-1.2
 rm -rf build-oe/qemu-virt
@@ -175,8 +175,6 @@ Note: a script, run_openeuler.sh is provided to execute the above command easily
 ./run_openeuler.sh -k [openEuler version] -o [opensbi version]
 #when openEuler version less than 23,eg 2003
 ./run_openeuler.sh -k 2003 -o 1.2
-#when openEuler version is greater than or equal 23,eg 2303
-./run_openeuler.sh -k 2303 -o 1.2
 ```
 
 If everything is fine, you will enter a Linux terminal booted by Qemu with Penglai-installed.
