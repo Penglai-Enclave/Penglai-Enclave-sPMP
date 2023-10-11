@@ -4,3 +4,6 @@
 [submodule "riscv-qemu"]
 	path = riscv-qemu
 	url = https://github.com/Penglai-Enclave/penglai-qemu.git
+[submodule "u-boot"]
+	path = u-boot
+	url = https://github.com/u-boot/u-boot.git
