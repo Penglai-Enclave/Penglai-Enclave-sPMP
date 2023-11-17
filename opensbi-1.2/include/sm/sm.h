@@ -29,6 +29,7 @@ extern uintptr_t _fw_start[], _fw_end[];
 #define SBI_ALLOC_ENCLAVE_MM    93
 #define SBI_MEMORY_EXTEND       92
 #define SBI_MEMORY_RECLAIM      91
+#define SBI_FREE_ENCLAVE_MEM    90
 #define SBI_DEBUG_PRINT         88
 
 //Enclave SBI numbers
@@ -52,6 +53,11 @@ extern uintptr_t _fw_start[], _fw_end[];
 #define RESUME_FROM_STOP         2003
 #define RESUME_FROM_OCALL        2
 
+#define FLAG_DESTROY                      0
+#define DIRECT_DESTROY                    1
+#define FREE_MAX_MEMORY                   2
+#define FREE_SPEC_MEMORY                  3
+
 void sm_init();
 
 uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size);
@@ -59,6 +65,8 @@ uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size);
 uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size);
 
 uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg);
+
+uintptr_t sm_free_enclave_mem(uintptr_t size_ptr,unsigned long flag);
 
 uintptr_t sm_create_enclave(uintptr_t enclave_create_args);
 

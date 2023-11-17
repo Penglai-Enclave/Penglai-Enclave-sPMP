@@ -273,3 +273,52 @@ uintptr_t sm_do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	regs[11] = ret; //value
 	return ret;
 }
+
+uintptr_t sm_free_enclave_mem(uintptr_t size_ptr, unsigned long flag)
+{
+	uintptr_t ret	   = 0;
+	unsigned long size = 0;
+	dump_pmps();
+	switch (flag) {
+	case FREE_MAX_MEMORY:
+		for (size_t i = NPMP - 2; i >= 0; i--) {
+			int pmp_idx		       = i;
+			struct pmp_config_t pmp_config = get_pmp(pmp_idx);
+
+			if (pmp_config.paddr == 0 || pmp_config.size == 0) {
+				continue;
+			}
+
+			if (pmp_idx == 0) {
+				printm("M mode: sm_memory_reclaim: There is no mem to reclaim\r\n");
+				dump_pmps();
+				size = 0;
+				ret  = 0;
+				break;
+			}
+
+			clear_pmp_and_sync(pmp_idx);
+			ret  = pmp_config.paddr;
+			size = pmp_config.size;
+
+			break;
+		}
+		break;
+	case FREE_SPEC_MEMORY:
+		/*free */
+		{	//TODO:Reserved interfaces for calls to reclaim unused memory
+			struct pmp_config_t pmp_config = get_pmp(15);
+			clear_pmp_and_sync(15);
+			ret  = pmp_config.paddr;
+			size = 0;
+		}
+		break;
+	default:
+		ret  = 0;
+		size = 0;
+		break;
+	}
+
+	copy_to_host((void *)size_ptr, (void *)(&size), sizeof(unsigned long));
+	return ret;
+}
