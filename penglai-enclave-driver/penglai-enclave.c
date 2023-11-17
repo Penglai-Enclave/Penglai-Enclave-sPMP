@@ -76,7 +76,7 @@ enclave_t* create_enclave(int total_pages)
 	while(ret.value == ENCLAVE_NO_MEMORY)
 	{
 		//TODO: allocate certain memory region like sm_init instead of allocating size of one enclave
-		addr = __get_free_pages(GFP_HIGHUSER, order);
+		addr = __get_free_pages(GFP_ATOMIC, order);
 		if(!addr)
 		{
 			printk("KERNEL MODULE: can not get free page which order is 0x%lx", order);
@@ -113,7 +113,7 @@ enclave_t* create_enclave(int total_pages)
 	enclave->enclave_mem = enclave_mem;
 	enclave->untrusted_mem = untrusted_mem;
 
-    kfree(untrusted_mem);
+    kfree(require_sec_memory);
 	spin_unlock_bh(&kmalloc_enclave_lock);
 	//TODO: create untrusted mem
 
@@ -124,7 +124,7 @@ free_enclave:
 	if(enclave) kfree(enclave);
 	if(enclave_mem) kfree(enclave_mem);
 	if(untrusted_mem) kfree(untrusted_mem);
-    if(require_sec_memory) kfree(untrusted_mem);
+    if(require_sec_memory) kfree(require_sec_memory);
 
 	return NULL;
 }
@@ -143,9 +143,8 @@ int destroy_enclave(enclave_t* enclave)
 	enclave_mem = enclave->enclave_mem;
 	untrusted_mem = enclave->untrusted_mem;
 	enclave_mem_destroy(enclave_mem);
-
-	kfree(enclave_mem);
-	kfree(untrusted_mem);
+	if(enclave_mem)kfree(enclave_mem);
+	if(untrusted_mem)kfree(untrusted_mem);
 	kfree(enclave);
 
 	return 0;
