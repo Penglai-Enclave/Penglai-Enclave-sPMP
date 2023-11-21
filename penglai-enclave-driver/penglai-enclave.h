@@ -28,7 +28,8 @@
 #define SBI_SM_DESTROY_ENCLAVE           94
 #define SBI_SM_ALLOC_ENCLAVE_MEM         93
 #define SBI_SM_MEMORY_EXTEND             92
-#define SBI_SM_FREE_ENCLAVE_MEM          91
+#define SBI_SM_MEMORY_RECLAIM      		 91
+#define SBI_SM_FREE_ENCLAVE_MEM          90
 #define SBI_SM_DEBUG_PRINT               88
 
 //Error codes of SBI_SM_ALLOC_ENCLAVE_MEM
