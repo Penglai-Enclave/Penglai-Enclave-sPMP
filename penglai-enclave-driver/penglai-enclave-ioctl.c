@@ -172,13 +172,40 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 			__func__, (unsigned long)(enclave->enclave_mem->paddr),
 			enclave->enclave_mem->size);
 
-	ret = SBI_CALL_1(SBI_SM_CREATE_ENCLAVE, __pa(enclave_sbi_param));
+	ret = SBI_CALL_2(SBI_SM_CREATE_ENCLAVE, __pa(enclave_sbi_param), false);
 
 	//if(ret < 0)
 	if(ret.error)
 	{
 		printk("KERNEL  MODULE: SBI_SM_CREATE_ENCLAVE is failed \n");
-		goto destroy_enclave;
+		if(ret.value == ENCLAVE_NO_MEMORY){
+			//TODO: allocate certain memory region like sm_init
+			unsigned long addr;
+			addr = __get_free_pages(GFP_ATOMIC, DEFAULT_SECURE_PAGES_ORDER);
+			if(!addr)
+			{
+				printk("KERNEL MODULE: can not get free page which order is 0x%d", DEFAULT_SECURE_PAGES_ORDER);
+				goto destroy_enclave;
+			}
+			printk("[Penglai Driver@%s] new alloc paddr:0x%lx\n",__func__, addr);
+			ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), (1 << (DEFAULT_SECURE_PAGES_ORDER + RISCV_PGSHIFT)) );
+			if(ret.error)
+			{
+				printk("KERNEL MODULE: sbi call extend memory is failed\n");
+				goto destroy_enclave;
+			}
+
+			ret = SBI_CALL_2(SBI_SM_CREATE_ENCLAVE, __pa(enclave_sbi_param), true);
+			if (ret.error)
+			{
+				printk("KERNEL MODULE: sbi call create enclave is failed\n");
+				goto destroy_enclave;
+			}
+			
+		}
+		else{
+			goto destroy_enclave;
+		} 
 	}
 
 	enclave_param->eid = enclave_idr_alloc(enclave);
