@@ -514,7 +514,6 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
 	pmp_config.size = size;
 	pmp_config.perm = PMP_R | PMP_W | PMP_X;
 	pmp_config.mode = PMP_A_NAPOT;
-	// set_pmp_and_sync(pmp_idx, pmp_config);
 	set_pmp(pmp_idx, pmp_config);
 
 	return 0;
@@ -704,9 +703,7 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
 	pmp_config.size = size;
 	pmp_config.perm = PMP_NO_PERM;
 	pmp_config.mode = PMP_A_NAPOT;
-	// release_big_emem_lock(__func__);
 	set_pmp_and_sync(pmp_idx, pmp_config);
-	// acquire_big_emem_lock(__func__);
 
 	//mark this region is valid and init mm_list
 	mm_regions[region_idx].valid = 1;
@@ -1136,9 +1133,85 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	{
 		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
 	}
+
+	printm("after mm_free\r\n");
 	print_buddy_system();
-	dump_pmps();
-	// if need, free mm_region
+
+mm_free_out:
+	spin_unlock(&pmp_bitmap_lock);
+	return ret_val;
+}
+//TODO:Reserved interfaces for calls to reclaim unused memory
+int mm_free_clear(void* req_paddr, unsigned long free_size)
+{
+	//check this paddr is 2^power aligned
+	uintptr_t paddr = (uintptr_t)req_paddr;
+	unsigned long order = ilog2(free_size-1) + 1;
+	unsigned long size = 1 << order;
+	if(check_mem_size(paddr, size) < 0)
+		return -1;
+
+	int ret_val = 0;
+	int region_idx = 0;
+	struct mm_list_t* mm_region = PADDR_2_MM_LIST(paddr);
+	mm_region->order = order;
+	mm_region->prev_mm = NULL;
+	mm_region->next_mm = NULL;
+
+	spin_lock(&pmp_bitmap_lock);
+
+	//print_buddy_system();
+
+	for(region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
+	{
+		if(mm_regions[region_idx].valid && region_contain(mm_regions[region_idx].paddr, mm_regions[region_idx].size, paddr, size))
+		{
+			break;
+		}
+	}
+	if(region_idx >= N_PMP_REGIONS)
+	{
+		printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
+		ret_val = -1;
+		goto mm_free_out;
+	}
+
+	//check whether this region overlap with existing free mm_lists
+	struct mm_list_head_t* mm_list_head = mm_regions[region_idx].mm_list_head;
+	while(mm_list_head)
+	{
+		struct mm_list_t* mm_region = mm_list_head->mm_list;
+		while(mm_region)
+		{
+			uintptr_t region_paddr = (uintptr_t)MM_LIST_2_PADDR(mm_region);
+			unsigned long region_size = 1 << mm_region->order;
+			if(region_overlap(paddr, size, region_paddr, region_size))
+			{
+				printm("mm_free: memory(addr 0x%lx order %ld) overlap with free memory(addr 0x%lx order %d)\r\n", paddr, order, region_paddr, mm_region->order);
+				ret_val = -1;
+				break;
+			}
+			mm_region = mm_region->next_mm;
+		}
+		if(mm_region)
+			break;
+
+		mm_list_head = mm_list_head->next_list_head;
+	}
+	if(mm_list_head)
+	{
+		goto mm_free_out;
+	}
+
+	//insert with merge
+	ret_val = insert_mm_region(region_idx, mm_region, 1);
+	if(ret_val < 0)
+	{
+		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
+	}
+
+	//printm("after mm_free\r\n");
+	//print_buddy_system();
 	int pmp_idx;
 	struct pmp_config_t pmp_config;
 	pmp_idx = REGION_TO_PMP(region_idx);
@@ -1150,10 +1223,10 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	if (((long int *)MM_LIST_2_PADDR(mm_list) == (long int *)pmp_config.paddr)&&((pmp_config.size) == (1<<mm_list->order)))
 	{
 		delete_certain_region(region_idx,&mm_list_head,mm_list);
-		// mm_regions[region_idx].valid	= 0;
-	    // mm_regions[region_idx].paddr	= 0;
-	    // mm_regions[region_idx].mm_list_head = NULL;
-		release_big_emem_lock(__func__);
+		mm_regions[region_idx].valid	= 0;
+	    mm_regions[region_idx].paddr	= 0;
+	    mm_regions[region_idx].mm_list_head = NULL;
+		 release_big_emem_lock(__func__);
 		clear_pmp_and_sync(pmp_idx);
 		acquire_big_emem_lock(__func__);
 	}

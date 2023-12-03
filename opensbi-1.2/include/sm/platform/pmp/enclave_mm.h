@@ -75,6 +75,8 @@ void* mm_alloc(unsigned long req_size, unsigned long* resp_size);
 
 int mm_free(void* paddr, unsigned long size);
 
+int mm_free_clear(void* paddr, unsigned long size);
+
 void print_buddy_system();
 
 #endif /* _ENCLAVE_MM_H */

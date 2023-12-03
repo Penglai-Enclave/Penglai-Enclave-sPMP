@@ -126,7 +126,7 @@ struct link_mem_t* add_link_mem(struct link_mem_t** tail)
 	return new_link_mem;
 }
 
-int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr)
+int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr, bool clear)
 {
 	struct link_mem_t *cur_link_mem, *tmp_link_mem;
 	int retval =0;
@@ -135,7 +135,12 @@ int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr)
 	if (cur_link_mem == ptr)
 	{
 		*head = cur_link_mem->next_link_mem;
-		mm_free(cur_link_mem, cur_link_mem->mem_size);
+		if (clear)
+		{
+			mm_free_clear(cur_link_mem, cur_link_mem->mem_size);
+		}else{
+			mm_free(cur_link_mem, cur_link_mem->mem_size);
+		}
 		return 1;
 	}
 
@@ -146,7 +151,12 @@ int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr)
 			tmp_link_mem = cur_link_mem->next_link_mem;
 			cur_link_mem->next_link_mem = cur_link_mem->next_link_mem->next_link_mem;
 			//FIXME
-			mm_free(tmp_link_mem, tmp_link_mem->mem_size);
+			if (clear)
+			{
+				mm_free_clear(tmp_link_mem, tmp_link_mem->mem_size);
+			}else{
+				mm_free(tmp_link_mem, tmp_link_mem->mem_size);
+			}
 			return retval;
 		}
 	}
@@ -217,18 +227,16 @@ static struct enclave_t* alloc_enclave()
 	}
 
 alloc_eid_out:
-	//spin_unlock(&enclave_metadata_lock);
     release_big_metadata_lock(__func__);
 	return enclave;
 }
 
-static int free_enclave(int eid)
+static int free_enclave(int eid, bool clear)
 {
 	struct link_mem_t *cur;
 	struct enclave_t *enclave = NULL;
 	int found, count, ret_val;
 
-	//spin_lock(&enclave_metadata_lock);
     acquire_big_metadata_lock(__func__);
 
 	found = 0;
@@ -242,6 +250,7 @@ static int free_enclave(int eid)
 			enclave->state = INVALID;
 			found = 1;
 			ret_val = 0;
+			remove_link_mem(&enclave_metadata_head,cur,clear);
 			break;
 		}
 		count += cur->slab_num;
@@ -254,7 +263,6 @@ static int free_enclave(int eid)
 		ret_val = -1;
 	}
 
-	//spin_unlock(&enclave_metadata_lock);
     release_big_metadata_lock(__func__);
 
 	return ret_val;
@@ -266,7 +274,6 @@ struct enclave_t* get_enclave(int eid)
 	struct enclave_t *enclave;
 	int found, count;
 
-	//spin_lock(&enclave_metadata_lock);
     acquire_big_metadata_lock(__func__);
 
 	found = 0;
@@ -290,7 +297,6 @@ struct enclave_t* get_enclave(int eid)
 		enclave = NULL;
 	}
 
-	//spin_unlock(&enclave_metadata_lock);
     release_big_metadata_lock(__func__);
 	return enclave;
 }
@@ -396,7 +402,7 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 	return 0;
 }
 
-uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
+uintptr_t create_enclave(struct enclave_sbi_param_t create_args, bool retry)
 {
 	struct enclave_t* enclave;
 	unsigned int eid;
@@ -406,12 +412,17 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	if(!enclave)
 	{
 		printm("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
-		sbi_memset((void*)(create_args.paddr), 0, create_args.size);
-		mm_free((void*)(create_args.paddr), create_args.size);
-		return ENCLAVE_ERROR;
+		
+		if (retry)
+		{
+			printm("[Penglai Monitor@%s] retry failed, clear enclave \r\n", __func__);
+			sbi_memset((void*)(create_args.paddr), 0, create_args.size);
+			mm_free((void*)(create_args.paddr), create_args.size);
+		}
+		
+		return ENCLAVE_NO_MEMORY;
 	}
 
-	//spin_lock(&enclave_metadata_lock);
     acquire_big_metadata_lock(__func__);
 
 	eid = enclave->eid;
@@ -484,7 +495,7 @@ error_out:
     release_big_metadata_lock(__func__);
 
 	//free enclave struct
-	free_enclave(eid); //the enclave state will be set INVALID here
+	free_enclave(eid,0); //the enclave state will be set INVALID here
 	return ENCLAVE_ERROR;
 }
 
@@ -630,7 +641,7 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
     	release_big_metadata_lock(__func__);
 
 		//free enclave struct
-		retval = free_enclave(eid); //the enclave state will be set INVALID here
+		retval = free_enclave(eid,0); //the enclave state will be set INVALID here
 		return retval;
 	}
 	//FIXME: what if the enclave->state is RUNNABLE now?
@@ -709,11 +720,10 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 		mm_free((void*)(enclave->paddr), enclave->size);
 
-		//spin_unlock(&enclave_metadata_lock);
-    	release_big_metadata_lock(__func__);
+		spin_unlock(&enclave_metadata_lock);
 
 		//free enclave struct
-		free_enclave(eid); //the enclave state will be set INVALID here
+		free_enclave(eid,0); //the enclave state will be set INVALID here
 		return ENCLAVE_SUCCESS; //this will break the infinite loop in the enclave-driver
 	}
 
@@ -795,7 +805,7 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	{
 		printm_err("[Penglai Monitor@%s] current enclave's eid is not %d\r\n", __func__, eid);
 		//spin_unlock(&enclave_metadata_lock);
-    	// release_big_metadata_lock(__func__);
+    	release_big_metadata_lock(__func__);
 		return -1UL;
 	}
 
@@ -804,14 +814,12 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 	//free enclave's memory
 	//TODO: support multiple memory region
 	sbi_memset((void*)(enclave->paddr), 0, enclave->size);
-	//spin_unlock(&enclave_metadata_lock);
-    release_big_metadata_lock(__func__);
 	mm_free((void*)(enclave->paddr), enclave->size);
 
+	release_big_metadata_lock(__func__);
 
 	//free enclave struct
-	free_enclave(eid);
-
+	free_enclave(eid, 0);
 	return 0;
 }
 
@@ -991,10 +999,10 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 		mm_free((void*)(enclave->paddr), enclave->size);
 
 		//spin_unlock(&enclave_metadata_lock);
-    release_big_metadata_lock(__func__);
+    	release_big_metadata_lock(__func__);
 
 		//free enclave struct
-		retval = free_enclave(eid); //the enclave state will be set INVALID here
+		retval = free_enclave(eid,0); //the enclave state will be set INVALID here
 
 		retval = ENCLAVE_SUCCESS; //this means we will not run any more
 		goto timer_irq_out;

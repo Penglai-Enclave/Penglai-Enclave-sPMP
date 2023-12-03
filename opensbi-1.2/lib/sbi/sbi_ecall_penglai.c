@@ -37,7 +37,7 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 			ret = sm_alloc_enclave_mem(regs->a0);
 			break;
 		case SBI_CREATE_ENCLAVE://99
-			ret = sm_create_enclave(regs->a0);
+			ret = sm_create_enclave(regs->a0, regs->a1);
 			break;
 		case SBI_RUN_ENCLAVE://97
 			ret = sm_run_enclave((uintptr_t *)regs, regs->a0);
@@ -56,6 +56,10 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 			break;
 		case SBI_MEMORY_RECLAIM: //91
 			ret=sm_memory_reclaim(regs->a0);
+			break;
+		case SBI_FREE_ENCLAVE_MEM://90
+			ret= sm_free_enclave_mem(regs->a0, regs->a1);
+			break;
 		default:
 			sbi_printf("[Penglai@Monitor] host interface(funcid:%ld) not supported yet\n", funcid);
 			ret = SBI_ENOTSUPP;
