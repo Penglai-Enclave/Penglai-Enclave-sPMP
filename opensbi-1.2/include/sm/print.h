@@ -5,6 +5,7 @@
 #define PENGLAI_DEBUG
 #ifdef PENGLAI_DEBUG
 #define printm(...) sbi_printf(__VA_ARGS__)
+#define printm_nolock(...) sbi_printf_nolock(__VA_ARGS__)
 #else
 #define printm(...)
 #endif

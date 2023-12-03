@@ -323,6 +323,7 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 		}
 	case CAUSE_SUPERVISOR_ECALL:
 	case CAUSE_MACHINE_ECALL:
+		
 		rc  = sbi_ecall_handler(regs);
 		msg = "ecall handler failed";
 		break;

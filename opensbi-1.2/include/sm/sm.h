@@ -60,6 +60,9 @@ uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size);
 
 uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg);
 
+// uintptr_t sm_memory_reclaim(uintptr_t mm_reclaim_arg);
+uintptr_t sm_memory_reclaim(uintptr_t enclave_id);
+
 uintptr_t sm_create_enclave(uintptr_t enclave_create_args);
 
 uintptr_t sm_attest_enclave(uintptr_t enclave_id, uintptr_t report, uintptr_t nonce);

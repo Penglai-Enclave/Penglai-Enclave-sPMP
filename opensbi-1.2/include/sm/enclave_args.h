@@ -21,6 +21,13 @@ struct mm_alloc_arg_t
   unsigned long resp_size;
 };
 
+struct mm_reclaim_arg_t
+{
+  unsigned long req_size;
+  uintptr_t req_addr;
+  unsigned long resp_size;
+};
+
 // Attestation-related report
 struct sm_report_t
 {

@@ -87,6 +87,13 @@ typedef struct require_sec_memory
 	unsigned long resp_size;
 } require_sec_memory_t;
 
+typedef struct reclaim_sec_memory
+{
+	unsigned long size;
+	unsigned long paddr;
+	unsigned long resp_size;
+} reclaim_sec_memory_t;
+
 enclave_t* create_enclave(int total_pages);
 int destroy_enclave(enclave_t* enclave);
 unsigned int enclave_idr_alloc(enclave_t* enclave);

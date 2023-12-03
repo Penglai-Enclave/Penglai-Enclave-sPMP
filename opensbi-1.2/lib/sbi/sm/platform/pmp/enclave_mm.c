@@ -18,9 +18,22 @@
  * TODO: this array can be removed as we can get
  * existing enclave regions via pmp registers
  */
-static struct mm_region_t mm_regions[N_PMP_REGIONS];
+// static struct mm_region_t mm_regions[N_PMP_REGIONS];
+struct mm_region_t mm_regions[N_PMP_REGIONS];
 static unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
+
+void acquire_big_emem_lock(const char * str)
+{
+	spin_lock(&pmp_bitmap_lock);
+	printm("[PENGLAI SM@%s] %s get lock\n", __func__, str);
+}
+
+void release_big_emem_lock(const char * str)
+{
+	spin_unlock(&pmp_bitmap_lock);
+	printm("[PENGLAI SM@%s] %s release lock\n", __func__, str);
+}
 
 
 int check_mem_overlap(uintptr_t paddr, unsigned long size)
@@ -60,7 +73,8 @@ uintptr_t copy_from_host(void* dest, void* src, size_t size)
 {
 	int retval = -1;
 	//get lock to prevent TOCTTOU
-	spin_lock(&pmp_bitmap_lock);
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
 
 	//check data is nonsecure
 	//prevent coping from memory in secure region
@@ -70,14 +84,16 @@ uintptr_t copy_from_host(void* dest, void* src, size_t size)
 		retval = 0;
 	}
 
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 	return retval;
 }
 
 uintptr_t copy_to_host(void* dest, void* src, size_t size)
 {
 	int retval = -1;
-	spin_lock(&pmp_bitmap_lock);
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
 
 	//check data is nonsecure
 	//prevent coping from memory in secure region
@@ -87,14 +103,16 @@ uintptr_t copy_to_host(void* dest, void* src, size_t size)
 		retval = 0;
 	}
 
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 	return retval;
 }
 
 int copy_word_to_host(unsigned int* ptr, uintptr_t value)
 {
 	int retval = -1;
-	spin_lock(&pmp_bitmap_lock);
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
 
 	//check data is nonsecure
 	//prevent coping from memory in secure region
@@ -104,7 +122,8 @@ int copy_word_to_host(unsigned int* ptr, uintptr_t value)
 		retval = 0;
 	}
 
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 	return retval;
 }
 
@@ -340,7 +359,7 @@ uintptr_t copy_from_enclave(pte_t *enclave_root_pt, void* dest_pa, void* src_enc
 	uintptr_t left_size = size;
 	uintptr_t copy_size;
 	if (page_left >= left_size) {
-		// do copy
+		// do copy in one time
 		copy_size = left_size;
 		src_pa = get_enclave_paddr_from_va(enclave_root_pt, (uintptr_t)src_enclave_va);
 		if(src_pa == 0)
@@ -495,7 +514,8 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
 	pmp_config.size = size;
 	pmp_config.perm = PMP_R | PMP_W | PMP_X;
 	pmp_config.mode = PMP_A_NAPOT;
-	set_pmp_and_sync(pmp_idx, pmp_config);
+	// set_pmp_and_sync(pmp_idx, pmp_config);
+	set_pmp(pmp_idx, pmp_config);
 
 	return 0;
 }
@@ -518,7 +538,8 @@ int retrieve_kernel_access(void* req_paddr, unsigned long size)
 		return -1;
 	}
 
-	clear_pmp_and_sync(pmp_idx);
+	// clear_pmp_and_sync(pmp_idx);
+	clear_pmp(pmp_idx);
 
 	return 0;
 }
@@ -535,9 +556,9 @@ int grant_enclave_access(struct enclave_t* enclave)
 
 	//set pmp permission, ensure that enclave's paddr and size is pmp legal
 	//TODO: support multiple memory regions
-	spin_lock(&pmp_bitmap_lock);
-	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
-	{
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
+	for (region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx) {
 		if(mm_regions[region_idx].valid && region_contain(
 					mm_regions[region_idx].paddr, mm_regions[region_idx].size,
 					enclave->paddr, enclave->size))
@@ -545,7 +566,8 @@ int grant_enclave_access(struct enclave_t* enclave)
 			break;
 		}
 	}
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 
 	if(region_idx >= N_PMP_REGIONS)
 	{
@@ -595,9 +617,9 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 
 	//set pmp permission, ensure that enclave's paddr and size is pmp legal
 	//TODO: support multiple memory regions
-	spin_lock(&pmp_bitmap_lock);
-	for(region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx)
-	{
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
+	for (region_idx = 0; region_idx < N_PMP_REGIONS; ++region_idx) {
 		if(mm_regions[region_idx].valid && region_contain(
 					mm_regions[region_idx].paddr, mm_regions[region_idx].size,
 					enclave->paddr, enclave->size))
@@ -605,7 +627,8 @@ int retrieve_enclave_access(struct enclave_t *enclave)
 			break;
 		}
 	}
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 
 	if(region_idx >= N_PMP_REGIONS)
 	{
@@ -648,7 +671,8 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
 		return -1UL;
 
 	//acquire a free enclave region
-	spin_lock(&pmp_bitmap_lock);
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
 
 	//check memory overlap
 	//memory overlap should be checked after acquire lock
@@ -680,7 +704,9 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
 	pmp_config.size = size;
 	pmp_config.perm = PMP_NO_PERM;
 	pmp_config.mode = PMP_A_NAPOT;
+	// release_big_emem_lock(__func__);
 	set_pmp_and_sync(pmp_idx, pmp_config);
+	// acquire_big_emem_lock(__func__);
 
 	//mark this region is valid and init mm_list
 	mm_regions[region_idx].valid = 1;
@@ -698,7 +724,8 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
 	mm_regions[region_idx].mm_list_head = mm_list_head;
 
 out:
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 	return retval;
 }
 
@@ -954,29 +981,39 @@ static int insert_mm_region(int region_idx, struct mm_list_t* mm_region, int mer
 //TODO: delete this function
 void print_buddy_system()
 {
-	//spinlock_lock(&pmp_bitmap_lock);
+	// spin_lock(&pmp_bitmap_lock);
 
-	struct mm_list_head_t* mm_list_head = mm_regions[0].mm_list_head;
-	printm("struct mm_list_head_t size is 0x%lx\r\n", sizeof(struct mm_list_head_t));
-	printm("struct mm_list_t size is 0x%lx\r\n", sizeof(struct mm_list_t));
-	while(mm_list_head)
+	for (size_t i = 0; i < N_PMP_REGIONS; i++)
 	{
-		printm("mm_list_head addr is 0x%ln, order is %d\r\n", (long int *)mm_list_head, mm_list_head->order);
-		printm("mm_list_head prev is 0x%ln, next is 0x%ln, mm_list is 0x%ln\r\n",
+		if (!mm_regions[i].valid)
+		{
+			break;
+		}
+
+		struct mm_list_head_t* mm_list_head = mm_regions[i].mm_list_head;
+		// printm("struct mm_list_head_t size is 0x%lx\r\n", sizeof(struct mm_list_head_t));
+		// printm("struct mm_list_t size is 0x%lx\r\n", sizeof(struct mm_list_t));
+		while(mm_list_head)
+		{
+			printm("mm_list_head[%ld] addr is 0x%ln, order is %d\r\n",i, (long int *)mm_list_head, mm_list_head->order);
+			printm("mm_list_head prev is 0x%ln, next is 0x%ln, mm_list is 0x%ln\r\n",
 				(long int *)mm_list_head->prev_list_head,
 				(long int *)mm_list_head->next_list_head,
 				(long int*)mm_list_head->mm_list);
-		struct mm_list_t *mm_region = mm_list_head->mm_list;
-		while(mm_region)
-		{
-			printm("  mm_region addr is 0x%ln, order is %d\r\n", (long int *)mm_region, mm_region->order);
-			printm("  mm_region prev is 0x%ln, next is 0x%ln\r\n", (long int*)mm_region->prev_mm, (long int*)mm_region->next_mm);
-			mm_region = mm_region->next_mm;
+			struct mm_list_t *mm_region = mm_list_head->mm_list;
+			while(mm_region)
+			{	void* p_addr = MM_LIST_2_PADDR(mm_region);
+				printm("  mm_region addr is 0x%ln=0x%p, paddr is 0x%p, order is %d\r\n", (long int *)mm_region,(long int *)mm_region,(long int *)p_addr, mm_region->order);
+				printm("  mm_region prev is 0x%ln, next is 0x%ln\r\n\n", (long int*)mm_region->prev_mm, (long int*)mm_region->next_mm);
+				mm_region = mm_region->next_mm;
+			}
+			mm_list_head = mm_list_head->next_list_head;
 		}
-		mm_list_head = mm_list_head->next_list_head;
 	}
+	
+	printm("************\r\n");
 
-	//spinlock_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
 }
 
 void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
@@ -986,9 +1023,10 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 		return ret_addr;
 
 	//TODO: reduce lock granularity
-	spin_lock(&pmp_bitmap_lock);
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
 
-	//print_buddy_system();
+	print_buddy_system();
 
 	unsigned long order = ilog2(req_size-1) + 1;
 	for(int region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
@@ -1018,9 +1056,10 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 		break;
 	}
 
-	//print_buddy_system();
+	print_buddy_system();
 
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 
 	if(ret_addr && resp_size)
 	{
@@ -1047,9 +1086,8 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	mm_region->prev_mm = NULL;
 	mm_region->next_mm = NULL;
 
-	spin_lock(&pmp_bitmap_lock);
-
-	//print_buddy_system();
+	// spin_lock(&pmp_bitmap_lock);
+	acquire_big_emem_lock(__func__);
 
 	for(region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
 	{
@@ -1098,11 +1136,34 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	{
 		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
 	}
+	print_buddy_system();
+	dump_pmps();
+	// if need, free mm_region
+	int pmp_idx;
+	struct pmp_config_t pmp_config;
+	pmp_idx = REGION_TO_PMP(region_idx);
+	pmp_config	= get_pmp(pmp_idx);
 
-	//printm("after mm_free\r\n");
-	//print_buddy_system();
+	struct mm_region_t mm_regiont = mm_regions[region_idx];
+	mm_list_head  = mm_regiont.mm_list_head;
+	struct mm_list_t *mm_list = mm_list_head->mm_list;
+	if (((long int *)MM_LIST_2_PADDR(mm_list) == (long int *)pmp_config.paddr)&&((pmp_config.size) == (1<<mm_list->order)))
+	{
+		delete_certain_region(region_idx,&mm_list_head,mm_list);
+		// mm_regions[region_idx].valid	= 0;
+	    // mm_regions[region_idx].paddr	= 0;
+	    // mm_regions[region_idx].mm_list_head = NULL;
+		release_big_emem_lock(__func__);
+		clear_pmp_and_sync(pmp_idx);
+		acquire_big_emem_lock(__func__);
+	}
+
+	printm("***after mm_free***\r\n");
+	print_buddy_system();
+	dump_pmps();
 
 mm_free_out:
-	spin_unlock(&pmp_bitmap_lock);
+	// spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 	return ret_val;
 }

@@ -28,9 +28,16 @@ if [[ $1 == *"help"* ]]; then
 fi
 
 # build penglai
-if [[ $1 == *"build"* ]]; then
-	echo "Build: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
+if [[ $1 == *"build opensbi"* ]]; then
+	echo "Build: building penglai opensbi"
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh -v 1.2 -k 2003
+	exit 0
+fi
+
+# build penglai
+if [[ $1 == *"sdk"* ]]; then
+	echo "Build: building penglai demo"
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash scripts/build.sh
 	exit 0
 fi
 

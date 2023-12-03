@@ -65,6 +65,7 @@ int grant_kernel_access(void* req_paddr, unsigned long size)
   pmp_config.mode = PMP_A_NAPOT;
   set_pmp_and_sync(pmp_idx, pmp_config);
 
+
   return 0;
 }
 

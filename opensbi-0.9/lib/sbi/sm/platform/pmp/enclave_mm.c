@@ -1000,7 +1000,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
 
 	spin_lock(&pmp_bitmap_lock);
 
-	//print_buddy_system();
+
 
 	for(region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
 	{
@@ -1042,16 +1042,34 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	{
 		goto mm_free_out;
 	}
-
+	print_buddy_system();
+	dump_pmps();
 	//insert with merge
 	ret_val = insert_mm_region(region_idx, mm_region, 1);
 	if(ret_val < 0)
 	{
 		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
 	}
+	// // if need, free mm_region
+	// int pmp_idx;
+	// struct pmp_config_t pmp_config;
+	// pmp_idx = REGION_TO_PMP(region_idx);
+	// pmp_config	= get_pmp(pmp_idx);
 
-	//printm("after mm_free\r\n");
-	//print_buddy_system();
+	// struct mm_region_t mm_regiont = mm_regions[region_idx];
+	// mm_list_head  = mm_regiont.mm_list_head;
+	// struct mm_list_t *mm_list = mm_list_head->mm_list;
+	// if (((long int *)MM_LIST_2_PADDR(mm_list) == (long int *)pmp_config.paddr)&&((pmp_config.size) == (1<<mm_list->order)))
+	// {
+	// 	delete_certain_region(region_idx,&mm_list_head,mm_list);
+	// 	// mm_regions[region_idx].valid	= 0;
+	//     // mm_regions[region_idx].paddr	= 0;
+	//     // mm_regions[region_idx].mm_list_head = NULL;
+	// 	clear_pmp_and_sync(pmp_idx);
+	// }
+	printm("after mm_free\r\n");
+	print_buddy_system();
+	dump_pmps();
 
 mm_free_out:
 	spin_unlock(&pmp_bitmap_lock);

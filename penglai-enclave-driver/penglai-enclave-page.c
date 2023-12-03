@@ -193,6 +193,7 @@ FIXME: clear two special pages in enclave(the record for dynamic allocation page
 Need to reclaim enclave mem to kernel ?
 free_pages(enclave->addr, enclave->size)
 free_pages(enclave dynamic alloc pages, size)
+[zhaoxi]free mem in sm Buddy System
 */
 	return 0;
 }

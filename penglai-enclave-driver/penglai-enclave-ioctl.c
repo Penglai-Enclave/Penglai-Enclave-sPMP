@@ -108,8 +108,9 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		printk("KERNEL MODULE: calculate elf_size failed\n");
 		return -1;
 	}
+	printk("KERNEL MODULE: enclave_elfmemsize: %dx\n",elf_size);
 	long stack_size = enclave_param->stack_size;						//DEFAULT_STACK_SIZE=1MB
-	long untrusted_mem_size = enclave_param->untrusted_mem_size;		//DEFAULT_UNTRUSTED_SIZE=8KB
+	long untrusted_mem_size = enclave_param->untrusted_mem_size;		//DEFAULT_UNTRUSTED_SIZE=8KB MAX=16MB
 	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;	//0
 	unsigned long kbuffer_ptr = ENCLAVE_DEFAULT_KBUFFER;
 	struct penglai_enclave_sbi_param *enclave_sbi_param = kmalloc(sizeof(struct penglai_enclave_sbi_param), GFP_KERNEL);
@@ -126,7 +127,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		return -1;
 	}
 
-
+	acquire_big_lock(__func__);
 	enclave = create_enclave(total_pages);							//May sleep
 	if(!enclave)
 	{
@@ -162,7 +163,6 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	enclave->kbuffer_size = ENCLAVE_DEFAULT_KBUFFER_SIZE;
 
 	free_mem = get_free_mem(&(enclave->enclave_mem->free_mem));
-	acquire_big_lock(__func__);
 	create_sbi_param(enclave, enclave_sbi_param,
 			(unsigned long)(enclave->enclave_mem->paddr),
 			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
@@ -187,7 +187,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	release_big_lock(__func__);
     kfree(enclave_sbi_param);
-
+	printk("[Penglai Driver@%s] ctreate enclave success!\t\n",__func__);
 	return ret.value;
 
 destroy_enclave:
@@ -225,6 +225,8 @@ int penglai_enclave_destroy(struct file * filep, unsigned long args)
 		destroy_enclave(enclave);
 		enclave_idr_remove(eid);
 	} //otherwise, the run interfaces will destroy the enclave
+
+	// ret = SBI_CALL_1(SBI_SM_FREE_ENCLAVE_MEM,);
 out:
 	release_big_lock(__func__);
 	return retval;

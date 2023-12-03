@@ -362,6 +362,18 @@ int sbi_printf(const char *format, ...)
 	return retval;
 }
 
+int sbi_printf_nolock(const char *format, ...)
+{
+	va_list args;
+	int retval;
+
+	va_start(args, format);
+	retval = print(NULL, NULL, format, args);
+	va_end(args);
+
+	return retval;
+}
+
 int sbi_dprintf(const char *format, ...)
 {
 	va_list args;

@@ -7,6 +7,8 @@
 
 #include <sbi/riscv_barrier.h>
 #include <sbi/riscv_locks.h>
+#include <sbi/riscv_asm.h>
+#include <sm/print.h>
 
 static inline bool spin_lock_unlocked(spinlock_t lock)
 {
@@ -47,7 +49,10 @@ bool spin_trylock(spinlock_t *lock)
 
 void spin_lock(spinlock_t *lock)
 {
-	unsigned long inc = 1u << TICKET_SHIFT;
+	//for lock debug
+	// u32 source_hart = current_hartid();
+	// printm_nolock("[spin_lock@%u]try getlock\n",source_hart);
+	unsigned long inc  = 1u << TICKET_SHIFT;
 	unsigned long mask = 0xffffu;
 	u32 l0, tmp1, tmp2;
 
@@ -69,6 +74,8 @@ void spin_lock(spinlock_t *lock)
 		: "=&r"(l0), "=&r"(tmp1), "=&r"(tmp2), "+A"(*lock)
 		: "r"(inc), "r"(mask), "I"(TICKET_SHIFT)
 		: "memory");
+		
+	// printm_nolock("[spin_lock@%u]success getlock\n",source_hart);
 }
 
 void spin_unlock(spinlock_t *lock)
