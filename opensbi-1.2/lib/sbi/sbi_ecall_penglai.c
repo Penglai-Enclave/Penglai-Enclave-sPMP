@@ -86,7 +86,8 @@ static int sbi_ecall_penglai_enclave_handler(unsigned long extid, unsigned long 
 	// spin_lock(&sm_big_lock);
 	//csr_write(CSR_MEPC, regs->mepc + 4);
 	((struct sbi_trap_regs *)regs)->mepc += 4;
-	printm("[Penglai KModule] %s invoked,funcid=%ld\r\n",__func__,funcid);
+	printm("[Penglai KModule@%u] %s invoked,funcid=%ld\r\n",
+	       current_hartid(), __func__, funcid);
 	switch (funcid) {
 		// The following is the Penglai's Handler
 		case SBI_EXIT_ENCLAVE://99
@@ -102,6 +103,7 @@ static int sbi_ecall_penglai_enclave_handler(unsigned long extid, unsigned long 
 			sbi_printf("[Penglai@Monitor] enclave interface(funcid:%ld) not supported yet\n", funcid);
 			ret = SBI_ENOTSUPP;
 	}
+	printm("[Penglai KModule@%u] %s return,funcid=%ld\r\n", current_hartid(), __func__,funcid);
 	// spin_unlock(&sm_big_lock);
 	*out_val = ret;
 	return ret;

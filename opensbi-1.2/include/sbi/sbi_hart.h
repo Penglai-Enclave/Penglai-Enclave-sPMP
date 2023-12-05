@@ -12,6 +12,8 @@
 
 #include <sbi/sbi_types.h>
 
+#define MAX_HARTS  8
+
 /** Possible privileged specification versions of a hart */
 enum sbi_hart_priv_versions {
 	/** Unknown privileged specification */

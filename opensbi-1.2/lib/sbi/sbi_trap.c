@@ -25,6 +25,9 @@
 
 #include <sm/sm.h>
 
+int m_mode_status[MAX_HARTS];
+volatile int print_m_mode = 0;
+
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
 				      ulong mtinst, struct sbi_trap_regs *regs)
@@ -264,6 +267,7 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
  */
 struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 {
+	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld enter into m_mode\n", csr_read(CSR_MHARTID));
 	int rc = SBI_ENOTSUPP;
 	const char *msg = "trap handler failed";
 	ulong mcause = csr_read(CSR_MCAUSE);
@@ -274,6 +278,8 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 		mtval2 = csr_read(CSR_MTVAL2);
 		mtinst = csr_read(CSR_MTINST);
 	}
+	int hartid = csr_read(CSR_MHARTID);
+    m_mode_status[hartid] = 1;
 
 	if (mcause & (1UL << (__riscv_xlen - 1))) {
 		mcause &= ~(1UL << (__riscv_xlen - 1));
@@ -296,7 +302,10 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 			msg = "unhandled external interrupt";
 			goto trap_error;
 		};
-		return regs;
+		hartid = csr_read(CSR_MHARTID);
+    	m_mode_status[hartid] = 0;
+	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld return from m_mode\n", csr_read(CSR_MHARTID));
+	return regs;
 	}
 
 	switch (mcause) {
@@ -348,6 +357,9 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 trap_error:
 	if (rc)
 		sbi_trap_error(msg, rc, mcause, mtval, mtval2, mtinst, regs);
+	hartid = csr_read(CSR_MHARTID);
+    m_mode_status[hartid] = 0;
+	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld return from m_mode\n", csr_read(CSR_MHARTID));
 	return regs;
 }
 

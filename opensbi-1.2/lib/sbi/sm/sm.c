@@ -9,22 +9,26 @@
 #include <sbi/riscv_locks.h>
 
 extern struct mm_region_t mm_regions[N_PMP_REGIONS];
+extern volatile int print_m_mode;
 
 //static int sm_initialized = 0;
 //static spinlock_t sm_init_lock = SPINLOCK_INIT;
 static spinlock_t sm_alloc_enclave_mem_lock = SPIN_LOCK_INITIALIZER;
-void acquire_big_sm_lock(const char * str)
+void acquire_big_sm_lock(const char *str)
 {
 	spin_lock(&sm_alloc_enclave_mem_lock);
-	printm("[PENGLAI SM@%s] %s get lock\n", __func__, str);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%ld] %s get lock\n", __func__,
+		       csr_read(CSR_MHARTID), str);
 }
 
-void release_big_sm_lock(const char * str)
+void release_big_sm_lock(const char *str)
 {
 	spin_unlock(&sm_alloc_enclave_mem_lock);
-	printm("[PENGLAI SM@%s] %s release lock\n", __func__, str);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%ld] %s release lock\n", __func__,
+		       csr_read(CSR_MHARTID), str);
 }
-
 
 void sm_init()
 {
@@ -55,9 +59,8 @@ uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size)
 {
 	uintptr_t retval = 0;
 	printm("[Penglai Monitor] %s invoked\r\n", __func__);
-
-	retval = mm_init(paddr, size);
-
+	print_m_mode = 1;
+	retval	     = mm_init(paddr, size);
 	printm("[Penglai Monitor] %s return:%ld\r\n", __func__, retval);
 	return retval;
 }
@@ -89,6 +92,7 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
 	void *paddr = mm_alloc(mm_alloc_arg_local.req_size, &resp_size);
 	if (paddr == NULL) {
 		printm("M mode: sm_alloc_enclave_mem: no enough memory\r\n");
+		print_m_mode = 1;
 		return ENCLAVE_NO_MEMORY;
 	}
 	//grant kernel access to this memory
@@ -289,7 +293,7 @@ uintptr_t sm_exit_enclave(uintptr_t *regs, unsigned long retval)
 	ret = exit_enclave(regs, retval);
 
 	printm("[Penglai Monitor] %s return: %ld\r\n", __func__, ret);
-
+	print_m_mode = 0;
 	return ret;
 }
 

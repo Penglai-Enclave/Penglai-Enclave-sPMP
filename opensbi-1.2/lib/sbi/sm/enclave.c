@@ -24,13 +24,15 @@ void acquire_big_metadata_lock(const char * str)
 {
 	//spin_lock(&enclave_metadata_lock);
 	spin_lock(&enclave_metadata_lock);
-	printm("[PENGLAI SM@%s] %s get lock\n", __func__, str);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s] %s get lock\n", __func__, str);
 }
 
-void release_big_metadata_lock(const char * str)
+void release_big_metadata_lock(const char *str)
 {
 	spin_unlock(&enclave_metadata_lock);
-	printm("[PENGLAI SM@%s] %s release lock\n", __func__, str);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s] %s release lock\n", __func__, str);
 }
 
 static void enter_enclave_world(int eid)
@@ -250,16 +252,17 @@ static int free_enclave(int eid, bool clear)
 			enclave->state = INVALID;
 			found = 1;
 			ret_val = 0;
-			remove_link_mem(&enclave_metadata_head,cur,clear);
+			//use for free enclave 
+			// remove_link_mem(&enclave_metadata_head,cur,clear);
 			break;
 		}
 		count += cur->slab_num;
 	}
 
 	//haven't alloc this eid
-	if(!found)
-	{
-		printm("[Penglai Monitor@%s] haven't alloc this eid\r\n", __func__);
+	if (!found) {
+		printm("[Penglai Monitor@%s] haven't alloc this eid %d\r\n",
+		       __func__, eid);
 		ret_val = -1;
 	}
 

@@ -23,18 +23,19 @@ struct mm_region_t mm_regions[N_PMP_REGIONS];
 static unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
-void acquire_big_emem_lock(const char * str)
+void acquire_big_emem_lock(const char *str)
 {
 	spin_lock(&pmp_bitmap_lock);
-	printm("[PENGLAI SM@%s] %s get lock\n", __func__, str);
+	printm("[PENGLAI SM @%s_%ld] %s get lock\n", __func__,
+	       csr_read(CSR_MHARTID), str);
 }
 
-void release_big_emem_lock(const char * str)
+void release_big_emem_lock(const char *str)
 {
 	spin_unlock(&pmp_bitmap_lock);
-	printm("[PENGLAI SM@%s] %s release lock\n", __func__, str);
+	printm("[PENGLAI SM@%s_%ld] %s release lock\n", __func__,
+	       csr_read(CSR_MHARTID), str);
 }
-
 
 int check_mem_overlap(uintptr_t paddr, unsigned long size)
 {
