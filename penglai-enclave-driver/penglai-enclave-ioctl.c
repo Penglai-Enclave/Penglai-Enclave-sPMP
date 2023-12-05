@@ -10,13 +10,13 @@ DEFINE_SPINLOCK(enclave_big_lock);
 void acquire_big_lock(const char * str)
 {
 	spin_lock(&enclave_big_lock);
-	printk("[PENGLAI Driver@%s] %s get lock\n", __func__, str);
+	dprint("[PENGLAI Driver@%s] %s get lock\n", __func__, str);
 }
 
 void release_big_lock(const char * str)
 {
 	spin_unlock(&enclave_big_lock);
-	printk("[PENGLAI Driver@%s] %s release lock\n", __func__, str);
+	dprint("[PENGLAI Driver@%s] %s release lock\n", __func__, str);
 }
 
 unsigned int total_enclave_page(int elf_size, int stack_size)
@@ -97,10 +97,10 @@ int check_eapp_memory_size(long elf_size, long stack_size, long untrusted_mem_si
 int penglai_enclave_create(struct file * filep, unsigned long args)
 {
 	struct penglai_enclave_user_param* enclave_param = (struct penglai_enclave_user_param*)args;
-	printk("KERNEL MODULE: enclave_param->elf_ptr: %lx\n", enclave_param->elf_ptr);
-    printk("KERNEL MODULE: enclave_param->stack_size: %lx\n", enclave_param->stack_size);
-    printk("KERNEL MODULE: enclave_param->untrusted_mem_size: %lx\n", enclave_param->untrusted_mem_size);
-    printk("KERNEL MODULE: enclave_param->untrusted_mem_ptr: %lx\n", enclave_param->untrusted_mem_ptr);
+	dprint("KERNEL MODULE: enclave_param->elf_ptr: %lx\n", enclave_param->elf_ptr);
+    dprint("KERNEL MODULE: enclave_param->stack_size: %lx\n", enclave_param->stack_size);
+    dprint("KERNEL MODULE: enclave_param->untrusted_mem_size: %lx\n", enclave_param->untrusted_mem_size);
+    dprint("KERNEL MODULE: enclave_param->untrusted_mem_ptr: %lx\n", enclave_param->untrusted_mem_ptr);
     void *elf_ptr = (void*)enclave_param->elf_ptr;
 	int elf_size = 0;
 	if(penglai_enclave_elfmemsize(elf_ptr, &elf_size) < 0)
@@ -108,7 +108,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		printk("KERNEL MODULE: calculate elf_size failed\n");
 		return -1;
 	}
-	printk("KERNEL MODULE: enclave_elfmemsize: %dx\n",elf_size);
+	dprint("KERNEL MODULE: enclave_elfmemsize: %dx\n",elf_size);
 	long stack_size = enclave_param->stack_size;						//DEFAULT_STACK_SIZE=1MB
 	long untrusted_mem_size = enclave_param->untrusted_mem_size;		//DEFAULT_UNTRUSTED_SIZE=8KB MAX=16MB
 	unsigned long untrusted_mem_ptr = enclave_param->untrusted_mem_ptr;	//0
@@ -155,7 +155,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	}
 	enclave->untrusted_mem->addr = (vaddr_t)untrusted_mem_ptr;
 	enclave->untrusted_mem->size = untrusted_mem_size;
-	printk("[Penglai Driver@%s] untrusted_mem->addr:0x%lx untrusted_mem->size:0x%lx\n",
+	dprint("[Penglai Driver@%s] untrusted_mem->addr:0x%lx untrusted_mem->size:0x%lx\n",
 			__func__, (vaddr_t)untrusted_mem_ptr, untrusted_mem_size);
 
 	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);	//May sleep
@@ -168,7 +168,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
 			untrusted_mem_size, __pa(free_mem));
 
-	printk("[Penglai Driver@%s] enclave_mem->paddr:0x%lx, size:0x%lx\n",
+	dprint("[Penglai Driver@%s] enclave_mem->paddr:0x%lx, size:0x%lx\n",
 			__func__, (unsigned long)(enclave->enclave_mem->paddr),
 			enclave->enclave_mem->size);
 
@@ -187,7 +187,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 				printk("KERNEL MODULE: can not get free page which order is 0x%d", DEFAULT_SECURE_PAGES_ORDER);
 				goto destroy_enclave;
 			}
-			printk("[Penglai Driver@%s] new alloc paddr:0x%lx\n",__func__, addr);
+			dprint("[Penglai Driver@%s] new alloc paddr:0x%lx\n",__func__, addr);
 			ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), (1 << (DEFAULT_SECURE_PAGES_ORDER + RISCV_PGSHIFT)) );
 			if(ret.error)
 			{
@@ -214,7 +214,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	release_big_lock(__func__);
     kfree(enclave_sbi_param);
-	printk("[Penglai Driver@%s] ctreate enclave success!\t\n",__func__);
+	dprint("[Penglai Driver@%s] create enclave success!\t\n",__func__);
 	return ret.value;
 
 destroy_enclave:
@@ -326,7 +326,7 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	int retval = 0;
 	int resume_id = 0;
 
-	printk("[Penglai Driver@%s] begin get_enclave_by_id\n", __func__);
+	dprint("[Penglai Driver@%s] begin get_enclave_by_id\n", __func__);
 	acquire_big_lock(__func__);
 
 	enclave = get_enclave_by_id(eid);
@@ -341,7 +341,7 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 
 	enclave->is_running = 1; //set the flag
 
-	release_big_lock(__func__);
+	
 
 	/* Use untrusted mem as in_out_buf*/
 	if((void*)untrusted_mem_ptr != NULL && untrusted_mem_size > 0){
@@ -354,7 +354,7 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 			return -EFAULT;
 	}
 
-	printk("[Penglai Driver@%s] goto infinite run loop\n", __func__);
+	dprint("[Penglai Driver@%s] goto infinite run loop\n", __func__);
 	// In the (infinite loop), we do not need to acquire the lock
 	// The monitor is responsible to check the authentication
 	// It will only exit when either:
@@ -365,6 +365,7 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 	// 	 the enclave (as resume_from_timer_irq will check status of an enclave)
 	ret = SBI_CALL_1(SBI_SM_RUN_ENCLAVE, enclave_eid);
 	resume_id = enclave->eid;
+	release_big_lock(__func__);
 
 	while((ret.value == ENCLAVE_TIMER_IRQ) || (ret.value == ENCLAVE_OCALL))
 	{
@@ -451,7 +452,8 @@ int penglai_enclave_attest(struct file * filep, unsigned long args)
 	enclave_t * enclave;
 	struct sbiret ret = {0};
 	int retval;
-
+	dprint("[Penglai Driver@%s] begin attest\n",
+				__func__);
 	acquire_big_lock(__func__);
 	enclave = get_enclave_by_id(eid);
 	if (!enclave)

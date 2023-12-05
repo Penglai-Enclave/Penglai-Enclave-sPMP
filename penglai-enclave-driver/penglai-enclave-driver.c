@@ -11,6 +11,13 @@ MODULE_DESCRIPTION("enclave_ioctl");
 MODULE_AUTHOR("LuXu");
 MODULE_VERSION("enclave_ioctl");
 
+// #define PENGLAI_DEBUG
+#ifdef PENGLAI_DEBUG
+#define dprint(...) printk(__VA_ARGS__)
+#else
+#define dprint(...)
+#endif
+
 static int enclave_mmap(struct file* f,struct vm_area_struct *vma)
 {
 	return 0;
@@ -57,7 +64,7 @@ int enclave_ioctl_init(void)
 	}
 
 #if 1
-    printk("[Penglai KModule]: mm_init addr: va: %lx, pa: %lx, __va(pa): %lx\n", addr, __pa(addr), (unsigned long)__va(__pa(addr)));
+    dprint("[Penglai KModule]: mm_init addr: va: %lx, pa: %lx, __va(pa): %lx\n", addr, __pa(addr), (unsigned long)__va(__pa(addr)));
     // if(is_linear_mapping(addr))
     //     printk("[Penglai KModule]: va: %lx is linear mapping\n", addr);
     // else
