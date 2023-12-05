@@ -1000,8 +1000,8 @@ void print_buddy_system()
 				(long int*)mm_list_head->mm_list);
 			struct mm_list_t *mm_region = mm_list_head->mm_list;
 			while(mm_region)
-			{	void* p_addr = MM_LIST_2_PADDR(mm_region);
-				printm("  mm_region addr is 0x%ln=0x%p, paddr is 0x%p, order is %d\r\n", (long int *)mm_region,(long int *)mm_region,(long int *)p_addr, mm_region->order);
+			{	
+				printm("  mm_region addr is 0x%ln=0x%p, paddr is 0x%p, order is %d\r\n", (long int *)mm_region,(long int *)MM_LIST_2_PADDR(mm_region),(long int *)p_addr, mm_region->order);
 				printm("  mm_region prev is 0x%ln, next is 0x%ln\r\n\n", (long int*)mm_region->prev_mm, (long int*)mm_region->next_mm);
 				mm_region = mm_region->next_mm;
 			}

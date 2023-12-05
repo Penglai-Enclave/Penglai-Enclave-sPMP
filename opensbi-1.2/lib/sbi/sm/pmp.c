@@ -312,11 +312,10 @@ void dump_pmps(void)
 {
 	/*FIXME: we can have different number of PMP regions */
 	int i;
-	u32 source_hart = current_hartid();
 	for (i=0; i<16; i++){
 		struct pmp_config_t pmp = get_pmp(i);
 		(void)pmp; //to ignore the unused variable warnings
 		printm("[Debug:SM@%s %u] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
-				__func__, source_hart,i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
+				__func__, current_hartid(),i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
 	}
 }

@@ -17,7 +17,7 @@
 #define SBI_IPI_EVENT_MAX			__riscv_xlen
 
 /* clang-format on */
-#define SYNC_DEBUG	1
+#define SYNC_DEBUG	0
 #define MAX_HARTS 	8
 #define IPI_NONE    0
 #define IPI_TLB     1

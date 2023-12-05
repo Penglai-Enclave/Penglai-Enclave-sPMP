@@ -19,9 +19,10 @@
 static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long funcid,
 		const struct sbi_trap_regs *regs, unsigned long *out_val,
 		struct sbi_trap_info *out_trap)
-{	u32 source_hart = current_hartid();
+{	
 	uintptr_t ret = 0;
-	printm("[Penglai KModule@%u] %s invoked,funcid=%ld\r\n",source_hart,__func__,funcid);
+	printm("[Penglai KModule@%u] %s invoked,funcid=%ld\r\n",
+	       current_hartid(), __func__, funcid);
 	//csr_write(CSR_MEPC, regs->mepc + 4);
 	((struct sbi_trap_regs *)regs)->mepc += 4;
 	// spin_lock(&sm_big_lock);
@@ -68,7 +69,8 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 	//((struct sbi_trap_regs *)regs)->mstatus = csr_read(CSR_MSTATUS);
 	*out_val = ret;
 	// spin_unlock(&sm_big_lock);
-	printm("[Penglai KModule@%u] %s return, funcid=%ld\r\n",source_hart,__func__,funcid);
+	printm("[Penglai KModule@%u] %s return, funcid=%ld\r\n",
+	       current_hartid(), __func__, funcid);
 	return ret;
 }
 

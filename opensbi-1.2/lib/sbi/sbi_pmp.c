@@ -109,7 +109,9 @@ static void sbi_pmp_sync(struct sbi_scratch *scratch)
 	// }
 	
 	if (remote_hartid != -1UL && wait_for_sync[remote_hartid] == IPI_TLB){
-		sbi_printf("hart %ld skip wait %lu sync pmp\n", hartid, curr_skip_hartid[1]);
+		if (SYNC_DEBUG)
+			sbi_printf("hart %ld skip wait %lu sync pmp\n", hartid,
+				   curr_skip_hartid[1]);
 		atomic_raw_xchg_ulong(pmp_sync, 0);
 		// skip_for_wait[hartid] = IPI_PMP;
 		skip_for_wait[hartid] = remote_hartid;
@@ -135,7 +137,8 @@ int sbi_send_pmp(ulong hmask, ulong hbase, struct pmp_data_t* pmp_data)
 {	
 	ulong hartid		 = csr_read(CSR_MHARTID);
 	wait_for_sync[hartid] = IPI_PMP;
-	sbi_printf("hart %ld begin sync pmp\n", hartid);
+	if (SYNC_DEBUG)
+		sbi_printf("hart %ld begin sync pmp\n", hartid);
 	return sbi_ipi_send_many(hmask, hbase, pmp_event, pmp_data);
 }
 
