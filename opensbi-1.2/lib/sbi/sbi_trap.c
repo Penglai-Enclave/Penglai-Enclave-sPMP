@@ -267,7 +267,6 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
  */
 struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 {
-	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld enter into m_mode\n", csr_read(CSR_MHARTID));
 	int rc = SBI_ENOTSUPP;
 	const char *msg = "trap handler failed";
 	ulong mcause = csr_read(CSR_MCAUSE);
@@ -304,7 +303,6 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 		};
 		hartid = csr_read(CSR_MHARTID);
     	m_mode_status[hartid] = 0;
-	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld return from m_mode\n", csr_read(CSR_MHARTID));
 	return regs;
 	}
 
@@ -359,7 +357,6 @@ trap_error:
 		sbi_trap_error(msg, rc, mcause, mtval, mtval2, mtinst, regs);
 	hartid = csr_read(CSR_MHARTID);
     m_mode_status[hartid] = 0;
-	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld return from m_mode\n", csr_read(CSR_MHARTID));
 	return regs;
 }
 

@@ -20,21 +20,40 @@
  */
 // static struct mm_region_t mm_regions[N_PMP_REGIONS];
 struct mm_region_t mm_regions[N_PMP_REGIONS];
-static unsigned long pmp_bitmap = 0;
+volatile unsigned long pmp_bitmap = 0;
 static spinlock_t pmp_bitmap_lock = SPIN_LOCK_INITIALIZER;
 
 void acquire_big_emem_lock(const char *str)
 {
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM @%s_%d] %s try lock\n", __func__,
+			current_hartid(), str);
 	spin_lock(&pmp_bitmap_lock);
-	printm("[PENGLAI SM @%s_%ld] %s get lock\n", __func__,
-	       csr_read(CSR_MHARTID), str);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM @%s_%d] %s get lock\n", __func__,
+			current_hartid(), str);
+}
+int try_big_emem_lock(const char *str)
+{
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM @%s_%d] %s try lock\n", __func__,
+			current_hartid(), str);
+	if (!spin_trylock(&pmp_bitmap_lock))
+	{
+		return RETRY_SPIN_LOCK;
+	}
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM @%s_%d] %s get lock\n", __func__,
+			current_hartid(), str);
+	return 0;
 }
 
 void release_big_emem_lock(const char *str)
 {
 	spin_unlock(&pmp_bitmap_lock);
-	printm("[PENGLAI SM@%s_%ld] %s release lock\n", __func__,
-	       csr_read(CSR_MHARTID), str);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%d] %s release lock\n", __func__,
+			current_hartid(), str);
 }
 
 int check_mem_overlap(uintptr_t paddr, unsigned long size)
@@ -57,7 +76,7 @@ int check_mem_overlap(uintptr_t paddr, unsigned long size)
 				&& region_overlap(mm_regions[region_idx].paddr, mm_regions[region_idx].size,
 					paddr, size))
 		{
-			printm_err("pmp memory overlaps with existing pmp memory!\r\n");
+			printm_err("pmp memory overlaps with existing pmp memory!region_idx:%d\r\n", region_idx);
 			return -1;
 		}
 	}
@@ -74,8 +93,18 @@ uintptr_t copy_from_host(void* dest, void* src, size_t size)
 {
 	int retval = -1;
 	//get lock to prevent TOCTTOU
-	// spin_lock(&pmp_bitmap_lock);
-	acquire_big_emem_lock(__func__);
+	// acquire_big_emem_lock(__func__);
+	retval=try_big_emem_lock(__func__);
+
+	int re_try = RETRY_TIMES;
+	while (retval == RETRY_SPIN_LOCK && re_try) {
+		re_try--;
+		retval=try_big_emem_lock(__func__);
+	}
+	if (retval == RETRY_SPIN_LOCK)
+	{
+		return retval;
+	}
 
 	//check data is nonsecure
 	//prevent coping from memory in secure region
@@ -672,9 +701,12 @@ uintptr_t mm_init(uintptr_t paddr, unsigned long size)
 
 	//acquire a free enclave region
 	// spin_lock(&pmp_bitmap_lock);
-	acquire_big_emem_lock(__func__);
+	// acquire_big_emem_lock(__func__);
+	if (try_big_emem_lock(__func__))
+	{
+		return RETRY_SPIN_LOCK;
+	}
 
-	//check memory overlap
 	//memory overlap should be checked after acquire lock
 	if(check_mem_overlap(paddr, size) < 0)
 	{
@@ -927,6 +959,13 @@ static int insert_mm_region(int region_idx, struct mm_list_t* mm_region, int mer
 	}
 
 	//found the exact mm_list
+	
+	if(merge && mm_regions[region_idx].mm_list_head == mm_list_head && mm_list_head->mm_list == mm_region){
+		//An entire pmp region is reclaimed
+		if(mm_region->order == mm_list_head->order){
+			return 0;
+		}
+	}
 	int ret_val = 0;
 	struct mm_list_head_t *new_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(mm_region);
 	if(mm_list_head && mm_list_head->order == mm_region->order)
@@ -1001,7 +1040,7 @@ void print_buddy_system()
 			struct mm_list_t *mm_region = mm_list_head->mm_list;
 			while(mm_region)
 			{	
-				printm("  mm_region addr is 0x%ln=0x%p, paddr is 0x%p, order is %d\r\n", (long int *)mm_region,(long int *)MM_LIST_2_PADDR(mm_region),(long int *)p_addr, mm_region->order);
+				printm("  mm_region addr is 0x%ln=0x%p, paddr is 0x%p, order is %d\r\n", (long int *)mm_region,(long int *)MM_LIST_2_PADDR(mm_region),(long int *)MM_LIST_2_PADDR(mm_region), mm_region->order);
 				printm("  mm_region prev is 0x%ln, next is 0x%ln\r\n\n", (long int*)mm_region->prev_mm, (long int*)mm_region->next_mm);
 				mm_region = mm_region->next_mm;
 			}
@@ -1021,7 +1060,6 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 		return ret_addr;
 
 	//TODO: reduce lock granularity
-	// spin_lock(&pmp_bitmap_lock);
 	acquire_big_emem_lock(__func__);
 
 	print_buddy_system();
@@ -1056,7 +1094,6 @@ void* mm_alloc(unsigned long req_size, unsigned long *resp_size)
 
 	print_buddy_system();
 
-	// spin_unlock(&pmp_bitmap_lock);
 	release_big_emem_lock(__func__);
 
 	if(ret_addr && resp_size)
@@ -1139,7 +1176,7 @@ int mm_free(void* req_paddr, unsigned long free_size)
 	print_buddy_system();
 
 mm_free_out:
-	spin_unlock(&pmp_bitmap_lock);
+	release_big_emem_lock(__func__);
 	return ret_val;
 }
 //TODO:Reserved interfaces for calls to reclaim unused memory
@@ -1159,8 +1196,7 @@ int mm_free_clear(void* req_paddr, unsigned long free_size)
 	mm_region->prev_mm = NULL;
 	mm_region->next_mm = NULL;
 
-	spin_lock(&pmp_bitmap_lock);
-
+	acquire_big_emem_lock(__func__);
 	//print_buddy_system();
 
 	for(region_idx=0; region_idx < N_PMP_REGIONS; ++region_idx)
@@ -1172,7 +1208,7 @@ int mm_free_clear(void* req_paddr, unsigned long free_size)
 	}
 	if(region_idx >= N_PMP_REGIONS)
 	{
-		printm("mm_free: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
+		printm("mm_free_clear: buddy system doesn't contain memory(addr 0x%lx, order %ld)\r\n", paddr, order);
 		ret_val = -1;
 		goto mm_free_out;
 	}
@@ -1188,7 +1224,7 @@ int mm_free_clear(void* req_paddr, unsigned long free_size)
 			unsigned long region_size = 1 << mm_region->order;
 			if(region_overlap(paddr, size, region_paddr, region_size))
 			{
-				printm("mm_free: memory(addr 0x%lx order %ld) overlap with free memory(addr 0x%lx order %d)\r\n", paddr, order, region_paddr, mm_region->order);
+				printm("mm_free_clear: memory(addr 0x%lx order %ld) overlap with free memory(addr 0x%lx order %d)\r\n", paddr, order, region_paddr, mm_region->order);
 				ret_val = -1;
 				break;
 			}
@@ -1199,16 +1235,16 @@ int mm_free_clear(void* req_paddr, unsigned long free_size)
 
 		mm_list_head = mm_list_head->next_list_head;
 	}
-	if(mm_list_head)
-	{
-		goto mm_free_out;
-	}
+	// if(mm_list_head)
+	// {
+	// 	goto mm_free_out;
+	// }
 
 	//insert with merge
 	ret_val = insert_mm_region(region_idx, mm_region, 1);
 	if(ret_val < 0)
 	{
-		printm("mm_free: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
+		printm("mm_free_clear: failed to insert mm(addr 0x%lx, order %ld)\r\n in mm_regions[%d]\r\n", paddr, order, region_idx);
 	}
 
 	//printm("after mm_free\r\n");
@@ -1223,13 +1259,13 @@ int mm_free_clear(void* req_paddr, unsigned long free_size)
 	struct mm_list_t *mm_list = mm_list_head->mm_list;
 	if (((long int *)MM_LIST_2_PADDR(mm_list) == (long int *)pmp_config.paddr)&&((pmp_config.size) == (1<<mm_list->order)))
 	{
-		delete_certain_region(region_idx,&mm_list_head,mm_list);
+		delete_certain_region(region_idx, &mm_list_head, mm_list);
 		mm_regions[region_idx].valid	= 0;
 	    mm_regions[region_idx].paddr	= 0;
+	    mm_regions[region_idx].size		= 0;
 	    mm_regions[region_idx].mm_list_head = NULL;
-		 release_big_emem_lock(__func__);
-		clear_pmp_and_sync(pmp_idx);
-		acquire_big_emem_lock(__func__);
+	    clear_pmp_and_sync(pmp_idx);
+	    pmp_bitmap &= ~(1 << pmp_idx);
 	}
 
 	printm("***after mm_free***\r\n");
@@ -1240,4 +1276,23 @@ mm_free_out:
 	// spin_unlock(&pmp_bitmap_lock);
 	release_big_emem_lock(__func__);
 	return ret_val;
+}
+
+int memory_reclaim(unsigned long* resp_size)
+{
+	uintptr_t retval = 0;
+
+	printm("[Penglai Monitor@%s %d] invoked\r\n", __func__, current_hartid());
+	print_buddy_system();
+
+	retval = free_enclave_metadata();
+	if(retval != 0)
+	{
+		printm_err("M mode: sm_memory_reclaim: free_enclave_metadata error\r\n");
+		dump_pmps();
+		return ENCLAVE_ERROR;
+	}
+	print_buddy_system();
+	dump_pmps();
+	return ENCLAVE_SUCCESS;
 }

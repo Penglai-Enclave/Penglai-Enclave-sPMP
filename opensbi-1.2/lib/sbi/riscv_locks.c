@@ -52,8 +52,6 @@ bool spin_trylock(spinlock_t *lock)
 void spin_lock(spinlock_t *lock)
 {
 	//for lock debug
-	// u32 source_hart = current_hartid();
-	// printm_nolock("[spin_lock@%u]try getlock\n",source_hart);
 	unsigned long inc  = 1u << TICKET_SHIFT;
 	unsigned long mask = 0xffffu;
 	u32 l0, tmp1, tmp2;

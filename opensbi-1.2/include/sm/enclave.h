@@ -65,6 +65,7 @@ struct enclave_t
 
   //shared mem with kernel
   unsigned long kbuffer;
+  unsigned long kbuffer_paddr;
   unsigned long kbuffer_size;
 
   unsigned long* ocall_func_id;
@@ -74,6 +75,7 @@ struct enclave_t
 
   //shared memory with host
   unsigned long untrusted_ptr;
+  unsigned long untrusted_ptr_paddr;
   unsigned long untrusted_size;
   // enclave measurement
   unsigned char hash[HASH_SIZE];
@@ -100,6 +102,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid);
 uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce);
 uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval);
 uintptr_t do_timer_irq(uintptr_t* regs, uintptr_t mcause, uintptr_t mepc);
+uintptr_t free_enclave_metadata();
 
 uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid);
 uintptr_t enclave_sys_write(uintptr_t *regs);

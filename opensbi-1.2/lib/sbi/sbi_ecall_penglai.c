@@ -56,7 +56,7 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 			ret = sm_destroy_enclave((uintptr_t *)regs, regs->a0);
 			break;
 		case SBI_MEMORY_RECLAIM: //91
-			ret=sm_memory_reclaim(regs->a0);
+			ret=sm_memory_reclaim(regs->a0, regs->a1);
 			break;
 		case SBI_FREE_ENCLAVE_MEM://90
 			ret= sm_free_enclave_mem(regs->a0, regs->a1);
@@ -69,8 +69,8 @@ static int sbi_ecall_penglai_host_handler(unsigned long extid, unsigned long fun
 	//((struct sbi_trap_regs *)regs)->mstatus = csr_read(CSR_MSTATUS);
 	*out_val = ret;
 	// spin_unlock(&sm_big_lock);
-	printm("[Penglai KModule@%u] %s return, funcid=%ld\r\n",
-	       current_hartid(), __func__, funcid);
+	printm("[Penglai KModule@%u] %s return %ld, funcid=%ld\r\n",
+	       current_hartid(), __func__, ret, funcid);
 	return ret;
 }
 
@@ -105,7 +105,7 @@ static int sbi_ecall_penglai_enclave_handler(unsigned long extid, unsigned long 
 			sbi_printf("[Penglai@Monitor] enclave interface(funcid:%ld) not supported yet\n", funcid);
 			ret = SBI_ENOTSUPP;
 	}
-	printm("[Penglai KModule@%u] %s return,funcid=%ld\r\n", current_hartid(), __func__,funcid);
+	printm("[Penglai KModule@%u] %s return %ld,funcid=%ld\r\n", current_hartid(), __func__,ret , funcid);
 	// spin_unlock(&sm_big_lock);
 	*out_val = ret;
 	return ret;
