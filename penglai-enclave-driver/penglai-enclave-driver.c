@@ -11,6 +11,13 @@ MODULE_DESCRIPTION("enclave_ioctl");
 MODULE_AUTHOR("LuXu");
 MODULE_VERSION("enclave_ioctl");
 
+// #define PENGLAI_DEBUG
+#ifdef PENGLAI_DEBUG
+#define dprint(...) printk(__VA_ARGS__)
+#else
+#define dprint(...)
+#endif
+
 static int enclave_mmap(struct file* f,struct vm_area_struct *vma)
 {
 	return 0;
@@ -102,7 +109,7 @@ void enclave_ioctl_exit(void)
 		{
 			free_pages((long unsigned int)__va(addr), (order - RISCV_PGSHIFT));
 		}
-
+		*size = 0;
 		sbiret = SBI_CALL_2(SBI_SM_FREE_ENCLAVE_MEM, __pa(size), FREE_MAX_MEMORY);
 
 		addr = (unsigned long)(sbiret.value);

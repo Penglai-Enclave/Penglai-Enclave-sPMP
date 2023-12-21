@@ -22,6 +22,13 @@ typedef uintptr_t vaddr_t;
 typedef uintptr_t paddr_t;
 typedef unsigned long pt_entry_t;
 
+// #define PENGLAI_DEBUG
+#ifdef PENGLAI_DEBUG
+#define dprint(...) printk(__VA_ARGS__)
+#else
+#define dprint(...)
+#endif
+
 #define RISCV_PT_SHIFT 12
 #define RISCV_PT_LEVEL 3
 #define RISCV_PT_LEVELBITS 9
