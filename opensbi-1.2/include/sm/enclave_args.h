@@ -21,6 +21,13 @@ struct mm_alloc_arg_t
   unsigned long resp_size;
 };
 
+struct mm_reclaim_arg_t
+{
+  unsigned long req_size;
+  uintptr_t req_addr;
+  unsigned long resp_size;
+};
+
 // Attestation-related report
 struct sm_report_t
 {
@@ -66,20 +73,22 @@ struct signature_t
  */
 struct enclave_sbi_param_t
 {
-  unsigned int *eid_ptr;
-  unsigned long paddr;
-  unsigned long size;
-  unsigned long entry_point;
-  unsigned long untrusted_ptr;
-  unsigned long untrusted_size;
-  unsigned long free_mem;
-  //enclave shared mem with kernel
-  unsigned long kbuffer;
-  unsigned long kbuffer_size;
-  unsigned long *ecall_arg0;
-  unsigned long *ecall_arg1;
-  unsigned long *ecall_arg2;
-  unsigned long *ecall_arg3;
+	unsigned int * eid_ptr;
+	unsigned long paddr;
+	unsigned long size;
+	unsigned long entry_point;
+	unsigned long untrusted_ptr;
+	unsigned long untrusted_paddr;
+	unsigned long untrusted_size;
+	unsigned long free_mem;
+	//enclave shared mem with kernel
+	unsigned long kbuffer;
+	unsigned long kbuffer_paddr;
+	unsigned long kbuffer_size;
+	unsigned long *ecall_arg0;
+	unsigned long *ecall_arg1;
+	unsigned long *ecall_arg2;
+	unsigned long *ecall_arg3;
 };
 
 #endif /* _ENCLAVE_ARGS_H */

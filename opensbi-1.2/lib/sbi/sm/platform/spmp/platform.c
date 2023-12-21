@@ -21,7 +21,7 @@ int platform_init()
   pmp_config.perm = PMP_R | PMP_W | PMP_X;
   set_pmp(NPMP-1, pmp_config);
 
-  //config the last PMP to protect security monitor
+  //config the last-1 PMP to protect security monitor
   pmp_config.paddr = (uintptr_t)SM_BASE;
   pmp_config.size = (unsigned long)SM_SIZE;
   pmp_config.mode = PMP_A_NAPOT;
