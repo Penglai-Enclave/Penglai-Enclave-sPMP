@@ -85,38 +85,38 @@ deregister_device:
 void enclave_ioctl_exit(void)
 {
 	unsigned long addr, order, count;
-	unsigned long *size = kmalloc(sizeof(unsigned long), GFP_KERNEL);
-	;
+	unsigned long *size_ptr = kmalloc(sizeof(unsigned long), GFP_KERNEL);
+	
 	struct sbiret sbiret;
 	printk("enclave_ioctl_exit...\n");
 
 	
-	sbiret = SBI_CALL_2(SBI_SM_FREE_ENCLAVE_MEM, __pa(size), FREE_MAX_MEMORY);
+	sbiret = SBI_CALL_2(SBI_SM_FREE_ENCLAVE_MEM, __pa(size_ptr), FREE_MAX_MEMORY);
 
 	addr = (unsigned long)(sbiret.value);
 	while (addr)
 	{
-		order = ilog2((*size) - 1) + 1;
+		order = ilog2((*size_ptr) - 1) + 1;
 		count = 0x1 << order;
-		if (count != (*size) && (*size > 0))
+		if (count != (*size_ptr) && (*size_ptr > 0))
 		{
 			printk("KERNEL MODULE:  the number of free pages is not exponential times of two\n");
-			kfree(size);
+			kfree(size_ptr);
 			return;
 		}
 		printk("KERNEL MODULE:  free secmem:paddr:%lx, vaddr:%lx, order:%lu\n", addr, __va(addr), order);
-		if ((*size) > 0)
+		if ((*size_ptr) > 0)
 		{
 			free_pages((long unsigned int)__va(addr), (order - RISCV_PGSHIFT));
 		}
-		*size = 0;
-		sbiret = SBI_CALL_2(SBI_SM_FREE_ENCLAVE_MEM, __pa(size), FREE_MAX_MEMORY);
+		*size_ptr = 0;
+		sbiret = SBI_CALL_2(SBI_SM_FREE_ENCLAVE_MEM, __pa(size_ptr), FREE_MAX_MEMORY);
 
 		addr = (unsigned long)(sbiret.value);
 	}
 
 deregister_device:
-	kfree(size);
+	kfree(size_ptr);
 	misc_deregister(&enclave_dev);
 	return;
 }
