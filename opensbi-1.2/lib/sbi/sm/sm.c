@@ -6,9 +6,31 @@
 #include <sm/attest.h>
 #include <sm/math.h>
 #include <sbi/sbi_console.h>
+#include <sbi/riscv_locks.h>
+
+extern volatile int print_m_mode;
 
 //static int sm_initialized = 0;
 //static spinlock_t sm_init_lock = SPINLOCK_INIT;
+static spinlock_t sm_alloc_enclave_mem_lock = SPIN_LOCK_INITIALIZER;
+void acquire_big_sm_lock(const char *str)
+{
+	if (LOCK_DEBUG)
+	printm("[PENGLAI SM@%s_%d] %s try lock\n", __func__,
+			current_hartid(), str);
+	spin_lock(&sm_alloc_enclave_mem_lock);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%d] %s get lock\n", __func__,
+		       current_hartid(), str);
+}
+
+void release_big_sm_lock(const char *str)
+{
+	spin_unlock(&sm_alloc_enclave_mem_lock);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%d] %s release lock\n", __func__,
+		       current_hartid(), str);
+}
 
 void sm_init()
 {
@@ -38,11 +60,10 @@ uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size)
 uintptr_t sm_mm_extend(uintptr_t paddr, unsigned long size)
 {
 	uintptr_t retval = 0;
-	printm("[Penglai Monitor] %s invoked\r\n", __func__);
-
-	retval = mm_init(paddr, size);
-
-	printm("[Penglai Monitor] %s return:%ld\r\n", __func__, retval);
+	printm("[Penglai Monitor %d] %s invoked\r\n", current_hartid(), __func__);
+	print_m_mode = 1;
+	retval	     = mm_init(paddr, size);
+	printm("[Penglai Monitor %d] %s return:%ld\r\n", current_hartid(), __func__, retval);
 	return retval;
 }
 
@@ -75,8 +96,6 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
 		printm("M mode: sm_alloc_enclave_mem: no enough memory\r\n");
 		return ENCLAVE_NO_MEMORY;
 	}
-	dump_pmps();
-
 	//grant kernel access to this memory
 	if (grant_kernel_access(paddr, resp_size) != 0) {
 		printm_err(
@@ -103,7 +122,41 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg)
 	return ENCLAVE_SUCCESS;
 }
 
-uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
+uintptr_t sm_memory_reclaim(uintptr_t mm_reclaim_arg, unsigned long eid)
+{
+	uintptr_t retval	= 0;
+	unsigned long resp_size = 0;
+	printm("[Penglai Monitor] %s invoked\r\n", __func__);
+	struct mm_reclaim_arg_t mm_reclaim_arg_local;
+
+	retval = memory_reclaim(&resp_size);
+	if (retval == RETRY_SPIN_LOCK) {
+		return retval;
+	}
+
+	retval = copy_from_host(&mm_reclaim_arg_local,
+				(struct mm_reclaim_arg_t *)mm_reclaim_arg,
+				sizeof(struct mm_reclaim_arg_t));
+	if (retval != 0) {
+		printm_err(
+			"M mode: sm_memory_reclaim: unknown error happended when copy from host\r\n");
+		return ENCLAVE_ERROR;
+	}
+
+	mm_reclaim_arg_local.resp_size = resp_size;
+	retval = copy_to_host((struct mm_reclaim_arg_t *)mm_reclaim_arg,
+			      &mm_reclaim_arg_local,
+			      sizeof(struct mm_reclaim_arg_t));
+	if (retval != 0) {
+		printm_err(
+			"M mode: sm_memory_reclaim: unknown error happended when copy to host\r\n");
+		return ENCLAVE_ERROR;
+	}
+	printm("[Penglai Monitor] %s return:%ld\r\n", __func__, retval);
+	return retval;
+}
+
+uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param, bool retry)
 {
 	struct enclave_sbi_param_t enclave_sbi_param_local;
 	uintptr_t retval = 0;
@@ -113,6 +166,11 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
 	retval = copy_from_host(&enclave_sbi_param_local,
 				(struct enclave_sbi_param_t *)enclave_sbi_param,
 				sizeof(struct enclave_sbi_param_t));
+	if (retval == RETRY_SPIN_LOCK)
+	{
+		return retval;
+	}
+
 	if (retval != 0) {
 		printm_err(
 			"M mode: sm_create_enclave: unknown error happended when copy from host\r\n");
@@ -121,14 +179,14 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
 
 	void *paddr	   = (void *)enclave_sbi_param_local.paddr;
 	unsigned long size = (unsigned long)enclave_sbi_param_local.size;
-	if (retrieve_kernel_access(paddr, size) !=
+	if (!retry && retrieve_kernel_access(paddr, size) !=
 	    0) //we always allow kernel access the memory now
 	{
 		mm_free(paddr, size);
 		return -1UL;
 	}
 
-	retval = create_enclave(enclave_sbi_param_local);
+	retval = create_enclave(enclave_sbi_param_local, retry);
 
 	printm("[Penglai Monitor] %s created return value:%ld \r\n", __func__,
 	       retval);
@@ -195,12 +253,11 @@ uintptr_t sm_resume_enclave(uintptr_t *regs, unsigned long eid)
 uintptr_t sm_exit_enclave(uintptr_t *regs, unsigned long retval)
 {
 	uintptr_t ret;
-	printm("[Penglai Monitor] %s invoked\r\n", __func__);
+	printm("[Penglai Monitor %d] %s invoked\r\n", current_hartid(), __func__);
 
 	ret = exit_enclave(regs, retval);
 
-	printm("[Penglai Monitor] %s return: %ld\r\n", __func__, ret);
-
+	printm("[Penglai Monitor %d] %s return: %ld\r\n", current_hartid(), __func__, ret);
 	return ret;
 }
 
@@ -273,7 +330,12 @@ uintptr_t sm_do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	regs[11] = ret; //value
 	return ret;
 }
-
+/**
+ * \brief Used to clear pmp settings when uninstalling kernel modules
+ * 
+ * \param size_ptr Used to pass the size of the freed memory to the driver
+ * \param flag Select whether to clear a specific pmp
+*/
 uintptr_t sm_free_enclave_mem(uintptr_t size_ptr, unsigned long flag)
 {
 	uintptr_t ret	   = 0;
@@ -281,6 +343,8 @@ uintptr_t sm_free_enclave_mem(uintptr_t size_ptr, unsigned long flag)
 	dump_pmps();
 	switch (flag) {
 	case FREE_MAX_MEMORY:
+		free_enclave_metadata();
+
 		for (size_t i = NPMP - 2; i >= 0; i--) {
 			int pmp_idx		       = i;
 			struct pmp_config_t pmp_config = get_pmp(pmp_idx);
@@ -290,14 +354,13 @@ uintptr_t sm_free_enclave_mem(uintptr_t size_ptr, unsigned long flag)
 			}
 
 			if (pmp_idx == 0) {
-				printm("M mode: sm_memory_reclaim: There is no mem to reclaim\r\n");
+				sbi_printf("M mode:Finish free and there is no mem to reclaim\r\n");
 				dump_pmps();
 				size = 0;
 				ret  = 0;
 				break;
 			}
-
-			clear_pmp_and_sync(pmp_idx);
+			mm_free_clear((void *)pmp_config.paddr, pmp_config.size);
 			ret  = pmp_config.paddr;
 			size = pmp_config.size;
 

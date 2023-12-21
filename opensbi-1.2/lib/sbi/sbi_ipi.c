@@ -23,6 +23,9 @@
 #include <sbi/sbi_string.h>
 #include <sbi/sbi_tlb.h>
 
+volatile unsigned long wait_for_sync[MAX_HARTS] = { IPI_NONE };
+volatile unsigned long skip_for_wait[MAX_HARTS][MAX_HARTS] = {{0}};
+
 struct sbi_ipi_data {
 	unsigned long ipi_type;
 };
@@ -64,9 +67,10 @@ static int sbi_ipi_send(struct sbi_scratch *scratch, u32 remote_hartid,
 	atomic_raw_set_bit(event, &ipi_data->ipi_type);
 	smp_wmb();
 
-	if (ipi_dev && ipi_dev->ipi_send)
-		ipi_dev->ipi_send(remote_hartid);
+	if (ipi_dev && ipi_dev->ipi_send) {
 
+		ipi_dev->ipi_send(remote_hartid);
+	}
 	sbi_pmu_ctr_incr_fw(SBI_PMU_FW_IPI_SENT);
 
 	if (ipi_ops->sync)

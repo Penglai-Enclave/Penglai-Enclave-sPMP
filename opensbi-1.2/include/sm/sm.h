@@ -38,6 +38,7 @@ extern uintptr_t _fw_start[], _fw_end[];
 #define SBI_GET_KEY             88
 
 //Error code of SBI_ALLOC_ENCLAVE_MEM
+#define RETRY_SPIN_LOCK         -3
 #define ENCLAVE_NO_MEMORY       -2
 #define ENCLAVE_ERROR           -1
 #define ENCLAVE_SUCCESS          0
@@ -58,6 +59,8 @@ extern uintptr_t _fw_start[], _fw_end[];
 #define FREE_MAX_MEMORY                   2
 #define FREE_SPEC_MEMORY                  3
 
+#define RETRY_TIMES                       5
+
 void sm_init();
 
 uintptr_t sm_mm_init(uintptr_t paddr, unsigned long size);
@@ -68,7 +71,9 @@ uintptr_t sm_alloc_enclave_mem(uintptr_t mm_alloc_arg);
 
 uintptr_t sm_free_enclave_mem(uintptr_t size_ptr,unsigned long flag);
 
-uintptr_t sm_create_enclave(uintptr_t enclave_create_args);
+uintptr_t sm_memory_reclaim(uintptr_t enclave_id, unsigned long eid);
+
+uintptr_t sm_create_enclave(uintptr_t enclave_create_args, bool retry);
 
 uintptr_t sm_attest_enclave(uintptr_t enclave_id, uintptr_t report, uintptr_t nonce);
 

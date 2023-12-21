@@ -250,6 +250,7 @@ void clear_pmp(int pmp_idx)
 	pmp_cfg_t.paddr = 0;
 	pmp_cfg_t.size = 0;
 	set_pmp(pmp_idx, pmp_cfg_t);
+	// set_pmp_and_sync(pmp_idx, pmp_cfg_t);
 
 	return;
 }
@@ -314,7 +315,7 @@ void dump_pmps(void)
 	for (i=0; i<16; i++){
 		struct pmp_config_t pmp = get_pmp(i);
 		(void)pmp; //to ignore the unused variable warnings
-		printm("[Debug:SM@%s] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
-				__func__, i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
+		printm("[Debug:SM@%s %u] pmp_%d: mode(0x%lx) perm(0x%lx) paddr(0x%lx) size(0x%lx)\n",
+				__func__, current_hartid(),i, pmp.mode, pmp.perm, pmp.paddr, pmp.size);
 	}
 }

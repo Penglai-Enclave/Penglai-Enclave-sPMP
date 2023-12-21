@@ -23,6 +23,9 @@
 #include <sbi/sbi_platform.h>
 #include <sbi/sbi_pmu.h>
 
+extern volatile unsigned long wait_for_sync[MAX_HARTS];
+extern volatile int print_m_mode;
+
 static unsigned long tlb_sync_off;
 static unsigned long tlb_fifo_off;
 static unsigned long tlb_fifo_mem_off;
@@ -260,6 +263,10 @@ static void tlb_sync(struct sbi_scratch *scratch)
 	unsigned long *tlb_sync =
 			sbi_scratch_offset_ptr(scratch, tlb_sync_off);
 
+	ulong hartid = csr_read(CSR_MHARTID);
+	wait_for_sync[hartid] = IPI_TLB;
+	
+
 	while (!atomic_raw_xchg_ulong(tlb_sync, 0)) {
 		/*
 		 * While we are waiting for remote hart to set the sync,
@@ -268,6 +275,9 @@ static void tlb_sync(struct sbi_scratch *scratch)
 		tlb_process_count(scratch, 1);
 	}
 
+// no_wait:
+	wait_for_sync[hartid] = IPI_NONE;
+	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld wait sync_tlb success!\n", hartid);
 	return;
 }
 
@@ -365,6 +375,7 @@ static int tlb_update(struct sbi_scratch *scratch,
 		tinfo->local_fn(tinfo);
 		return -1;
 	}
+	wait_for_sync[curr_hartid] = IPI_TLB;
 
 	tlb_fifo_r = sbi_scratch_offset_ptr(remote_scratch, tlb_fifo_off);
 
@@ -372,7 +383,8 @@ static int tlb_update(struct sbi_scratch *scratch,
 	if (ret != SBI_FIFO_UNCHANGED) {
 		return 1;
 	}
-
+	ulong hartid = csr_read(CSR_MHARTID);
+	if(SYNC_DEBUG) sbi_printf("hart %ld begin wait %d sync_tlb\n", hartid, remote_hartid);
 	while (sbi_fifo_enqueue(tlb_fifo_r, data) < 0) {
 		/**
 		 * For now, Busy loop until there is space in the fifo.
@@ -405,7 +417,9 @@ int sbi_tlb_request(ulong hmask, ulong hbase, struct sbi_tlb_info *tinfo)
 		return SBI_EINVAL;
 
 	tlb_pmu_incr_fw_ctr(tinfo);
-
+	ulong hartid = csr_read(CSR_MHARTID);
+	if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld begin sync tlb\n", hartid);
+	wait_for_sync[hartid] = IPI_TLB;
 	return sbi_ipi_send_many(hmask, hbase, tlb_event, tinfo);
 }
 

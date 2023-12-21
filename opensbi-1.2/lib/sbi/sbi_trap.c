@@ -25,6 +25,9 @@
 
 #include <sm/sm.h>
 
+int m_mode_status[MAX_HARTS];
+volatile int print_m_mode = 0;
+
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
 				      ulong mtinst, struct sbi_trap_regs *regs)
@@ -274,6 +277,8 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 		mtval2 = csr_read(CSR_MTVAL2);
 		mtinst = csr_read(CSR_MTINST);
 	}
+	int hartid = csr_read(CSR_MHARTID);
+    m_mode_status[hartid] = 1;
 
 	if (mcause & (1UL << (__riscv_xlen - 1))) {
 		mcause &= ~(1UL << (__riscv_xlen - 1));
@@ -296,7 +301,9 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 			msg = "unhandled external interrupt";
 			goto trap_error;
 		};
-		return regs;
+		hartid = csr_read(CSR_MHARTID);
+    	m_mode_status[hartid] = 0;
+	return regs;
 	}
 
 	switch (mcause) {
@@ -323,6 +330,7 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 		}
 	case CAUSE_SUPERVISOR_ECALL:
 	case CAUSE_MACHINE_ECALL:
+		
 		rc  = sbi_ecall_handler(regs);
 		msg = "ecall handler failed";
 		break;
@@ -347,6 +355,8 @@ struct sbi_trap_regs *sbi_trap_handler(struct sbi_trap_regs *regs)
 trap_error:
 	if (rc)
 		sbi_trap_error(msg, rc, mcause, mtval, mtval2, mtinst, regs);
+	hartid = csr_read(CSR_MHARTID);
+    m_mode_status[hartid] = 0;
 	return regs;
 }
 

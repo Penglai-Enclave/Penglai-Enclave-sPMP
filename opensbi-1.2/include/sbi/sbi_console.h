@@ -41,6 +41,8 @@ int __printf(3, 4) sbi_snprintf(char *out, u32 out_sz, const char *format, ...);
 
 int __printf(1, 2) sbi_printf(const char *format, ...);
 
+int __printf(1, 2) sbi_printf_nolock(const char *format, ...);
+
 int __printf(1, 2) sbi_dprintf(const char *format, ...);
 
 void __printf(1, 2) __attribute__((noreturn)) sbi_panic(const char *format, ...);

@@ -16,7 +16,7 @@ int platform_init()
   printm("[Penglai Monitor@%s] init platfrom and prepare PMP\n", __func__);
   //config the PMP 0 to protect security monitor
   pmp_config.paddr = (uintptr_t)SM_BASE;
-  pmp_config.size = (unsigned long)SM_SIZE;
+  pmp_config.size = (unsigned long)SM_SIZE;//0x80024588
   pmp_config.mode = PMP_A_NAPOT;
   pmp_config.perm = PMP_NO_PERM;
   set_pmp_and_sync(0, pmp_config);

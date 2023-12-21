@@ -12,13 +12,38 @@
 #include <sm/gm/SM3.h>
 
 static struct cpu_state_t cpus[MAX_HARTS] = {{0,}, };
-
+static volatile int eids_num = 0;
 //spinlock
 static spinlock_t enclave_metadata_lock = SPIN_LOCK_INITIALIZER;
 
 //enclave metadata
 struct link_mem_t* enclave_metadata_head = NULL;
 struct link_mem_t* enclave_metadata_tail = NULL;
+
+void acquire_big_metadata_lock(const char * str)
+{
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%d] %s try lock\n", __func__, current_hartid(), str);
+	spin_lock(&enclave_metadata_lock);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%d] %s get lock\n", __func__, current_hartid(), str);
+}
+bool try_big_metadata_lock(const char * str)
+{
+	//spin_lock(&enclave_metadata_lock);
+	bool res;
+	res=spin_trylock(&enclave_metadata_lock);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s_%d] %s try get lock,res=%d\n", __func__, current_hartid(), str, res);
+	return res;
+}
+
+void release_big_metadata_lock(const char *str)
+{
+	spin_unlock(&enclave_metadata_lock);
+	if (LOCK_DEBUG)
+		printm("[PENGLAI SM@%s %d] %s release lock\n", __func__, current_hartid(), str);
+}
 
 static void enter_enclave_world(int eid)
 {
@@ -113,7 +138,7 @@ struct link_mem_t* add_link_mem(struct link_mem_t** tail)
 	return new_link_mem;
 }
 
-int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr,bool clear)
+int remove_link_mem(struct link_mem_t** head, struct link_mem_t* ptr, bool clear)
 {
 	struct link_mem_t *cur_link_mem, *tmp_link_mem;
 	int retval =0;
@@ -161,7 +186,7 @@ static struct enclave_t* alloc_enclave()
 	struct enclave_t* enclave = NULL;
 	int i, found, eid;
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	//enclave metadata list hasn't be initialized yet
 	if(enclave_metadata_head == NULL)
@@ -211,19 +236,75 @@ static struct enclave_t* alloc_enclave()
 		enclave->state = FRESH;
 		enclave->eid = eid;
 	}
+	//add to eids_num for recycle
+	eids_num += 1;
 
 alloc_eid_out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return enclave;
 }
 
-static int free_enclave(int eid, bool clear)
+uintptr_t free_enclave_metadata()
+{
+	int ret_val;
+	int eids_tmp;
+	struct link_mem_t *cur;
+	// struct enclave_t *enclave = NULL;
+	printm("[Penglai Monitor@%s] invoked\n", __func__);
+	ret_val	 = 0;
+	eids_tmp = eids_num;
+	for (cur = enclave_metadata_head; cur != NULL;
+	     cur = cur->next_link_mem) {
+		struct enclave_t *check_enclave = NULL;
+		for (size_t i = 0; i < cur->slab_num; i++) {
+			check_enclave = (struct enclave_t *)(cur->addr) + i;
+			if (!check_enclave) {
+				printm("[Penglai Monitor@%s] don't have enclave_metadata in cur\r\n",
+				       __func__);
+				ret_val = -1;
+				return ret_val;
+			};
+			if (check_enclave->state == FRESH) {
+				break;
+			}
+
+			if (check_enclave->state == INVALID) {
+				if (check_enclave->eid == (unsigned int)(-1)) {
+					eids_tmp--;
+				}
+				//all eids or eids in cur are invalid, free cur
+				if ((i == (cur->slab_num - 1)) ||
+				    eids_tmp == 0) {
+					struct link_mem_t *tmp = cur;
+					cur = cur->next_link_mem;
+					remove_link_mem(&enclave_metadata_head,
+							tmp, 1);
+					eids_num = eids_tmp;
+					break;
+				} else {
+					continue;
+				}
+			} else if (check_enclave->state != INVALID) {
+				printm("[Penglai Monitor@%s]enclave %ld is in use\n",
+				       __func__, i);
+				break;
+			}
+		}
+		if (cur == NULL) {
+			break;
+		}
+	}
+	print_buddy_system();
+	return 0;
+}
+
+static int free_enclave(int eid)
 {
 	struct link_mem_t *cur;
 	struct enclave_t *enclave = NULL;
 	int found, count, ret_val;
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	found = 0;
 	count = 0;
@@ -234,22 +315,22 @@ static int free_enclave(int eid, bool clear)
 			enclave = (struct enclave_t*)(cur->addr) + (eid - count);
 			sbi_memset((void*)enclave, 0, sizeof(struct enclave_t));
 			enclave->state = INVALID;
-			found = 1;
-			ret_val = 0;
-			remove_link_mem(&enclave_metadata_head,cur,clear);
+			enclave->eid   = -1;
+			found	       = 1;
+			ret_val = 0;			
 			break;
 		}
 		count += cur->slab_num;
 	}
 
 	//haven't alloc this eid
-	if(!found)
-	{
-		printm("[Penglai Monitor@%s] haven't alloc this eid\r\n", __func__);
+	if (!found) {
+		printm("[Penglai Monitor@%s] haven't alloc this eid %d\r\n",
+		       __func__, eid);
 		ret_val = -1;
 	}
 
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 
 	return ret_val;
 }
@@ -260,7 +341,7 @@ struct enclave_t* get_enclave(int eid)
 	struct enclave_t *enclave;
 	int found, count;
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	found = 0;
 	count = 0;
@@ -283,12 +364,13 @@ struct enclave_t* get_enclave(int eid)
 		enclave = NULL;
 	}
 
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return enclave;
 }
 
 int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
-{
+{	
+	printm("[Penglai Monitor@%s %d] swap_from_host_to_enclave\n", __func__, current_hartid());
 	//grant encalve access to memory
 	if(grant_enclave_access(enclave) < 0)
 		return -1;
@@ -344,6 +426,7 @@ int swap_from_host_to_enclave(uintptr_t* host_regs, struct enclave_t* enclave)
 
 int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 {
+	printm("[Penglai Monitor@%s] swap_from_enclave_to_host\n", __func__);
 	//retrieve enclave access to memory
 	retrieve_enclave_access(enclave);
 
@@ -388,7 +471,7 @@ int swap_from_enclave_to_host(uintptr_t* regs, struct enclave_t* enclave)
 	return 0;
 }
 
-uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
+uintptr_t create_enclave(struct enclave_sbi_param_t create_args, bool retry)
 {
 	struct enclave_t* enclave;
 	unsigned int eid;
@@ -398,26 +481,34 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	if(!enclave)
 	{
 		printm("[Penglai Monitor@%s] enclave allocation is failed \r\n", __func__);
-		sbi_memset((void*)(create_args.paddr), 0, create_args.size);
-		mm_free((void*)(create_args.paddr), create_args.size);
-		return ENCLAVE_ERROR;
+		
+		if (retry)
+		{
+			printm("[Penglai Monitor@%s] retry failed, clear enclave \r\n", __func__);
+			sbi_memset((void*)(create_args.paddr), 0, create_args.size);
+			mm_free((void*)(create_args.paddr), create_args.size);
+		}
+		
+		return ENCLAVE_NO_MEMORY;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+    // acquire_big_metadata_lock(__func__);
 
 	eid = enclave->eid;
 	enclave->paddr = create_args.paddr;
 	enclave->size = create_args.size;
 	enclave->entry_point = create_args.entry_point;
 	enclave->untrusted_ptr = create_args.untrusted_ptr;
-	enclave->untrusted_size = create_args.untrusted_size;
+	enclave->untrusted_ptr_paddr = create_args.untrusted_paddr;
+	enclave->untrusted_size	     = create_args.untrusted_size;
 	enclave->free_mem = create_args.free_mem;
 	enclave->ocall_func_id = create_args.ecall_arg0;
 	enclave->ocall_arg0 = create_args.ecall_arg1;
 	enclave->ocall_arg1 = create_args.ecall_arg2;
 	enclave->ocall_syscall_num = create_args.ecall_arg3;
 	enclave->kbuffer = create_args.kbuffer;
-	enclave->kbuffer_size = create_args.kbuffer_size;
+	enclave->kbuffer_paddr	     = create_args.kbuffer_paddr;
+	enclave->kbuffer_size	     = create_args.kbuffer_size;
 	enclave->host_ptbr = csr_read(CSR_SATP);
 	enclave->thread_context.encl_ptbr = (create_args.paddr >> (RISCV_PGSHIFT) | SATP_MODE_CHOICE);
 	enclave->root_page_table = (unsigned long*)create_args.paddr;
@@ -442,6 +533,7 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	// TODO: verify hash and whitelist check
 
 	// Check page table mapping secure and not out of bound
+	//put it in run_enclave for debug
 	retval = check_enclave_pt(enclave);
 	if(retval != 0)
 	{
@@ -459,7 +551,8 @@ uintptr_t create_enclave(struct enclave_sbi_param_t create_args)
 	printm("[Penglai Monitor@%s] return eid:%d\n",
 			__func__, enclave->eid);
 
-	spin_unlock(&enclave_metadata_lock);
+	//spin_unlock(&enclave_metadata_lock);
+    // release_big_metadata_lock(__func__);
 	return 0;
 
 /*
@@ -470,10 +563,11 @@ error_out:
 	sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 	mm_free((void*)(enclave->paddr), enclave->size);
 
-	spin_unlock(&enclave_metadata_lock);
+	//spin_unlock(&enclave_metadata_lock);
+    // release_big_metadata_lock(__func__);
 
 	//free enclave struct
-	free_enclave(eid,0); //the enclave state will be set INVALID here
+	free_enclave(eid); //the enclave state will be set INVALID here
 	return ENCLAVE_ERROR;
 }
 
@@ -488,8 +582,13 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 		printm_err("[Penglai Monitor@%s] wrong enclave id\r\n", __func__);
 		return -1UL;
 	}
-
-	spin_lock(&enclave_metadata_lock);
+#if 0
+	printm("[Penglai@%s], check PT for run enclave\n", __func__);
+	// dump_pt(enclave->root_page_table, 1);
+	retval = check_enclave_pt(enclave);
+#endif
+	//spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if (enclave->state != FRESH)
 	{
@@ -528,7 +627,8 @@ uintptr_t run_enclave(uintptr_t* regs, unsigned int eid)
 	enclave->state = RUNNING;
 
 run_enclave_out:
-	spin_unlock(&enclave_metadata_lock);
+	//spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return retval;
 }
 
@@ -542,7 +642,8 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 		return -1UL;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+	//spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
@@ -569,7 +670,8 @@ uintptr_t stop_enclave(uintptr_t* regs, unsigned int eid)
 	enclave->state = STOPPED;
 
 stop_enclave_out:
-	spin_unlock(&enclave_metadata_lock);
+	//spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return retval;
 }
 
@@ -583,7 +685,8 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 		return -1UL;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+	//spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if (enclave->host_ptbr != csr_read(CSR_SATP))
 	{
@@ -610,10 +713,10 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 		mm_free((void*)(enclave->paddr), enclave->size);
 		enclave->state = INVALID;
 
-		spin_unlock(&enclave_metadata_lock);
+    	release_big_metadata_lock(__func__);
 
 		//free enclave struct
-		retval = free_enclave(eid,0); //the enclave state will be set INVALID here
+		retval = free_enclave(eid); //the enclave state will be set INVALID here
 		return retval;
 	}
 	//FIXME: what if the enclave->state is RUNNABLE now?
@@ -621,7 +724,7 @@ uintptr_t destroy_enclave(uintptr_t* regs, unsigned int eid)
 	/* The real-destroy happen when the enclave traps into the monitor */
 	enclave->state = DESTROYED;
 out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return retval;
 }
 
@@ -636,7 +739,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 		return -1UL;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
 		printm("[Penglai Monitor@%s] enclave doesn't belong to current host process\r\n", __func__);
@@ -655,7 +758,7 @@ uintptr_t resume_from_stop(uintptr_t* regs, unsigned int eid)
 	printm("[Penglai Monitor@%s] encalve-%d turns to runnable now!\n", __func__, eid);
 
 resume_from_stop_out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return retval;
 }
 
@@ -669,7 +772,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 		return -1UL;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if(enclave->host_ptbr != csr_read(CSR_SATP))
 	{
@@ -691,7 +794,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 		spin_unlock(&enclave_metadata_lock);
 
 		//free enclave struct
-		free_enclave(eid,0); //the enclave state will be set INVALID here
+		free_enclave(eid); //the enclave state will be set INVALID here
 		return ENCLAVE_SUCCESS; //this will break the infinite loop in the enclave-driver
 	}
 
@@ -717,7 +820,7 @@ uintptr_t resume_enclave(uintptr_t* regs, unsigned int eid)
 	retval = regs[10];
 
 resume_enclave_out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return retval;
 }
 
@@ -727,7 +830,7 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
 	int attestable = 1;
 	struct report_t report;
 	enclave = get_enclave(eid);
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if(!attestable)
 	{
@@ -746,7 +849,7 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
 
 	copy_to_host((void*)report_ptr, (void*)(&report), sizeof(struct report_t));
 
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return 0;
 }
 
@@ -759,30 +862,37 @@ uintptr_t exit_enclave(uintptr_t* regs, unsigned long retval)
 		printm_err("[Penglai Monitor@%s] cpu is not in enclave world now\r\n", __func__);
 		return -1;
 	}
-	printm_err("[Penglai Monitor@%s] retval of enclave is %lx\r\n", __func__, retval);
+	printm("[Penglai Monitor@%s] retval of enclave is %lx\r\n", __func__, retval);
 
 	enclave = get_enclave(eid);
 
-	spin_lock(&enclave_metadata_lock);
+	//spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
 		printm_err("[Penglai Monitor@%s] current enclave's eid is not %d\r\n", __func__, eid);
-		spin_unlock(&enclave_metadata_lock);
+		//spin_unlock(&enclave_metadata_lock);
+    	release_big_metadata_lock(__func__);
 		return -1UL;
 	}
 
 	swap_from_enclave_to_host(regs, enclave);
 
+	printm("[Penglai Monitor@%s] untreasted mem:%lx ,val:%s \n\t kbuffer_addr:%lx val:%s \n",
+	       __func__, enclave->untrusted_ptr,
+	       (unsigned char *)(enclave->untrusted_ptr_paddr), enclave->kbuffer_paddr,
+	       (unsigned char *)(enclave->kbuffer_paddr));
 	//free enclave's memory
 	//TODO: support multiple memory region
 	sbi_memset((void*)(enclave->paddr), 0, enclave->size);
-	mm_free((void*)(enclave->paddr), enclave->size);
-
-	spin_unlock(&enclave_metadata_lock);
+	// mm_free((void*)(enclave->paddr), enclave->size);
+	// Optional: used to reclaim secmem immediately upon enclave exit
+	mm_free_clear((void*)(enclave->paddr), enclave->size);
+	release_big_metadata_lock(__func__);
 
 	//free enclave struct
-	free_enclave(eid, 0);
+	free_enclave(eid);
 	return 0;
 }
 
@@ -791,15 +901,17 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	uintptr_t ret = 0;
 	int eid = get_enclave_id();
 	struct enclave_t* enclave = NULL;
+	
 	if(check_in_enclave_world() < 0)
 	{
 		printm_err("[Penglai Monitor@%s] check enclave world is failed\n", __func__);
 		return -1;
 	}
 
-	enclave = get_enclave(eid);
+	enclave = get_enclave(eid); 
+	printm("[Penglai Monitor@%s] untreasted mem:%lx ,val:%s \n\t kbuffer_addr:%lx val:%s \n",__func__, enclave->untrusted_ptr_paddr, (unsigned char*)(enclave->untrusted_ptr_paddr), enclave->kbuffer_paddr, (unsigned char*)(enclave->kbuffer_paddr));
 
-	spin_lock(&enclave_metadata_lock);
+	acquire_big_metadata_lock(__func__);
 
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
@@ -815,7 +927,7 @@ uintptr_t enclave_sys_write(uintptr_t* regs)
 	enclave->state = RUNNABLE;
 	ret = ENCLAVE_OCALL;
 out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return ret;
 }
 
@@ -845,7 +957,7 @@ uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t 
 
 	enclave = get_enclave(eid);
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
@@ -878,7 +990,7 @@ uintptr_t enclave_derive_seal_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t 
 	}
 
 out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return ret;
 }
 
@@ -895,7 +1007,7 @@ uintptr_t enclave_user_defined_ocall(uintptr_t* regs, uintptr_t ocall_buf_size)
 
 	enclave = get_enclave(eid);
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
 	{
@@ -912,7 +1024,7 @@ uintptr_t enclave_user_defined_ocall(uintptr_t* regs, uintptr_t ocall_buf_size)
 	enclave->state = RUNNABLE;
 	ret = ENCLAVE_OCALL;
 out:
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 	return ret;
 }
 
@@ -936,7 +1048,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 		return -1UL;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	/*
 	 * An enclave trapping into monitor should not have other states.
@@ -954,10 +1066,10 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 		sbi_memset((void*)(enclave->paddr), 0, enclave->size);
 		mm_free((void*)(enclave->paddr), enclave->size);
 
-		spin_unlock(&enclave_metadata_lock);
+    	release_big_metadata_lock(__func__);
 
 		//free enclave struct
-		retval = free_enclave(eid,0); //the enclave state will be set INVALID here
+		retval = free_enclave(eid); //the enclave state will be set INVALID here
 
 		retval = ENCLAVE_SUCCESS; //this means we will not run any more
 		goto timer_irq_out;
@@ -969,7 +1081,7 @@ uintptr_t do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 		retval = ENCLAVE_TIMER_IRQ;
 	}
 
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 
 timer_irq_out:
 	csr_read_clear(CSR_MIE, MIP_MTIP);
@@ -992,7 +1104,7 @@ uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
 		return -1UL;
 	}
 
-	spin_lock(&enclave_metadata_lock);
+    acquire_big_metadata_lock(__func__);
 
 	switch(ocall_func_id)
 	{
@@ -1007,7 +1119,7 @@ uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
 			break;
 	}
 
-	spin_unlock(&enclave_metadata_lock);
+    release_big_metadata_lock(__func__);
 
 	retval = resume_enclave(regs, eid);
 	return retval;
