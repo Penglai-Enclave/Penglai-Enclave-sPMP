@@ -28,7 +28,7 @@ unsigned int total_enclave_page(int elf_size, int stack_size)
 
 int create_sbi_param(enclave_t* enclave, struct penglai_enclave_sbi_param * enclave_sbi_param,
 		unsigned long paddr, unsigned long size, unsigned long entry_point,
-		unsigned long untrusted_ptr, unsigned long untrusted_size, unsigned long free_mem)
+		unsigned long untrusted_ptr, unsigned long untrusted_ptr_paddr, unsigned long untrusted_size, unsigned long free_mem, unsigned long kbuffer_ptr, unsigned long kbuffer_paddr)
 {
 	enclave_sbi_param -> eid_ptr = (unsigned int* )__pa(&enclave -> eid);
 	enclave_sbi_param -> ecall_arg0 = (unsigned long* )__pa(&enclave -> ocall_func_id);
@@ -39,10 +39,13 @@ int create_sbi_param(enclave_t* enclave, struct penglai_enclave_sbi_param * encl
 	enclave_sbi_param -> size = size;
 	enclave_sbi_param -> entry_point = entry_point;
 	enclave_sbi_param -> untrusted_ptr = untrusted_ptr;
-	enclave_sbi_param -> untrusted_size = untrusted_size;
+	enclave_sbi_param->untrusted_paddr = untrusted_ptr_paddr;
+	enclave_sbi_param->untrusted_size = untrusted_size;
 	enclave_sbi_param -> free_mem = free_mem;
 	//enclave share mem with kernel
-	enclave_sbi_param->kbuffer = ENCLAVE_DEFAULT_KBUFFER;
+	// enclave_sbi_param->kbuffer = ENCLAVE_DEFAULT_KBUFFER;
+	enclave_sbi_param->kbuffer = kbuffer_ptr;
+	enclave_sbi_param->kbuffer_paddr = kbuffer_paddr;
 	enclave_sbi_param->kbuffer_size = enclave->kbuffer_size;
 	return 0;
 }
@@ -155,8 +158,8 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 	}
 	enclave->untrusted_mem->addr = (vaddr_t)untrusted_mem_ptr;
 	enclave->untrusted_mem->size = untrusted_mem_size;
-	dprint("[Penglai Driver@%s] untrusted_mem->addr:0x%lx untrusted_mem->size:0x%lx\n",
-			__func__, (vaddr_t)untrusted_mem_ptr, untrusted_mem_size);
+	dprint("[Penglai Driver@%s] untrusted_mem->addr:0x%lx ,paddr:%lx, untrusted_mem->size:0x%lx\n",
+			__func__, (vaddr_t)untrusted_mem_ptr, __pa(untrusted_mem_ptr), untrusted_mem_size);
 
 	alloc_kbuffer(ENCLAVE_DEFAULT_KBUFFER_SIZE, &kbuffer_ptr, enclave);	//May sleep
 	enclave->kbuffer = (vaddr_t)kbuffer_ptr;
@@ -164,9 +167,9 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 
 	free_mem = get_free_mem(&(enclave->enclave_mem->free_mem));
 	create_sbi_param(enclave, enclave_sbi_param,
-			(unsigned long)(enclave->enclave_mem->paddr),
-			enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR,
-			untrusted_mem_size, __pa(free_mem));
+					 (unsigned long)(enclave->enclave_mem->paddr),
+					 enclave->enclave_mem->size, elf_entry, DEFAULT_UNTRUSTED_PTR, __pa(untrusted_mem_ptr),
+					 untrusted_mem_size, __pa(free_mem), ENCLAVE_DEFAULT_KBUFFER, __pa(kbuffer_ptr));
 
 	dprint("[Penglai Driver@%s] enclave_mem->paddr:0x%lx, size:0x%lx\n",
 			__func__, (unsigned long)(enclave->enclave_mem->paddr),
@@ -181,6 +184,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		if(ret.value == ENCLAVE_NO_MEMORY){
 			//TODO: allocate certain memory region like sm_init
 			unsigned long addr;
+			int retry = 5;
 			addr = __get_free_pages(GFP_ATOMIC, DEFAULT_SECURE_PAGES_ORDER);
 			if(!addr)
 			{
@@ -189,8 +193,15 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 			}
 			dprint("[Penglai Driver@%s] new alloc paddr:0x%lx\n",__func__, addr);
 			ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), (1 << (DEFAULT_SECURE_PAGES_ORDER + RISCV_PGSHIFT)) );
-			if(ret.error)
+
+			while (ret.value == RETRY_SPIN_LOCK && retry)
 			{
+				retry--;
+				ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), (1 << (DEFAULT_SECURE_PAGES_ORDER + RISCV_PGSHIFT)));
+			}
+
+			if(ret.error)
+			{	
 				printk("KERNEL MODULE: sbi call extend memory is failed\n");
 				goto destroy_enclave;
 			}
@@ -350,8 +361,11 @@ int penglai_enclave_run(struct file *filep, unsigned long args)
 			return -EINVAL;
 		}
 		memset((void*)enclave->untrusted_mem->addr, 0, enclave->untrusted_mem->size);
-		if(copy_from_user((void*)enclave->untrusted_mem->addr, (void*)untrusted_mem_ptr, untrusted_mem_size))
+		if (copy_from_user((void *)enclave->untrusted_mem->addr, (void *)untrusted_mem_ptr, untrusted_mem_size))
+		{
+			printk("KERNEL MODULE: copy_from_user failed \n");
 			return -EFAULT;
+		}
 	}
 
 	dprint("[Penglai Driver@%s] goto infinite run loop\n", __func__);
@@ -583,7 +597,7 @@ int penglai_enclave_resume(struct file * filep, unsigned long args)
 								if (copy_to_user((void*)untrusted_mem_ptr, (void*)enclave->untrusted_mem->addr, ocall_buf_size))
 									return -EFAULT;
 							}
-							printk("[Penglai Driver@%s] return user for ocall \n", __func__);
+							dprint("[Penglai Driver@%s] return user for ocall,enclave->untrusted_mem:%lx\n\t kbuffer:%lx kbuffer_val:%s \n", __func__, (void *)(enclave->untrusted_mem->addr), enclave->kbuffer, (void *)(enclave->kbuffer));
 							return RETURN_USER_FOR_OCALL;
 						}
 						default:
@@ -631,6 +645,30 @@ out:
 	return retval;
 }
 
+int penglai_enclave_memory_reclaim(struct file * filep, unsigned long args){
+	int retval;
+	struct sbiret ret = {0};
+	struct mm_reclaim_arg_t* mm_reclaim;
+
+	struct penglai_enclave_user_param * enclave_param = (struct penglai_enclave_user_param*) args;
+	unsigned long eid = enclave_param ->eid;
+	enclave_t * enclave;
+
+	enclave = get_enclave_by_id(eid);
+
+	mm_reclaim = kmalloc(sizeof(struct mm_reclaim_arg_t), GFP_KERNEL);
+
+	acquire_big_lock(__func__);
+	ret = SBI_CALL_2(SBI_SM_MEMORY_RECLAIM, __pa(mm_reclaim), enclave->eid);
+	retval = ret.value;
+	
+	release_big_lock(__func__);
+
+	dprint("[Penglai Driver@%s]A total of %lx enclave memory was reclaimed\n",__func__, mm_reclaim->resp_size);
+	kfree(mm_reclaim);
+	return retval;
+}
+
 long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long args)
 {
 	char ioctl_data[1024];
@@ -669,6 +707,9 @@ long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long a
 			break;
 		case PENGLAI_ENCLAVE_IOC_DESTROY_ENCLAVE:
 			ret = penglai_enclave_destroy(filep, (unsigned long)ioctl_data);
+			break;
+		case PENGLAI_ENCLAVE_MEMORY_RECLAIM:
+			ret = penglai_enclave_memory_reclaim(filep, (unsigned long)ioctl_data);
 			break;
 		case PENGLAI_ENCLAVE_IOC_DEBUG_PRINT:
 			sbiret = SBI_CALL_1(SBI_SM_DEBUG_PRINT, 0);

@@ -114,7 +114,7 @@ void enclave_ioctl_exit(void)
 		{
 			free_pages((long unsigned int)__va(addr), (order - RISCV_PGSHIFT));
 		}
-
+		*size = 0;
 		sbiret = SBI_CALL_2(SBI_SM_FREE_ENCLAVE_MEM, __pa(size), FREE_MAX_MEMORY);
 
 		addr = (unsigned long)(sbiret.value);

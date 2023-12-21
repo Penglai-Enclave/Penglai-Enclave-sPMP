@@ -20,6 +20,8 @@
 	_IOW(PENGLAI_ENCLAVE_IOC_MAGIC, 0x05, struct penglai_enclave_user_param)
 #define PENGLAI_ENCLAVE_IOC_DEBUG_PRINT \
 	_IOW(PENGLAI_ENCLAVE_IOC_MAGIC, 0x06, struct penglai_enclave_user_param)
+#define PENGLAI_ENCLAVE_MEMORY_RECLAIM \
+  _IOW(PENGLAI_ENCLAVE_IOC_MAGIC, 0x07, struct penglai_enclave_user_param)
 
 #define DEFAULT_SECURE_PAGES_ORDER 10
 #define DEFAULT_CLOCK_DELAY 100000
@@ -48,10 +50,12 @@ struct penglai_enclave_sbi_param
 	unsigned long size;
 	unsigned long entry_point;
 	unsigned long untrusted_ptr;
+	unsigned long untrusted_paddr;
 	unsigned long untrusted_size;
 	unsigned long free_mem;
 	//enclave shared mem with kernel
 	unsigned long kbuffer;
+	unsigned long kbuffer_paddr;
 	unsigned long kbuffer_size;
 	unsigned long *ecall_arg0;
 	unsigned long *ecall_arg1;
@@ -106,6 +110,13 @@ struct penglai_enclave_ioctl_attest_enclave
 	unsigned long eid;
 	unsigned long nonce;
 	struct report_t report;
+};
+
+struct mm_reclaim_arg_t
+{
+  unsigned long req_size;
+  unsigned long req_addr;
+  unsigned long resp_size;
 };
 
 long penglai_enclave_ioctl(struct file* filep, unsigned int cmd, unsigned long args);

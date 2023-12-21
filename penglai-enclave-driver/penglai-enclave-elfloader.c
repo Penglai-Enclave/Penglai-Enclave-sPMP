@@ -1,4 +1,26 @@
 #include "penglai-enclave-elfloader.h"
+#define	ROUND_TO(x, align)  (((x) + ((align)-1)) & ~((align)-1))
+
+// Function to print hex data
+static void print_hex(const void *data, size_t size) {
+    const unsigned char *byte_data = data;
+    size_t i;
+
+    for (i = 0; i < size; ) {
+        printk("%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x", 
+		byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],
+		byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],
+		byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],
+		byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++],byte_data[i++]);
+        // // 每16个字节输出一个换行符
+        // if ((i + 1) % 32 == 0)
+        //     printk("\n");
+    }
+
+    // 如果最后一行不足16个字节，输出换行符
+    if (i % 16 != 0)
+        printk("\n");
+}
 
 int penglai_enclave_load_NOBITS_section(enclave_mem_t* enclave_mem, void * elf_sect_addr, int elf_sect_size)
 {
@@ -25,8 +47,9 @@ int penglai_enclave_load_program(enclave_mem_t* enclave_mem, vaddr_t elf_prog_in
 {
 	vaddr_t addr;
 	vaddr_t enclave_new_page;
+	vaddr_t begin_page = 0;
 	int size;
-	int r;
+	unsigned long r = 0;
 	for(addr =  (vaddr_t)elf_prog_addr; addr <  (vaddr_t)elf_prog_addr + elf_prog_size; addr += RISCV_PGSIZE)
 	{
 
@@ -35,8 +58,17 @@ int penglai_enclave_load_program(enclave_mem_t* enclave_mem, vaddr_t elf_prog_in
 			size = elf_prog_size % RISCV_PGSIZE;
 		else
 			size = RISCV_PGSIZE;
-		r = copy_from_user((void* )enclave_new_page, (void *)(elf_prog_infile_addr + addr - (vaddr_t)elf_prog_addr), size);
+		r += copy_from_user((void* )enclave_new_page, (void *)(elf_prog_infile_addr + addr - (vaddr_t)elf_prog_addr), size);
+		if (r)
+		{
+			printk("KERNEL MODULE:  load_program copy_from_user failed r=0x%lx\n",r);
+		}
+		
+		// dprint("[Penglai Driver@%s]copy segment 0x%lx to va:0x%lx -pa:0x%lx \n",__func__ ,(unsigned long)((void *)(elf_prog_addr + addr - (vaddr_t)elf_prog_addr)) ,(vaddr_t)enclave_new_page ,__pa((vaddr_t)enclave_new_page));	
+		if(!begin_page)begin_page = enclave_new_page;
+		// print_hex(enclave_new_page, size);
 	}
+	dprint("[Penglai Driver@%s] SUCCESS! from 0x%lx to 0x%lx r=0x%x\n",__func__,(unsigned long)elf_prog_addr,(unsigned long)(elf_prog_addr + elf_prog_size) ,r);
 	return 0;
 }
 
