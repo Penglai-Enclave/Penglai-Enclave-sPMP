@@ -62,10 +62,12 @@ enclave_t* create_enclave(int total_pages)
 		goto free_enclave;
 	}
 
-	printk("[Penglai Driver@%s] total_pages:%d order:%ld\n",
+	dprint("[Penglai Driver@%s] total_pages:%d order:%ld\n",
 			__func__, total_pages, order);
 	//Note: SBI_SM_ALLOC_ENCLAVE_MEM's arg is the num of bytes instead of pages
-	require_sec_memory->size = total_pages << RISCV_PGSHIFT;
+	require_sec_memory->size = total_pages << RISCV_PGSHIFT;//0x200000
+    dprint("[Penglai Driver@%s] require_sec_memory va: %lx, pa: %lx, __va(pa): %lx, size:%lx\n",
+			__func__, (unsigned long)require_sec_memory, __pa(require_sec_memory), (unsigned long)__va(__pa(require_sec_memory)),(unsigned long)require_sec_memory->size);
 
 	ret = SBI_CALL_1(SBI_SM_ALLOC_ENCLAVE_MEM, __pa(require_sec_memory));
 	pa = require_sec_memory->paddr;
@@ -83,7 +85,7 @@ enclave_t* create_enclave(int total_pages)
 			goto free_enclave;
 		}
 
-		ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), 4096 * (1 << order) );
+		ret = SBI_CALL_2(SBI_SM_MEMORY_EXTEND, __pa(addr), (1 << (order+RISCV_PGSHIFT)) );
 		if(ret.error)
 		{
 			printk("KERNEL MODULE: sbi call extend memory is failed\n");
@@ -125,7 +127,7 @@ free_enclave:
 	if(enclave_mem) kfree(enclave_mem);
 	if(untrusted_mem) kfree(untrusted_mem);
     if(require_sec_memory) kfree(require_sec_memory);
-
+	spin_unlock_bh(&kmalloc_enclave_lock);
 	return NULL;
 }
 

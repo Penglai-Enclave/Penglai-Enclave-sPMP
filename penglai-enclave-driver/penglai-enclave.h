@@ -28,11 +28,12 @@
 #define SBI_SM_DESTROY_ENCLAVE           94
 #define SBI_SM_ALLOC_ENCLAVE_MEM         93
 #define SBI_SM_MEMORY_EXTEND             92
-#define SBI_SM_MEMORY_RECLAIM      		 91
+#define SBI_SM_MEMORY_RECLAIM			 91
 #define SBI_SM_FREE_ENCLAVE_MEM          90
 #define SBI_SM_DEBUG_PRINT               88
 
 //Error codes of SBI_SM_ALLOC_ENCLAVE_MEM
+#define RETRY_SPIN_LOCK         		 -3
 #define ENCLAVE_NO_MEMORY                -2
 #define ENCLAVE_UNKNOWN_ERROR            -1
 #define ENCLAVE_SUCCESS                   0
@@ -87,6 +88,13 @@ typedef struct require_sec_memory
 	unsigned long paddr;
 	unsigned long resp_size;
 } require_sec_memory_t;
+
+typedef struct reclaim_sec_memory
+{
+	unsigned long size;
+	unsigned long paddr;
+	unsigned long resp_size;
+} reclaim_sec_memory_t;
 
 enclave_t* create_enclave(int total_pages);
 int destroy_enclave(enclave_t* enclave);
