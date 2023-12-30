@@ -7,21 +7,12 @@ on:
                 branches: [openeuler, opensbi]
 
 jobs:
-        build:
-                runs-on: ubuntu-latest
-                name: build penglai enclave (based on openSBI)
-                steps:
-                        - name: Check out code
-                          uses: actions/checkout@v2
-                        - name: build step
-                          id: build 
-                          uses: Ddnirvana/action-penglai-build@v1
         build_run:
                 runs-on: ubuntu-latest
                 name: Build and run penglai enclave
                 steps:
-                        - name: Checkout repository
-                          uses: actions/checkout@v2
-                        - name: Build and test Penglai monitor (based on OpenSBI).
-                          id: build_run
-                          uses: Fly0307/action-penglai-opensbi-build-and-test@oe-23
+                  - name: Checkout repository
+                    uses: actions/checkout@v2
+                  - name: Build and test Penglai monitor (based on OpenSBI).
+                    id: build_run
+                    uses: Fly0307/action-penglai-opensbi-build-and-test@oe-23
