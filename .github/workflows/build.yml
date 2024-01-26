@@ -2,9 +2,9 @@ name: build
 
 on: 
         push:
-                branches: [openeuler, opensbi]
+                branches: [opensbi]
         pull_request:
-                branches: [openeuler, opensbi]
+                branches: [opensbi]
 
 jobs:
         build_run:
