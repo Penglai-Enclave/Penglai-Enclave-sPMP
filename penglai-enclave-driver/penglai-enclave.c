@@ -47,10 +47,10 @@ enclave_t* create_enclave(int total_pages)
 {
 	vaddr_t addr = 0;
 	paddr_t pa = 0;
-	enclave_t* enclave = kmalloc(sizeof(enclave_t), GFP_KERNEL);
-	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_KERNEL);
-	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_KERNEL);
-	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_KERNEL);
+	enclave_t* enclave = kmalloc(sizeof(enclave_t), GFP_ATOMIC);
+	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_ATOMIC);
+	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_ATOMIC);
+	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_ATOMIC);
 	spin_lock_bh(&kmalloc_enclave_lock);
 	int size;
 	struct sbiret ret;
