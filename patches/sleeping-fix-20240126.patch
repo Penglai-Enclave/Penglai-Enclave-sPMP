@@ -1,0 +1,120 @@
+diff --git a/opensbi-1.2/lib/sbi/sm/platform/pmp/platform.c b/opensbi-1.2/lib/sbi/sm/platform/pmp/platform.c
+index 2d9a1eeb0..995b63f94 100644
+--- a/opensbi-1.2/lib/sbi/sm/platform/pmp/platform.c
++++ b/opensbi-1.2/lib/sbi/sm/platform/pmp/platform.c
+@@ -3,6 +3,18 @@
+ 
+ #include <sm/print.h>
+ 
++unsigned long ALIGN_UP_POWER_OF_2(unsigned long size){
++    if (size <= 0) return 1;
++    if ((size & (size - 1)) == 0) return size;
++    size |= size >> 1;
++    size |= size >> 2;
++    size |= size >> 4;
++    size |= size >> 8;
++    size |= size >> 16;
++    size |= size >> 32;
++    return size + 1;
++}
++
+ int platform_init()
+ {
+   struct pmp_config_t pmp_config;
+@@ -16,7 +28,7 @@ int platform_init()
+   printm("[Penglai Monitor@%s] init platfrom and prepare PMP\n", __func__);
+   //config the PMP 0 to protect security monitor
+   pmp_config.paddr = (uintptr_t)SM_BASE;
+-  pmp_config.size = (unsigned long)SM_SIZE;//0x80024588
++  pmp_config.size = ALIGN_UP_POWER_OF_2((unsigned long)SM_SIZE);
+   pmp_config.mode = PMP_A_NAPOT;
+   pmp_config.perm = PMP_NO_PERM;
+   set_pmp_and_sync(0, pmp_config);
+@@ -31,4 +43,4 @@ int platform_init()
+ 
+   printm("[Penglai Monitor@%s] setting initial PMP ready\n", __func__);
+   return 0;
+-}
++}
+\ No newline at end of file
+diff --git a/penglai-enclave-driver/penglai-enclave-ioctl.c b/penglai-enclave-driver/penglai-enclave-ioctl.c
+index b1b740705..b30f05e53 100644
+--- a/penglai-enclave-driver/penglai-enclave-ioctl.c
++++ b/penglai-enclave-driver/penglai-enclave-ioctl.c
+@@ -56,7 +56,7 @@ int alloc_untrusted_mem(unsigned long untrusted_mem_size, unsigned long* untrust
+ 	vaddr_t addr;
+ 	unsigned long order = ilog2((untrusted_mem_size >> RISCV_PGSHIFT)- 1) + 1;
+ 
+-	addr = __get_free_pages(GFP_HIGHUSER,order);
++	addr = __get_free_pages(GFP_ATOMIC, order);
+ 	if(!addr)
+ 	{
+ 		printk("KERNEL MODULE: can not alloc untrusted mem \n");
+@@ -76,7 +76,7 @@ int alloc_kbuffer(unsigned long kbuffer_size, unsigned long* kbuffer_ptr, enclav
+ 	vaddr_t addr;
+ 	unsigned long order = ilog2((kbuffer_size >> RISCV_PGSHIFT) - 1) + 1;
+ 
+-	addr = __get_free_pages(GFP_HIGHUSER, order);
++	addr = __get_free_pages(GFP_ATOMIC, order);
+ 	if(!addr)
+ 	{
+ 		printk("KERNEL MODULE: can not alloc kbuffer\n");
+@@ -125,7 +125,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
+ 		return -1;
+ 	}
+ 
+-	acquire_big_lock(__func__);
++	// acquire_big_lock(__func__);
+ 	enclave = create_enclave(total_pages);							//May sleep
+ 	if(!enclave)
+ 	{
+@@ -140,6 +140,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
+ 		printk("KERNEL MODULE: penglai_enclave_eapp_preprare is failed\n");;
+ 		goto destroy_enclave;
+ 	}
++	acquire_big_lock(__func__);
+ 	if(elf_entry == 0)
+ 	{
+ 		printk("KERNEL MODULE: elf_entry reset is failed \n");
+diff --git a/penglai-enclave-driver/penglai-enclave.c b/penglai-enclave-driver/penglai-enclave.c
+index ded917821..7e4492efa 100644
+--- a/penglai-enclave-driver/penglai-enclave.c
++++ b/penglai-enclave-driver/penglai-enclave.c
+@@ -47,10 +47,10 @@ enclave_t* create_enclave(int total_pages)
+ {
+ 	vaddr_t addr = 0;
+ 	paddr_t pa = 0;
+-	enclave_t* enclave = kmalloc(sizeof(enclave_t), GFP_KERNEL);
+-	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_KERNEL);
+-	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_KERNEL);
+-	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_KERNEL);
++	enclave_t* enclave = kmalloc(sizeof(enclave_t), GFP_ATOMIC);
++	enclave_mem_t* enclave_mem = kmalloc(sizeof(enclave_mem_t), GFP_ATOMIC);
++	untrusted_mem_t* untrusted_mem = kmalloc(sizeof(untrusted_mem_t), GFP_ATOMIC);
++	require_sec_memory_t* require_sec_memory = kmalloc(sizeof(require_sec_memory_t), GFP_ATOMIC);
+ 	spin_lock_bh(&kmalloc_enclave_lock);
+ 	int size;
+ 	struct sbiret ret;
+diff --git a/scripts/build_opensbi.sh b/scripts/build_opensbi.sh
+index 31922d0bd..d3ce42ef7 100755
+--- a/scripts/build_opensbi.sh
++++ b/scripts/build_opensbi.sh
+@@ -9,15 +9,16 @@ kernel_version=2003
+ function build_opensbi_1() {
+     # build opensbi
+     cd /home/penglai/penglai-enclave/opensbi-${1}
++	rm -rf build-oe/qemu-virt
+ 	mkdir -p build-oe/qemu-virt
+ 	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
+ }
+ 
+ function build_opensbi_2() {
+-    cd ../Penglai-Enclave-sPMP/opensbi-${1}
++    cd /home/penglai/penglai-enclave/opensbi-${1}
+     rm -rf build-oe/qemu-virt
+     mkdir -p build-oe/qemu-virt
+-    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot/u-boot.bin -j$(nproc)
++    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot.bin -j$(nproc)
+ }
+ 
+ function print_usage() {
