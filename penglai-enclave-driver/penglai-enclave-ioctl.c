@@ -56,7 +56,7 @@ int alloc_untrusted_mem(unsigned long untrusted_mem_size, unsigned long* untrust
 	vaddr_t addr;
 	unsigned long order = ilog2((untrusted_mem_size >> RISCV_PGSHIFT)- 1) + 1;
 
-	addr = __get_free_pages(GFP_HIGHUSER,order);
+	addr = __get_free_pages(GFP_ATOMIC, order);
 	if(!addr)
 	{
 		printk("KERNEL MODULE: can not alloc untrusted mem \n");
@@ -76,7 +76,7 @@ int alloc_kbuffer(unsigned long kbuffer_size, unsigned long* kbuffer_ptr, enclav
 	vaddr_t addr;
 	unsigned long order = ilog2((kbuffer_size >> RISCV_PGSHIFT) - 1) + 1;
 
-	addr = __get_free_pages(GFP_HIGHUSER, order);
+	addr = __get_free_pages(GFP_ATOMIC, order);
 	if(!addr)
 	{
 		printk("KERNEL MODULE: can not alloc kbuffer\n");
@@ -125,7 +125,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		return -1;
 	}
 
-	acquire_big_lock(__func__);
+	// acquire_big_lock(__func__);
 	enclave = create_enclave(total_pages);							//May sleep
 	if(!enclave)
 	{
@@ -140,6 +140,7 @@ int penglai_enclave_create(struct file * filep, unsigned long args)
 		printk("KERNEL MODULE: penglai_enclave_eapp_preprare is failed\n");;
 		goto destroy_enclave;
 	}
+	acquire_big_lock(__func__);
 	if(elf_entry == 0)
 	{
 		printk("KERNEL MODULE: elf_entry reset is failed \n");

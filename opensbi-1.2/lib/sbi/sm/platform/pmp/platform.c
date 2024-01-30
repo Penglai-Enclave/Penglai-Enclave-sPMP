@@ -3,6 +3,18 @@
 
 #include <sm/print.h>
 
+unsigned long ALIGN_UP_POWER_OF_2(unsigned long size){
+    if (size <= 0) return 1;
+    if ((size & (size - 1)) == 0) return size;
+    size |= size >> 1;
+    size |= size >> 2;
+    size |= size >> 4;
+    size |= size >> 8;
+    size |= size >> 16;
+    size |= size >> 32;
+    return size + 1;
+}
+
 int platform_init()
 {
   struct pmp_config_t pmp_config;
@@ -16,7 +28,7 @@ int platform_init()
   printm("[Penglai Monitor@%s] init platfrom and prepare PMP\n", __func__);
   //config the PMP 0 to protect security monitor
   pmp_config.paddr = (uintptr_t)SM_BASE;
-  pmp_config.size = (unsigned long)SM_SIZE;//0x80024588
+  pmp_config.size = ALIGN_UP_POWER_OF_2((unsigned long)SM_SIZE);
   pmp_config.mode = PMP_A_NAPOT;
   pmp_config.perm = PMP_NO_PERM;
   set_pmp_and_sync(0, pmp_config);
