@@ -197,6 +197,13 @@ qemu-system-riscv64 -nographic -machine virt \
 			-netdev user,id=usernet,hostfwd=tcp::12055-:22 \
 			-device qemu-xhci -usb -device usb-kbd -device usb-tablet
 ```
+Once started, you should execut the following command to obtain the kernel module compilation environment. Execute the following commands and the kernel source code will be downloaded locally, the path is `/usr/lib/modules/6.1.19-2.oe2303.riscv64`(For openEuler 2303).
+```
+#in VM
+cd ~/
+dnf install -y kernel-devel kernel-source
+```
+
 
 a simple way:
 
@@ -235,15 +242,8 @@ scp -P -r 12055 penglai-enclave-driver root@localhost:~/
 scp -P 12055 sdk/demo/host/host root@localhost:~/
 scp -P 12055 sdk/demo/prime/prime root@localhost:~/
 ```
-Execute the following commands and the kernel source code will be downloaded locally, the path is `/usr/lib/modules/6.1.19-2.oe2303.riscv64`.
 
-```
-#in VM
-cd ~/
-dnf install -y kernel-devel kernel-source
-```
-
-Go into the penglai-enclave-driver directory and modify the original kernel source path openeuler-kernel in the Makefile from `../openeuler-kernel/`to `/usr/lib/modules/6.1.19-2.oe2303.riscv64/build/`.
+Go into the penglai-enclave-driver directory and modify the original kernel source path openeuler-kernel in the Makefile from `../openeuler-kernel/`to `/usr/lib/modules/$(shell uname -r)/build/`.
 
 Compile and install the kernel module:
 
