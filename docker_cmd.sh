@@ -18,7 +18,7 @@ function print_usage() {
 # no arguments
 if [ $# == 0 ]; then
 	echo "Default: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.1 bash scripts/build_opensbi.sh -v 1.2 -k 2203
 	exit 0
 fi
 
@@ -30,7 +30,7 @@ fi
 # build penglai
 if [[ $1 == *"build"* ]]; then
 	echo "Build: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
 	exit 0
 fi
 
@@ -45,14 +45,14 @@ fi
 if [[ $1 == *"docker"* ]]; then
 	echo "Run: run docker"
 	#sudo docker run --privileged --cap-add=ALL  -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --network=host --rm -it ddnirvana/penglai-enclave:v0.5 bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --network=host --rm -it fly0307/penglai-enclave:v0.1 bash
 	exit 0
 fi
 
 # make clean
 if [[ $1 == *"clean"* ]]; then
 	echo "Clean: make clean"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1 make clean
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.1 make clean
 	exit 0
 fi
 

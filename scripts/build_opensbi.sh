@@ -18,7 +18,7 @@ function build_opensbi_2() {
     cd /home/penglai/penglai-enclave/opensbi-${1}
     rm -rf build-oe/qemu-virt
     mkdir -p build-oe/qemu-virt
-    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot.bin -j$(nproc)
+    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot/u-boot.bin -j$(nproc)
 }
 
 function print_usage() {
