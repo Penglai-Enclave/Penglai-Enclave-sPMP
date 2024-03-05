@@ -90,6 +90,7 @@ static void sbi_pmp_sync(struct sbi_scratch *scratch)
 
 	u32 remote_hartid = curr_skip_hartid;
 
+	// if (remote_hartid != -1UL && (wait_for_sync[remote_hartid] == IPI_TLB || wait_for_sync[remote_hartid] == IPI_PMP)){
 	if (remote_hartid != -1 && (wait_for_sync[remote_hartid] == IPI_TLB || waiting_for_spinlock[remote_hartid] == 1)){
 		if (SYNC_DEBUG)
 			sbi_printf("hart %ld skip wait %u sync pmp\n", hartid,
