@@ -9,6 +9,7 @@
 #include <sbi/riscv_locks.h>
 
 extern volatile int print_m_mode;
+extern volatile unsigned long pmp_bitmap;
 
 //static int sm_initialized = 0;
 //static spinlock_t sm_init_lock = SPINLOCK_INIT;
@@ -331,7 +332,7 @@ uintptr_t sm_do_timer_irq(uintptr_t *regs, uintptr_t mcause, uintptr_t mepc)
 	return ret;
 }
 /**
- * \brief Used to clear pmp settings when uninstalling kernel modules
+ * \brief Used to clear pmp settings when uninstalling kernel modules\
  * 
  * \param size_ptr Used to pass the size of the freed memory to the driver
  * \param flag Select whether to clear a specific pmp
@@ -354,13 +355,15 @@ uintptr_t sm_free_enclave_mem(uintptr_t size_ptr, unsigned long flag)
 			}
 
 			if (pmp_idx == 0) {
-				sbi_printf("M mode:Finish free and there is no mem to reclaim\r\n");
+				sbi_printf("M mode: sm_free_enclave_mem: There is no mem to reclaim\r\n");
 				dump_pmps();
 				size = 0;
 				ret  = 0;
 				break;
 			}
-			mm_free_clear((void *)pmp_config.paddr, pmp_config.size);
+
+			clear_pmp_and_sync(pmp_idx);
+			pmp_bitmap &= ~(1 << pmp_idx);
 			ret  = pmp_config.paddr;
 			size = pmp_config.size;
 

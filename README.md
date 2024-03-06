@@ -55,6 +55,7 @@ Follow the instructions in openeuler riscv gitee to compile uboot for OE-23.X.
 ```
 # Fetch the uboot submodule
 git submodule update --init --recursive
+docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --network=host --rm -it fly0307/penglai-enclave:v0.5 bash
 cd ./u-boot
 make qemu-riscv64_smode_defconfig
 make ARCH=riscv CROSS_COMPILE=riscv64-unknown-linux-gnu- -j$(nproc)
@@ -79,18 +80,28 @@ For oe versions greater than 23, you can access the source code after [Run openE
 ### Build OpenSBI (with Penglai supports)
 **For openEuler version $\lt$ 23:**
 
+When compiling opensbi-0.9/1.0, you can use the toolchain `CROSS_COMPILE=/home/penglai/toolchain-720/bin/riscv64-unkown-linux-gnu-`. For opensbi-1.2, you can use `CROSS_COMPILE=riscv64-unknown-linux-gnu-`.
+	
+
 	cp openeuler-kernel/arch/riscv/boot/Image .
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.5 bash
 	# In the docker image
 	cd /home/penglai/penglai-enclave/opensbi-0.9
 	mkdir -p build-oe/qemu-virt
-	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
+	CROSS_COMPILE=/home/penglai/toolchain-720/bin/riscv64-unkown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 Note: the /home/penglai/penglai-enclave/Image is the image compiled openEuler Kernel Image.
+
+A simple way:
+For opensbi-0.9 and oe-2203(oe $\lt$ 23 )
+
+```
+./docker_cmd.sh opensbi-0.9
+```
 
 **For openEuler version $\ge$ 23:**
 
 ```
-docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.5 bash
+docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.5 bash
 cd /home/penglai/penglai-enclave/opensbi-1.2
 rm -rf build-oe/qemu-virt
 mkdir -p build-oe/qemu-virt
@@ -98,7 +109,12 @@ CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=gene
 ```
 
 A simpler way:
+For opensbi-1.2 and oe-2303(oe $\ge$ 23 )
+```
+./docker_cmd.sh opensbi-1.2 
+```
 
+For others
 ```
 ./docker_cmd.sh docker
 #In the docker image，build opensbi 1.2 for OE20.03
@@ -140,7 +156,7 @@ When penglai.ko is completed,following the commnads to build user-level sdk and 
 
 You should download the disk image of openEuler (i.e., openEuler-preview.riscv64.qcow2) and raname image file to openEuler-xxxx-qemu-riscv64.qcow2.
 
-You can download OE 2303 from [openEuler-23.03-V1-riscv64](https://mirror.iscas.ac.cn/openeuler-sig-riscv/openEuler-RISC-V/preview/openEuler-23.03-V1-riscv64/QEMU/)(i.e., openEuler-23.03-V1-base-qemu-preview.qcow2）or download openEuler 20.03 from [here](http://pan.sjtu.edu.cn/web/share/4440d1d40d859f141d9e6cf18b89bb4d).
+You can download OE 2303 from [openEuler-23.03-V1-riscv64](https://mirror.iscas.ac.cn/openeuler-sig-riscv/openEuler-RISC-V/preview/openEuler-23.03-V1-riscv64/QEMU/)(i.e., openEuler-23.03-V1-base-qemu-preview.qcow2)or download openEuler 20.03 from [here](http://pan.sjtu.edu.cn/web/share/4440d1d40d859f141d9e6cf18b89bb4d).
 
 ```
 wget https://mirror.iscas.ac.cn/openeuler-sig-riscv/openEuler-RISC-V/preview/openEuler-23.03-V1-riscv64/QEMU/openEuler-23.03-V1-base-qemu-preview.qcow2.zst
@@ -238,7 +254,7 @@ Copy penglai-enclave-driver to the root/ directory of the oe VM:
 
 ```
 #in host
-scp -P -r 12055 penglai-enclave-driver root@localhost:~/
+scp -P 12055 -r penglai-enclave-driver root@localhost:~/
 scp -P 12055 sdk/demo/host/host root@localhost:~/
 scp -P 12055 sdk/demo/prime/prime root@localhost:~/
 ```

@@ -5,20 +5,29 @@
 ## 		For older version (e.g., v0.6), please find other scripts
 opensbi_version=1.2
 kernel_version=2003
+set_cross_compile=''
+
+function set_cross_compile() {
+    if [ $(echo "$opensbi_version > 1.0" | bc -l) -eq 1 ]; then
+        set_cross_compile="riscv64-unknown-linux-gnu-"
+    else
+        set_cross_compile="/home/penglai/toolchain-720/bin/riscv64-unknown-linux-gnu-"
+    fi
+}
 
 function build_opensbi_1() {
     # build opensbi
     cd /home/penglai/penglai-enclave/opensbi-${1}
 	rm -rf build-oe/qemu-virt
 	mkdir -p build-oe/qemu-virt
-	CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
+	CROSS_COMPILE=$set_cross_compile make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/Image
 }
 
 function build_opensbi_2() {
     cd /home/penglai/penglai-enclave/opensbi-${1}
     rm -rf build-oe/qemu-virt
     mkdir -p build-oe/qemu-virt
-    CROSS_COMPILE=riscv64-unknown-linux-gnu- make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot/u-boot.bin -j$(nproc)
+    CROSS_COMPILE=$set_cross_compile make O=build-oe/qemu-virt PLATFORM=generic FW_PAYLOAD=y FW_PAYLOAD_PATH=/home/penglai/penglai-enclave/u-boot/u-boot.bin -j$(nproc)
 }
 
 function print_usage() {
@@ -63,9 +72,11 @@ done
 
 if [ $(echo "$kernel_version < 2303" | bc -l) -eq 1 ]
 then
+	set_cross_compile
 	build_opensbi_1  $opensbi_version
 	exit 0
 else
+	set_cross_compile
 	build_opensbi_2  $opensbi_version
 	exit 0
 fi

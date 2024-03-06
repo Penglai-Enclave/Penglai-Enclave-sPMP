@@ -959,13 +959,6 @@ static int insert_mm_region(int region_idx, struct mm_list_t* mm_region, int mer
 	}
 
 	//found the exact mm_list
-	
-	if(merge && mm_regions[region_idx].mm_list_head == mm_list_head && mm_list_head->mm_list == mm_region){
-		//An entire pmp region is reclaimed
-		if(mm_region->order == mm_list_head->order){
-			return 0;
-		}
-	}
 	int ret_val = 0;
 	struct mm_list_head_t *new_list_head = (struct mm_list_head_t*)MM_LIST_2_PADDR(mm_region);
 	if(mm_list_head && mm_list_head->order == mm_region->order)
@@ -1235,10 +1228,10 @@ int mm_free_clear(void* req_paddr, unsigned long free_size)
 
 		mm_list_head = mm_list_head->next_list_head;
 	}
-	// if(mm_list_head)
-	// {
-	// 	goto mm_free_out;
-	// }
+	if(mm_list_head)
+	{
+		goto mm_free_out;
+	}
 
 	//insert with merge
 	ret_val = insert_mm_region(region_idx, mm_region, 1);

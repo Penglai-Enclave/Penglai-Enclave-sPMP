@@ -18,7 +18,7 @@ function print_usage() {
 # no arguments
 if [ $# == 0 ]; then
 	echo "Default: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.1 bash scripts/build_opensbi.sh -v 1.2 -k 2203
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.5 bash -c "export PATH=\$PATH:/home/penglai/toolchain/bin && /home/penglai/penglai-enclave/scripts/build_opensbi.sh -v1.2 -k2203"
 	exit 0
 fi
 
@@ -27,10 +27,17 @@ if [[ $1 == *"help"* ]]; then
 	exit 0
 fi
 
+# build penglai-0.9/1.0
+if [[ $1 == "opensbi-0.9" ]]; then
+	echo "Build: build-opensbi-0.9/1.0"
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.5 bash -c "export PATH=\$PATH:/home/penglai/toolchain-720/bin && /home/penglai/penglai-enclave/scripts/build_opensbi.sh -v0.9 -k2203"
+	exit 0
+fi
+
 # build penglai
-if [[ $1 == *"build"* ]]; then
-	echo "Build: building penglai demo image"
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.1 bash scripts/build_opensbi.sh
+if [[ $1 == "opensbi-1.2" ]]; then
+	echo "Build: build-opensbi-1.2"
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it fly0307/penglai-enclave:v0.5 bash -c "export PATH=\$PATH:/home/penglai/toolchain/bin && /home/penglai/penglai-enclave/scripts/build_opensbi.sh -v1.2 -k2303"
 	exit 0
 fi
 
@@ -45,7 +52,7 @@ fi
 if [[ $1 == *"docker"* ]]; then
 	echo "Run: run docker"
 	#sudo docker run --privileged --cap-add=ALL  -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --rm -it ddnirvana/penglai-enclave:v0.1
-	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --network=host --rm -it fly0307/penglai-enclave:v0.1 bash
+	docker run -v $(pwd):/home/penglai/penglai-enclave -w /home/penglai/penglai-enclave --network=host --rm -it fly0307/penglai-enclave:v0.5 bash
 	exit 0
 fi
 

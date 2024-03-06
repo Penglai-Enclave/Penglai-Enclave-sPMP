@@ -47,6 +47,9 @@ then
 elif (($kernel_version == 2303))
 then
 	imagepath=openEuler-2303-qemu-riscv64.qcow2
+elif (($kernel_version == 2309))
+then
+	imagepath=openEuler-2309-qemu-riscv64.qcow2
 else
 	echo "Invalid kernel version: $kernel_version" >&2
 	print_usage

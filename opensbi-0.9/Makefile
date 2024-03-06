@@ -157,7 +157,11 @@ ifndef PLATFORM_RISCV_ABI
 endif
 ifndef PLATFORM_RISCV_ISA
   ifneq ($(PLATFORM_RISCV_TOOLCHAIN_DEFAULT), 1)
-    PLATFORM_RISCV_ISA = rv$(PLATFORM_RISCV_XLEN)imafdc
+    ifeq ($(CC_SUPPORT_ZICSR_ZIFENCEI), y)
+      PLATFORM_RISCV_ISA = rv$(PLATFORM_RISCV_XLEN)imafdc_zicsr_zifencei
+    else
+      PLATFORM_RISCV_ISA = rv$(PLATFORM_RISCV_XLEN)imafdc
+    endif
   else
     PLATFORM_RISCV_ISA = $(OPENSBI_CC_ISA)
   endif
