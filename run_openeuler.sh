@@ -41,20 +41,7 @@ while getopts ":k:o:" opt; do
   esac
 done
 
-if (($kernel_version == 2003))
-then
-	imagepath=openEuler-2003-qemu-riscv64.qcow2
-elif (($kernel_version == 2303))
-then
-	imagepath=openEuler-2303-qemu-riscv64.qcow2
-elif (($kernel_version == 2309))
-then
-	imagepath=openEuler-2309-qemu-riscv64.qcow2
-else
-	echo "Invalid kernel version: $kernel_version" >&2
-	print_usage
-	exit 1
-fi
+imagepath=openEuler-$kernel_version-qemu-riscv64.qcow2
 
 if [ $(echo "$opensbi_version == 0.9" | bc -l) -eq 1 ]
 then
