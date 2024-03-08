@@ -78,6 +78,9 @@ For example, download the OKL-5.10 in current directory, and compile with pengla
 For oe versions greater than 23, you can access the source code after [Run openEuler with Penglai Supports](#run-openeuler-with-penglai-supports) and don't need to compile the image like in the previous step for  version $\lt$ 23.
 
 ### Build OpenSBI (with Penglai supports)
+
+If you want to use **opensbi 0.9 or 1.0**, you need to use the previous version of the penglai-enclave-driver, the corresponding commit is [bb5021cd9f76d033d6e174b2b96bbc4503766385](https://github.com/Penglai-Enclave/Penglai-Enclave-sPMP/tree/bb5021cd9f76d033d6e174b2b96bbc4503766385). And you can use the latest penglai-enclave-driver to support opensbi-1.2.
+
 **For openEuler version $\lt$ 23:**
 
 When compiling opensbi-0.9/1.0, you can use the toolchain `CROSS_COMPILE=/home/penglai/toolchain-720/bin/riscv64-unkown-linux-gnu-`. For opensbi-1.2, you can use `CROSS_COMPILE=riscv64-unknown-linux-gnu-`.
