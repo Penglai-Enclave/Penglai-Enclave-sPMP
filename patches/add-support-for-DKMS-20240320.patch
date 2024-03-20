@@ -1,0 +1,57 @@
+From 34ebd1c1f2333e27bfad23ebfd78bcd5a8b27d66 Mon Sep 17 00:00:00 2001
+From: ZhaoXi <fly0307@sjtu.edu.cn>
+Date: Wed, 20 Mar 2024 22:05:08 +0800
+Subject: [PATCH] add support for DKMS
+
+---
+ penglai-enclave-driver/Makefile  | 11 ++++++-----
+ penglai-enclave-driver/dkms.conf |  7 +++++++
+ 2 files changed, 13 insertions(+), 5 deletions(-)
+ create mode 100644 penglai-enclave-driver/dkms.conf
+
+diff --git a/penglai-enclave-driver/Makefile b/penglai-enclave-driver/Makefile
+index a3b739e08..b2b9214e1 100644
+--- a/penglai-enclave-driver/Makefile
++++ b/penglai-enclave-driver/Makefile
+@@ -1,10 +1,11 @@
+ ##
+-## Author: Dong Du
++## Author: zhaoxi
+ ## Description:
+-## 	The file now assumes the kernel located in ../openeuler-kernel,
+-##	if you would like to use your own one, please change the path
++##  Supports automatic matching of kernel files 
++##  to support DKMS compilation and updating of the kernel
+ 
+ obj-m += penglai.o
++KVERSION:= $(shell uname -r)
+ penglai-objs := penglai-enclave-driver.o \
+ 	penglai-enclave-elfloader.o \
+ 	penglai-enclave-page.o \
+@@ -12,7 +13,7 @@ penglai-objs := penglai-enclave-driver.o \
+ 	penglai-enclave-ioctl.o 
+ 
+ all:
+-	make -C ../openeuler-kernel/ ARCH=riscv M=$(PWD) modules
++	make -C /lib/modules/$(KVERSION)/build M=$(PWD) modules
+ 
+ clean:
+-	make -C ../openeuler-kernel/ ARCH=riscv M=$(PWD) clean
++	make -C /lib/modules/$(KVERSION)/build M=$(PWD) clean
+diff --git a/penglai-enclave-driver/dkms.conf b/penglai-enclave-driver/dkms.conf
+new file mode 100644
+index 000000000..9a5a12ead
+--- /dev/null
++++ b/penglai-enclave-driver/dkms.conf
+@@ -0,0 +1,7 @@
++PACKAGE_NAME="penglai"
++PACKAGE_VERSION="1.0"
++CLEAN="make clean"
++MAKE[0]="make all KVERSION=$kernelver"
++BUILT_MODULE_NAME[0]="penglai"
++DEST_MODULE_LOCATION[0]="/extra/penglai"
++AUTOINSTALL="yes"
+\ No newline at end of file
+-- 
+2.25.1
+
