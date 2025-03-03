@@ -10,6 +10,7 @@
 
 #include <sbi/sbi_types.h>
 
+#define LOCK_DEBUG   0
 #define TICKET_SHIFT	16
 
 typedef struct {

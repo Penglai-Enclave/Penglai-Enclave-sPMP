@@ -29,6 +29,11 @@
 #define SBI_EXT_HSM				0x48534D
 #define SBI_EXT_SRST				0x53525354
 #define SBI_EXT_PMU				0x504D55
+
+//Penglai
+#define SBI_EXT_PENGLAI_HOST            0x100100
+#define SBI_EXT_PENGLAI_ENCLAVE     0x100101
+
 #define SBI_EXT_DBCN				0x4442434E
 #define SBI_EXT_SUSP				0x53555350
 #define SBI_EXT_CPPC				0x43505043

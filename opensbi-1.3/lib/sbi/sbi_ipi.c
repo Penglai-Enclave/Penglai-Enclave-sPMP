@@ -22,6 +22,15 @@
 #include <sbi/sbi_pmu.h>
 #include <sbi/sbi_string.h>
 #include <sbi/sbi_tlb.h>
+/**
+ * To keep track of what the HART is currently waiting to process
+ * IPI_TLB: HART is waiting to process a TLB IPI
+ * IPI_PMP: HART is waiting to process a PMP IPI
+ */
+volatile unsigned long wait_for_sync[MAX_HARTS] = { IPI_NONE };
+// Used to mark which HARts need to skip waiting for the current HART
+volatile unsigned long skip_for_wait[MAX_HARTS][MAX_HARTS] = {{0}};
+
 
 struct sbi_ipi_data {
 	unsigned long ipi_type;
@@ -95,7 +104,7 @@ static int sbi_ipi_sync(struct sbi_scratch *scratch, u32 event)
 int sbi_ipi_send_many(ulong hmask, ulong hbase, u32 event, void *data)
 {
 	int rc;
-	bool retry_needed;
+	bool retry_needed, sync_needed;
 	ulong i, m;
 	struct sbi_hartmask target_mask = {0};
 	struct sbi_domain *dom = sbi_domain_thishart_ptr();
@@ -126,8 +135,10 @@ int sbi_ipi_send_many(ulong hmask, ulong hbase, u32 event, void *data)
 	/* Send IPIs */
 	do {
 		retry_needed = false;
+		sync_needed = false;
 		sbi_hartmask_for_each_hart(i, &target_mask) {
 			rc = sbi_ipi_send(scratch, i, event, data);
+			sync_needed = true;
 			if (rc == SBI_IPI_UPDATE_RETRY)
 				retry_needed = true;
 			else
@@ -136,7 +147,8 @@ int sbi_ipi_send_many(ulong hmask, ulong hbase, u32 event, void *data)
 	} while (retry_needed);
 
 	/* Sync IPIs */
-	sbi_ipi_sync(scratch, event);
+	if (sync_needed)
+		sbi_ipi_sync(scratch, event);
 
 	return 0;
 }

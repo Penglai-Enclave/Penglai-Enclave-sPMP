@@ -17,13 +17,16 @@
 #define MAGIC_NUM 30;
 extern volatile unsigned long waiting_for_spinlock[MAX_HARTS];
 extern volatile unsigned long wait_for_sync[MAX_HARTS];
-extern volatile unsigned long skip_for_wait[MAX_HARTS][MAX_HARTS]; //slot: mark which rhart no reply
+extern volatile unsigned long skip_for_wait[MAX_HARTS][MAX_HARTS];
 extern volatile int print_m_mode;
 static unsigned long pmp_data_offset;
 static unsigned long pmp_sync_offset;
 static volatile u32 curr_skip_hartid =-1; //0:cur_remotehartid, 1:skip_hartid
 
-
+/** 
+ * sbi_process_pmp函数用于处理PMP配置。
+ * 它从sbi_scratch结构中获取PMP数据，并将其应用到指定的PMP索引。然后，它遍历所有的处理器核心，并同步PMP配置。
+*/
 static void sbi_process_pmp(struct sbi_scratch *scratch)
 {
 	struct pmp_data_t *data = sbi_scratch_offset_ptr(scratch, pmp_data_offset);
@@ -41,6 +44,8 @@ static void sbi_process_pmp(struct sbi_scratch *scratch)
 		if (!rscratch)
 			continue;
 		if(print_m_mode && SYNC_DEBUG) sbi_printf("hart %ld process sync pmp\n", hartid);
+		
+		// Reprocess the pmp synchronization request you just skipped
 		pmp_sync = sbi_scratch_offset_ptr(rscratch, pmp_sync_offset);
 		if (skip_for_wait[rhartid][hartid] == 1)
 		{
@@ -56,6 +61,10 @@ static void sbi_process_pmp(struct sbi_scratch *scratch)
 	}
 }
 
+/**
+ * 用于更新PMP配置。
+ * 它首先检查当前处理器核心是否是目标核心，如果是，则直接更新PMP配置。否则，它将PMP数据复制到目标核心的sbi_scratch结构中。
+ */
 static int sbi_update_pmp(struct sbi_scratch *scratch,
 			  struct sbi_scratch *remote_scratch,
 			  u32 remote_hartid, void *data)
@@ -81,6 +90,9 @@ static int sbi_update_pmp(struct sbi_scratch *scratch,
 	return 0;
 }
 
+/**
+ * 用于等待远程处理器核心处理PMP信号。它通过一个原子操作来检查和重置同步标志。
+ */
 static void sbi_pmp_sync(struct sbi_scratch *scratch)
 {
 	unsigned long *pmp_sync =
@@ -90,7 +102,12 @@ static void sbi_pmp_sync(struct sbi_scratch *scratch)
 
 	u32 remote_hartid = curr_skip_hartid;
 
-	// if (remote_hartid != -1UL && (wait_for_sync[remote_hartid] == IPI_TLB || wait_for_sync[remote_hartid] == IPI_PMP)){
+	/**
+	 * If the other party is in the situations the wait is skipped:
+	 * 1. The other party is in m mode
+	 * 2. The other party is in spin lock
+	 * 3. The other party is waiting for wake up
+	 */
 	if (remote_hartid != -1 && (wait_for_sync[remote_hartid] == IPI_TLB || waiting_for_spinlock[remote_hartid] == 1)){
 		if (SYNC_DEBUG)
 			sbi_printf("hart %ld skip wait %u sync pmp\n", hartid,
@@ -114,6 +131,12 @@ static void sbi_pmp_sync(struct sbi_scratch *scratch)
 			retry--;
 			if (retry == 0) {
 				retry = MAGIC_NUM;
+				/**
+				 * If the other party is in the situations the wait is skipped:
+				 * 1. The other party is in m mode
+				 * 2. The other party is in spin lock
+				 * 3. The other party is waiting for wake up
+				 */
 				if (remote_hartid != -1 &&
 				    (wait_for_sync[remote_hartid] == IPI_TLB ||
 				     waiting_for_spinlock[remote_hartid] == 1)) {
@@ -154,6 +177,10 @@ int sbi_send_pmp(ulong hmask, ulong hbase, struct pmp_data_t* pmp_data)
 	return sbi_ipi_send_many(hmask, hbase, pmp_event, pmp_data);
 }
 
+/**
+ * sbi_pmp_init - Initialize PMP module
+ * 用于初始化PMP模块。在冷启动时，它分配PMP数据和同步数据的偏移量，并创建一个IPI事件来处理PMP操作。在热启动时，它不做任何操作。
+ */
 int sbi_pmp_init(struct sbi_scratch *scratch, bool cold_boot)
 {
 	int ret;
