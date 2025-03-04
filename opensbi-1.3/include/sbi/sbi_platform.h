@@ -139,8 +139,11 @@ struct sbi_platform_operations {
 				   struct sbi_trap_info *out_trap);
 };
 
-/** Platform default per-HART stack size for exception/interrupt handling */
-#define SBI_PLATFORM_DEFAULT_HART_STACK_SIZE	8192
+/** 
+ * Platform default per-HART stack size for exception/interrupt handling
+ * To avoid stack overflow, it is recommended that STACK_SIZE be larger than 8KB
+ */
+#define SBI_PLATFORM_DEFAULT_HART_STACK_SIZE	0x2000 * 2
 
 /** Platform default heap size */
 #define SBI_PLATFORM_DEFAULT_HEAP_SIZE(__num_hart)	\

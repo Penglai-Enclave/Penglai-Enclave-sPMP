@@ -133,7 +133,7 @@ struct sbi_platform_operations {
 };
 
 /** Platform default per-HART stack size for exception/interrupt handling */
-#define SBI_PLATFORM_DEFAULT_HART_STACK_SIZE	8192*8
+#define SBI_PLATFORM_DEFAULT_HART_STACK_SIZE	0x2000 * 8 /* 8KB */
 
 /** Representation of a platform */
 struct sbi_platform {
