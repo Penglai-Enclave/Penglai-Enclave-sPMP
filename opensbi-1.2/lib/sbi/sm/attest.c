@@ -125,11 +125,31 @@ void attest_init()
         printm("SM2_KeyGeneration failed with ret value: %d\n", i);
 }
 
+void generate_key_pair_and_sigature(void *pri_key_arg, void *pub_key_arg, void *signature_arg)
+{
+    int i;
+    struct prikey_t *pri_key = (struct prikey_t *)pri_key_arg;
+    struct pubkey_t *pub_key = (struct pubkey_t *)pub_key_arg;
+    struct signature_t *signature = (struct signature_t*)signature_arg;
+    struct prikey_t *sm_prikey = (struct prikey_t *)SM_PRI_KEY;
+
+    i = SM2_Init();
+    if(i)
+        printm("SM2_Init failed with ret value: %d\n", i);
+
+    i = SM2_KeyGeneration(pri_key->dA, pub_key->xA, pub_key->yA);
+    if(i)
+        printm("SM2_KeyGeneration failed with ret value: %d\n", i);
+
+    SM2_Sign((void *)pub_key, SIGNATURE_SIZE, sm_prikey->dA, (unsigned char *)(signature->r),
+        (unsigned char *)(signature->s));
+}
+
 void sign_enclave(void* signature_arg, unsigned char *message, int len)
 {
     struct signature_t *signature = (struct signature_t*)signature_arg;
     struct prikey_t *sm_prikey = (struct prikey_t *)SM_PRI_KEY;
-    
+
     SM2_Sign(message, len, sm_prikey->dA, (unsigned char *)(signature->r),
         (unsigned char *)(signature->s));
 }

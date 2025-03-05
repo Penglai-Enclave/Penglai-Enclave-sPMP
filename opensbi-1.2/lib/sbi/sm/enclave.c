@@ -1124,3 +1124,58 @@ uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
 	retval = resume_enclave(regs, eid);
 	return retval;
 }
+
+uintptr_t enclave_generate_key_pair_and_signature(uintptr_t* regs, uintptr_t pri_key_va, uintptr_t pub_key_va, uintptr_t signature_va)
+{
+	uintptr_t ret = 0;
+	int eid = get_enclave_id();
+	struct enclave_t *enclave = NULL;
+
+	pte_t *enclave_root_pt;
+	unsigned char pri_key[PRIVATE_KEY_SIZE];
+	unsigned char pub_key[PUBLIC_KEY_SIZE];
+	unsigned char signature[SIGNATURE_SIZE];
+	
+	if(check_in_enclave_world() < 0)
+	{
+		printm_err("[Penglai Monitor@%s] check enclave world is failed\n", __func__);
+		return -1;
+	}
+
+	enclave = get_enclave(eid);
+
+	spin_lock(&enclave_metadata_lock);
+
+	if(!enclave || check_enclave_authentication(enclave)!=0 || enclave->state != RUNNING)
+	{
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] check enclave authentication is failed\n", __func__);
+		goto out;
+	}
+
+	generate_key_pair_and_sigature(pri_key, pub_key, signature);
+
+	enclave_root_pt = (pte_t*)(enclave->thread_context.encl_ptbr << RISCV_PGSHIFT);
+	ret = copy_to_enclave(enclave_root_pt, (void *)signature_va, signature, SIGNATURE_SIZE);
+	if(ret != 0){
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy to enclave\n", __func__);
+		goto out;
+	}
+	ret = copy_to_enclave(enclave_root_pt, (void *)pri_key_va, pri_key, PRIVATE_KEY_SIZE);
+	if(ret != 0){
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy to enclave\n", __func__);
+		goto out;
+	}
+	ret = copy_to_enclave(enclave_root_pt, (void *)pub_key_va, pub_key, PUBLIC_KEY_SIZE);
+	if(ret != 0){
+		ret = -1UL;
+		printm_err("[Penglai Monitor@%s] unknown error happended when copy to enclave\n", __func__);
+		goto out;
+	}
+
+out:
+	spin_unlock(&enclave_metadata_lock);
+	return ret;
+}

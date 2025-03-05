@@ -304,6 +304,24 @@ uintptr_t sm_enclave_get_key(uintptr_t *regs, uintptr_t salt_va,
 }
 
 /**
+ * \brief generate key pair and signed the pub key with sm private key.
+ * 
+ * \param regs The enclave regs
+ * \param pri_key_va The private key pointer in enclave address space
+ * \param pub_key_va The public key pointer in enclave address space
+ * \param signature_va The signature pointer in enclave address space
+ */
+uintptr_t sm_enclave_generate_key_pair_and_signature(uintptr_t *regs,
+                uintptr_t pri_key_va, uintptr_t pub_key_va, uintptr_t signature_va)
+{
+	uintptr_t ret = 0;
+
+	ret = enclave_generate_key_pair_and_signature(regs, pri_key_va, pub_key_va, signature_va);
+
+	return ret;
+}
+
+/**
  * \brief This transitional function is used to destroy the enclave.
  *
  * \param regs The host reg.

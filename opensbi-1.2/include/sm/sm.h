@@ -36,6 +36,7 @@ extern uintptr_t _fw_start[], _fw_end[];
 #define SBI_EXIT_ENCLAVE        99
 #define SBI_ENCLAVE_OCALL        98
 #define SBI_GET_KEY             88
+#define SBI_GENERATE_KEY_PAIR_AND_SIGNATURE 87
 
 //Error code of SBI_ALLOC_ENCLAVE_MEM
 #define RETRY_SPIN_LOCK         -3
@@ -91,6 +92,9 @@ uintptr_t sm_enclave_ocall(uintptr_t *regs, uintptr_t ocall_func_id, uintptr_t a
 
 uintptr_t sm_enclave_get_key(uintptr_t* regs, uintptr_t salt_va, uintptr_t salt_len,
                         uintptr_t key_buf_va, uintptr_t key_buf_len);
+
+uintptr_t sm_enclave_generate_key_pair_and_signature(uintptr_t *regs, uintptr_t pri_key_va, 
+                                                     uintptr_t pub_key_va, uintptr_t signature_va);
 
 uintptr_t sm_exit_enclave(uintptr_t *regs, unsigned long retval);
 
