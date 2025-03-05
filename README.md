@@ -83,7 +83,7 @@ If you want to use **opensbi 0.9 or 1.0**, you need to use the previous version 
 
 **For openEuler version $\lt$ 23:**
 
-When compiling opensbi-0.9/1.0, you can use the toolchain `CROSS_COMPILE=/home/penglai/toolchain-720/bin/riscv64-unkown-linux-gnu-`. For opensbi-1.2, you can use `CROSS_COMPILE=riscv64-unknown-linux-gnu-`.
+When compiling opensbi-0.9/1.0, you can use the toolchain `CROSS_COMPILE=/home/penglai/toolchain-720/bin/riscv64-unknown-linux-gnu-`. For opensbi-1.2, you can use `CROSS_COMPILE=riscv64-unknown-linux-gnu-`.
 	
 
 	cp openeuler-kernel/arch/riscv/boot/Image .
